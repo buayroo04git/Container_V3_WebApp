@@ -1,0 +1,864 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import * as XLSX from 'xlsx';
+import { useToast } from '../context/ToastContext';
+import {
+  fetchLeaveRecords,
+  createLeaveRecord,
+  updateLeaveRecord,
+  deleteLeaveRecord
+} from '../services/leaveService';
+import { fetchDrivers } from '../services/truckDriverService';
+import LeaveModal from '../components/leaves/LeaveModal';
+import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
+import TableContextMenu from '../components/ui/TableContextMenu';
+import RenameColumnModal from '../components/ui/RenameColumnModal';
+import KpiCard from '../components/ui/KpiCard';
+import { useColumnPreferences } from '../hooks/useColumnPreferences';
+
+const DEFAULT_LEAVE_COLUMNS = [
+  'id',
+  'driver_name',
+  'leave_type',
+  'start_date',
+  'end_date',
+  'duration_days',
+  'with_pay',
+  'status',
+  'leave_reason',
+  'approved_by',
+  'remark',
+  'actions'
+];
+
+const DEFAULT_COLUMN_NAMES = {
+  id: '#',
+  driver_name: 'พนักงานขับรถ',
+  leave_type: 'ประเภทการลา',
+  start_date: 'วันที่เริ่มลา',
+  end_date: 'วันที่สิ้นสุด / กลับมา',
+  duration_days: 'จำนวนวันลา',
+  with_pay: 'การจ่ายค่าจ้าง',
+  status: 'สถานะการลา',
+  leave_reason: 'เหตุผลการลา',
+  approved_by: 'ผู้อนุมัติ',
+  remark: 'หมายเหตุ',
+  actions: 'จัดการ'
+};
+
+const DEFAULT_LEAVE_WIDTHS = {
+  id: 55,
+  driver_name: 160,
+  leave_type: 150,
+  start_date: 115,
+  end_date: 140,
+  duration_days: 100,
+  with_pay: 110,
+  status: 120,
+  leave_reason: 180,
+  approved_by: 120,
+  remark: 160,
+  actions: 100
+};
+
+const LEAVE_TYPE_MAP = {
+  personal: { label: '🟡 ลากิจส่วนตัว', color: '#b45309', bg: '#fef3c7' },
+  sick: { label: '🩺 ลาป่วย', color: '#dc2626', bg: '#fee2e2' },
+  vacation: { label: '🏖️ ลาพักร้อน', color: '#0284c7', bg: '#e0f2fe' },
+  ordination: { label: '🙏 ลาบวช/คลอด', color: '#7c3aed', bg: '#ede9fe' },
+  unauthorized: { label: '⚠️ ขาดงาน/ไม่แจ้ง', color: '#be123c', bg: '#ffe4e6' },
+  suspended: { label: '⚪ พักงาน/สอบสวน', color: '#475569', bg: '#f1f5f9' },
+  other: { label: '📝 อื่นๆ', color: '#0f172a', bg: '#f8fafc' }
+};
+
+export default function DriverLeavesView() {
+  const { success, error: toastError, warning } = useToast();
+  const [records, setRecords] = useState([]);
+  const [drivers, setDrivers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Filters & Search
+  const [searchTerm, setSearchTerm] = useState('');
+  const [typeFilter, setTypeFilter] = useState('ALL');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [driverFilter, setDriverFilter] = useState('ALL');
+
+  // Modal
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState(null);
+
+  const menuRef = useRef(null);
+
+  // Format Date
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr || dateStr === '-') return '-';
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr;
+      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    } catch {
+      return dateStr;
+    }
+  };
+
+  // Column Preferences Hook
+  const {
+    allColumns,
+    activeColumns,
+    visibleColumns,
+    columnWidths,
+    draggedCol,
+    setDraggedCol,
+    dragOverCol,
+    setDragOverCol,
+    getColDisplayName,
+    handleToggleColumnHide,
+    handleShowAllColumns,
+    handleResizeMouseDown,
+    handleAutoFitColumn,
+    handleColumnReorder,
+    handleResetColumnOrder,
+    handleResetColumnWidth,
+    handleHeaderContextMenu,
+    handleStartRename,
+    handleSaveAlias,
+    handleResetAlias,
+    handleResetAllAliases,
+    contextMenu,
+    setContextMenu,
+    renamingColumn,
+    setRenamingColumn,
+    showColumnMenu,
+    setShowColumnMenu,
+    sortConfig,
+    handleSort,
+    sortRecords
+  } = useColumnPreferences({
+    storageKeyPrefix: 'driver_leaves',
+    rawColumns: DEFAULT_LEAVE_COLUMNS,
+    defaultNames: DEFAULT_COLUMN_NAMES,
+    defaultWidths: DEFAULT_LEAVE_WIDTHS,
+    sampleRecords: records,
+    formatCellValue: (col, val, row) => {
+      if (col === 'start_date') return formatDateDisplay(val);
+      if (col === 'end_date') return row?.status === 'active_leave' ? (row?.is_indefinite ? '🟡 ลาไม่มีกำหนด' : `🟡 ถึง ${formatDateDisplay(row?.expected_end_date)}`) : formatDateDisplay(val);
+      if (col === 'leave_type') return LEAVE_TYPE_MAP[val]?.label || val;
+      if (col === 'duration_days') return `${val || 1} วัน`;
+      if (col === 'status') return row?.status === 'active_leave' ? '🟡 กำลังลางาน' : '🟢 สิ้นสุดแล้ว';
+      if (col === 'with_pay') return val === 'paid' ? '✅ จ่ายค่าจ้าง' : '❌ ไม่จ่าย';
+      return String(val || '');
+    }
+  });
+
+  // Load Data
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const [leaveRes, driverRes] = await Promise.all([
+        fetchLeaveRecords(),
+        fetchDrivers()
+      ]);
+      setRecords(leaveRes?.data || []);
+      const driverList = Array.isArray(driverRes) ? driverRes : (driverRes?.data || []);
+      setDrivers(driverList);
+    } catch (err) {
+      toastError('โหลดข้อมูลไม่สำเร็จ: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowColumnMenu(false);
+      }
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
+  // Filtered List
+  const filteredRecords = useMemo(() => {
+    return records.filter(r => {
+      if (typeFilter !== 'ALL' && r.leave_type !== typeFilter) return false;
+      if (statusFilter !== 'ALL' && r.status !== statusFilter) return false;
+      if (driverFilter !== 'ALL' && r.driver_name !== driverFilter) return false;
+
+      if (searchTerm.trim()) {
+        const q = searchTerm.toLowerCase();
+        const matchDriver = String(r.driver_name || '').toLowerCase().includes(q);
+        const matchReason = String(r.leave_reason || '').toLowerCase().includes(q);
+        const matchApproved = String(r.approved_by || '').toLowerCase().includes(q);
+        const matchRemark = String(r.remark || '').toLowerCase().includes(q);
+        if (!matchDriver && !matchReason && !matchApproved && !matchRemark) return false;
+      }
+      return true;
+    });
+  }, [records, typeFilter, statusFilter, driverFilter, searchTerm]);
+
+  // Displayed Records (Sorted & Filtered)
+  const displayedRecords = useMemo(() => {
+    return sortRecords(filteredRecords);
+  }, [filteredRecords, sortConfig, sortRecords]);
+
+  // KPI Calculations
+  const kpis = useMemo(() => {
+    const activeLeave = records.filter(r => r.status === 'active_leave').length;
+    const completed = records.filter(r => r.status === 'completed').length;
+    const totalDays = records.reduce((sum, r) => sum + (Number(r.duration_days) || 1), 0);
+    const uniqueDrivers = new Set(records.map(r => r.driver_name)).size;
+    return { activeLeave, completed, totalDays, uniqueDrivers, total: records.length };
+  }, [records]);
+
+  // Save Record
+  const handleSaveRecord = async (formData, id) => {
+    try {
+      if (id) {
+        const { error } = await updateLeaveRecord(id, formData);
+        if (error) throw new Error(error);
+        success('อัปเดตบันทึกการลางานเรียบร้อยแล้ว');
+      } else {
+        const { error } = await createLeaveRecord(formData);
+        if (error) throw new Error(error);
+        success('เพิ่มบันทึกการลางานเรียบร้อยแล้ว');
+      }
+      loadData();
+    } catch (err) {
+      toastError('บันทึกไม่สำเร็จ: ' + err.message);
+    }
+  };
+
+  // Delete Record
+  const handleDeleteRecord = async (id, driverName) => {
+    if (!window.confirm(`ยืนยันการลบบันทึกการลางานของ ${driverName} หรือไม่?`)) return;
+    try {
+      const { error } = await deleteLeaveRecord(id);
+      if (error) throw new Error(error);
+      success('ลบบันทึกเรียบร้อยแล้ว');
+      loadData();
+    } catch (err) {
+      toastError('ลบไม่สำเร็จ: ' + err.message);
+    }
+  };
+
+  // Export Excel
+  const handleExportExcel = () => {
+    if (filteredRecords.length === 0) {
+      warning('ไม่มีข้อมูลสำหรับส่งออก');
+      return;
+    }
+    const exportData = filteredRecords.map((r, idx) => ({
+      '#': idx + 1,
+      'พนักงานขับรถ': r.driver_name,
+      'ประเภทการลา': LEAVE_TYPE_MAP[r.leave_type]?.label || r.leave_type,
+      'วันที่เริ่มลา': r.start_date || '-',
+      'วันที่สิ้นสุด / กลับมา': r.status === 'active_leave' ? (r.is_indefinite ? 'ลาไม่มีกำหนด' : `คาดว่าถึง ${r.expected_end_date}`) : (r.end_date || '-'),
+      'จำนวนวันลา': r.duration_days || 1,
+      'การจ่ายค่าจ้าง': r.with_pay === 'paid' ? 'จ่ายค่าจ้าง' : 'ไม่จ่าย',
+      'สถานะ': r.status === 'active_leave' ? 'กำลังลางาน' : 'สิ้นสุดแล้ว',
+      'เหตุผลการลา': r.leave_reason || '-',
+      'ผู้อนุมัติ': r.approved_by || '-',
+      'หมายเหตุ': r.remark || '-'
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Driver_Leaves');
+    XLSX.writeFile(wb, `Driver_Leaves_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    success('ส่งออกไฟล์ Excel เรียบร้อยแล้ว');
+  };
+
+  return (
+    <div style={{
+      height: '100%',
+      display: 'flex',
+      flexDirection: 'column',
+      padding: '24px 28px',
+      boxSizing: 'border-box',
+      background: '#f8fafc',
+      overflow: 'hidden'
+    }}>
+      
+      {/* Header */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '16px',
+        flexShrink: 0,
+        flexWrap: 'wrap',
+        gap: '12px'
+      }}>
+        <div>
+          <h1 style={{ margin: '0 0 4px 0', fontSize: '24px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>🏖️</span> ประวัติการลางานคนขับ (Driver Leave Records)
+          </h1>
+          <p style={{ margin: 0, fontSize: '13.5px', color: '#64748b' }}>
+            บันทึกประวัติการลางาน พักร้อน ลาป่วย วันหยุดพักผ่อน และสถิติวันลาของพนักงานขับรถ
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            onClick={handleExportExcel}
+            style={{
+              padding: '8px 14px',
+              borderRadius: '8px',
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#334155',
+              fontSize: '13px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+          >
+            📊 ส่งออก Excel
+          </button>
+
+          <button
+            onClick={() => {
+              setEditingRecord(null);
+              setIsModalOpen(true);
+            }}
+            style={{
+              padding: '8px 16px',
+              borderRadius: '8px',
+              border: 'none',
+              background: '#2563eb',
+              color: '#ffffff',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 2px 6px rgba(37, 99, 235, 0.25)'
+            }}
+          >
+            ➕ เพิ่มบันทึกการลา
+          </button>
+        </div>
+      </div>
+
+      {/* KPI Cards */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: '12px',
+        marginBottom: '16px',
+        flexShrink: 0
+      }}>
+        <KpiCard
+          title="🟡 กำลังลางาน (On Leave)"
+          value={kpis.activeLeave}
+          unit="คน"
+          theme="amber"
+        />
+        <KpiCard
+          title="🏖️ จำนวนวันลารวมทั้งหมด"
+          value={kpis.totalDays.toLocaleString()}
+          unit="วัน"
+          theme="blue"
+        />
+        <KpiCard
+          title="✅ สิ้นสุดการลาแล้ว"
+          value={kpis.completed}
+          unit="รายการ"
+          theme="emerald"
+        />
+        <KpiCard
+          title="👤 คนขับที่มีประวัติลา"
+          value={kpis.uniqueDrivers}
+          unit="คน"
+          theme="purple"
+        />
+      </div>
+
+      {/* Filters Toolbar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        background: '#ffffff',
+        padding: '12px 16px',
+        borderRadius: '12px',
+        border: '1px solid #e2e8f0',
+        marginBottom: '14px',
+        flexShrink: 0,
+        gap: '12px',
+        flexWrap: 'wrap'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '240px' }}>
+          <span style={{ color: '#94a3b8' }}>🔍</span>
+          <input
+            type="text"
+            placeholder="ค้นหาชื่อคนขับ, เหตุผล, ผู้อนุมัติ, หมายเหตุ..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            style={{
+              border: 'none',
+              outline: 'none',
+              width: '100%',
+              fontSize: '13px',
+              background: 'transparent'
+            }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* ฟิลเตอร์ประเภทการลา */}
+          <select
+            value={typeFilter}
+            onChange={e => setTypeFilter(e.target.value)}
+            style={{
+              padding: '7px 10px',
+              borderRadius: '7px',
+              border: '1px solid #cbd5e1',
+              fontSize: '12.5px',
+              background: '#fff'
+            }}
+          >
+            <option value="ALL">ทุกประเภทการลา</option>
+            {Object.entries(LEAVE_TYPE_MAP).map(([key, val]) => (
+              <option key={key} value={key}>{val.label}</option>
+            ))}
+          </select>
+
+          {/* ฟิลเตอร์สถานะ */}
+          <select
+            value={statusFilter}
+            onChange={e => setStatusFilter(e.target.value)}
+            style={{
+              padding: '7px 10px',
+              borderRadius: '7px',
+              border: '1px solid #cbd5e1',
+              fontSize: '12.5px',
+              background: '#fff'
+            }}
+          >
+            <option value="ALL">ทุกสถานะ</option>
+            <option value="active_leave">🟡 กำลังลางาน (On Leave)</option>
+            <option value="completed">🟢 สิ้นสุดแล้ว (Returned)</option>
+          </select>
+
+          {/* ฟิลเตอร์คนขับ */}
+          <select
+            value={driverFilter}
+            onChange={e => setDriverFilter(e.target.value)}
+            style={{
+              padding: '7px 10px',
+              borderRadius: '7px',
+              border: '1px solid #cbd5e1',
+              fontSize: '12.5px',
+              background: '#fff'
+            }}
+          >
+            <option value="ALL">คนขับทุกคน</option>
+            {drivers.map(d => (
+              <option key={d.driver_name} value={d.driver_name}>{d.driver_name}</option>
+            ))}
+          </select>
+
+          {/* Column Visibility Dropdown */}
+          <div style={{ marginLeft: '6px' }}>
+            <ColumnVisibilityDropdown
+              showColumnMenu={showColumnMenu}
+              setShowColumnMenu={setShowColumnMenu}
+              menuRef={menuRef}
+              allColumns={allColumns}
+              activeColumns={activeColumns}
+              visibleColumns={visibleColumns}
+              onToggleColumnVisibility={handleToggleColumnHide}
+              getColDisplayName={getColDisplayName}
+              onStartEditAlias={(col) => handleStartRename(col)}
+              onShowAllColumns={handleShowAllColumns}
+              onResetAllAliases={handleResetAllAliases}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Table Container */}
+      <div style={{
+        flex: 1,
+        background: '#ffffff',
+        borderRadius: '12px',
+        border: '1px solid #e2e8f0',
+        overflow: 'auto',
+        display: 'flex',
+        flexDirection: 'column'
+      }}>
+        <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
+          <colgroup>
+            {activeColumns.map(col => (
+              <col key={col} style={{ width: `${columnWidths[col] || DEFAULT_LEAVE_WIDTHS[col] || 120}px` }} />
+            ))}
+          </colgroup>
+          <thead>
+            <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700, position: 'sticky', top: 0, zIndex: 10 }}>
+              {activeColumns.map((col) => {
+                const isDraggable = col !== 'actions';
+                const displayName = getColDisplayName(col);
+                const colWidth = columnWidths[col] || DEFAULT_LEAVE_WIDTHS[col] || 100;
+                const isDragging = draggedCol === col;
+                const isDragOver = dragOverCol === col;
+                const isSorted = sortConfig.key === col;
+                const isAsc = isSorted && sortConfig.direction === 'asc';
+                const isDesc = isSorted && sortConfig.direction === 'desc';
+
+                return (
+                  <th
+                    key={col}
+                    draggable={isDraggable}
+                    onDragStart={(e) => {
+                      if (!isDraggable) return;
+                      setDraggedCol(col);
+                      e.dataTransfer.setData('text/plain', col);
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
+                    onDragOver={(e) => {
+                      if (!isDraggable) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = 'move';
+                      if (draggedCol && draggedCol !== col && dragOverCol !== col) {
+                        setDragOverCol(col);
+                      }
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverCol === col) setDragOverCol(null);
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (draggedCol && draggedCol !== col) {
+                        handleColumnReorder(draggedCol, col);
+                      }
+                      setDraggedCol(null);
+                      setDragOverCol(null);
+                    }}
+                    onDragEnd={() => {
+                      setDraggedCol(null);
+                      setDragOverCol(null);
+                    }}
+                    onContextMenu={(e) => handleHeaderContextMenu(e, col)}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      handleAutoFitColumn(col, filteredRecords);
+                    }}
+                    style={{
+                      padding: '10px 14px',
+                      fontSize: '12.5px',
+                      fontWeight: 700,
+                      color: isSorted ? '#2563eb' : (isDragOver ? '#1d4ed8' : '#475569'),
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      userSelect: 'none',
+                      position: 'relative',
+                      textAlign: col === 'id' || col === 'actions' || col === 'duration_days' || col === 'status' || col === 'with_pay' ? 'center' : 'left',
+                      cursor: !isDraggable ? 'default' : (isDragging ? 'grabbing' : 'grab'),
+                      background: isDragOver ? '#eff6ff' : (isSorted ? '#eff6ff' : (isDragging ? '#f1f5f9' : '#f8fafc')),
+                      borderLeft: isDragOver ? '3px solid #2563eb' : 'none',
+                      borderBottom: isSorted ? '2px solid #2563eb' : '1px solid #e2e8f0',
+                      opacity: isDragging ? 0.4 : 1,
+                      transform: isDragging ? 'scale(0.97)' : (isDragOver ? 'translateX(2px)' : 'none'),
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div
+                      onClick={() => isDraggable && handleSort(col)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: col === 'id' || col === 'actions' || col === 'duration_days' || col === 'status' || col === 'with_pay' ? 'center' : 'flex-start',
+                        gap: '5px',
+                        cursor: isDraggable ? 'pointer' : 'default',
+                        userSelect: 'none',
+                        paddingRight: col !== 'actions' ? '4px' : '0'
+                      }}
+                    >
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
+                      {isDraggable && (
+                        <span style={{ fontSize: '11px', color: isSorted ? '#2563eb' : '#94a3b8', flexShrink: 0, opacity: isSorted ? 1 : 0.4 }}>
+                          {isAsc ? '▲' : isDesc ? '▼' : '↕'}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Resize Handle */}
+                    {col !== 'actions' && (
+                      <div
+                        draggable={false}
+                        onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleResizeMouseDown(e, col);
+                        }}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          handleAutoFitColumn(col, filteredRecords);
+                        }}
+                        style={{
+                          position: 'absolute',
+                          right: 0,
+                          top: 0,
+                          bottom: 0,
+                          width: '8px',
+                          cursor: 'col-resize',
+                          zIndex: 5,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          background: 'transparent'
+                        }}
+                        title="ลากปรับขนาด / ดับเบิ้ลคลิกปรับพอดีข้อความ"
+                      >
+                        <div 
+                          style={{
+                            width: '1px',
+                            height: '16px',
+                            background: '#cbd5e1',
+                            transition: 'all 0.15s ease'
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = '#2563eb'; e.currentTarget.style.width = '2px'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = '#cbd5e1'; e.currentTarget.style.width = '1px'; }}
+                        />
+                      </div>
+                    )}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr>
+                <td colSpan={activeColumns.length} style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
+                  <div style={{ fontSize: '28px', marginBottom: '8px' }}>⏳</div>
+                  <div>กำลังโหลดข้อมูลประวัติการลางาน...</div>
+                </td>
+              </tr>
+            ) : displayedRecords.length === 0 ? (
+              <tr>
+                <td colSpan={activeColumns.length} style={{ padding: '60px 20px', textAlign: 'center', color: '#94a3b8' }}>
+                  <div style={{ fontSize: '32px', marginBottom: '8px' }}>📭</div>
+                  <div>ไม่พบข้อมูลการลางานตามเงื่อนไข</div>
+                </td>
+              </tr>
+            ) : (
+              displayedRecords.map((r, idx) => {
+                const typeStyle = LEAVE_TYPE_MAP[r.leave_type] || LEAVE_TYPE_MAP.other;
+                const isActive = r.status === 'active_leave';
+
+                return (
+                  <tr
+                    key={r.id || idx}
+                    style={{
+                      borderBottom: '1px solid #f1f5f9',
+                      transition: 'background 0.12s ease',
+                      background: isActive ? '#fffbeb' : '#ffffff'
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = '#f8fafc'}
+                    onMouseLeave={e => e.currentTarget.style.background = isActive ? '#fffbeb' : '#ffffff'}
+                  >
+                    {activeColumns.map(col => {
+                      if (col === 'id') {
+                        return <td key={col} style={{ padding: '10px 14px', textAlign: 'center', color: '#94a3b8' }}>{idx + 1}</td>;
+                      }
+                      if (col === 'driver_name') {
+                        return (
+                          <td key={col} style={{ padding: '10px 14px', fontWeight: 800, color: '#0f172a' }}>
+                            👤 {r.driver_name}
+                          </td>
+                        );
+                      }
+                      if (col === 'leave_type') {
+                        return (
+                          <td key={col} style={{ padding: '10px 14px' }}>
+                            <span style={{
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              fontSize: '12px',
+                              fontWeight: 600,
+                              color: typeStyle.color,
+                              background: typeStyle.bg
+                            }}>
+                              {typeStyle.label}
+                            </span>
+                          </td>
+                        );
+                      }
+                      if (col === 'start_date') {
+                        return (
+                          <td key={col} style={{ padding: '10px 14px', color: '#334155' }}>
+                            {formatDateDisplay(r.start_date)}
+                          </td>
+                        );
+                      }
+                      if (col === 'end_date') {
+                        return (
+                          <td key={col} style={{ padding: '10px 14px', color: '#334155' }}>
+                            {isActive ? (
+                              <span style={{ color: '#b45309', fontWeight: 600 }}>
+                                {r.is_indefinite ? '🟡 ลาไม่มีกำหนด' : `🟡 คาดว่าถึง ${formatDateDisplay(r.expected_end_date)}`}
+                              </span>
+                            ) : (
+                              formatDateDisplay(r.end_date)
+                            )}
+                          </td>
+                        );
+                      }
+                      if (col === 'duration_days') {
+                        return (
+                          <td key={col} style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#0f172a' }}>
+                            {r.duration_days || 1} วัน
+                          </td>
+                        );
+                      }
+                      if (col === 'with_pay') {
+                        return (
+                          <td key={col} style={{ padding: '10px 14px', textAlign: 'center' }}>
+                            <span style={{
+                              padding: '2px 8px',
+                              borderRadius: '6px',
+                              fontSize: '11.5px',
+                              fontWeight: 600,
+                              color: r.with_pay === 'paid' ? '#16a34a' : '#64748b',
+                              background: r.with_pay === 'paid' ? '#dcfce7' : '#f1f5f9'
+                            }}>
+                              {r.with_pay === 'paid' ? '✅ จ่ายค่าจ้าง' : '❌ ไม่จ่าย'}
+                            </span>
+                          </td>
+                        );
+                      }
+                      if (col === 'status') {
+                        return (
+                          <td key={col} style={{ padding: '10px 14px', textAlign: 'center' }}>
+                            <span style={{
+                              padding: '3px 8px',
+                              borderRadius: '6px',
+                              fontSize: '11.5px',
+                              fontWeight: 700,
+                              color: isActive ? '#b45309' : '#15803d',
+                              background: isActive ? '#fef3c7' : '#dcfce7',
+                              border: isActive ? '1px solid #fde68a' : '1px solid #bbf7d0'
+                            }}>
+                              {isActive ? '🟡 กำลังลางาน' : '🟢 สิ้นสุดแล้ว'}
+                            </span>
+                          </td>
+                        );
+                      }
+                      if (col === 'leave_reason') {
+                        return (
+                          <td key={col} style={{ padding: '10px 14px', color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.leave_reason}>
+                            {r.leave_reason || '-'}
+                          </td>
+                        );
+                      }
+                      if (col === 'approved_by') {
+                        return (
+                          <td key={col} style={{ padding: '10px 14px', color: '#64748b' }}>
+                            {r.approved_by || '-'}
+                          </td>
+                        );
+                      }
+                      if (col === 'remark') {
+                        return (
+                          <td key={col} style={{ padding: '10px 14px', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.remark}>
+                            {r.remark || '-'}
+                          </td>
+                        );
+                      }
+                      if (col === 'actions') {
+                        return (
+                          <td key={col} style={{ padding: '10px 14px', textAlign: 'center' }}>
+                            <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
+                              <button
+                                onClick={() => {
+                                  setEditingRecord(r);
+                                  setIsModalOpen(true);
+                                }}
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #cbd5e1',
+                                  background: '#ffffff',
+                                  color: '#2563eb',
+                                  fontSize: '12px',
+                                  cursor: 'pointer'
+                                }}
+                                title="แก้ไข"
+                              >
+                                ✏️
+                              </button>
+                              <button
+                                onClick={() => handleDeleteRecord(r.id, r.driver_name)}
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #fee2e2',
+                                  background: '#fff1f2',
+                                  color: '#e11d48',
+                                  fontSize: '12px',
+                                  cursor: 'pointer'
+                                }}
+                                title="ลบ"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          </td>
+                        );
+                      }
+                      return <td key={col} style={{ padding: '10px 14px' }}>{r[col] || '-'}</td>;
+                    })}
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Leave Modal */}
+      <LeaveModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        onSave={handleSaveRecord}
+        record={editingRecord}
+        driverList={drivers}
+      />
+
+      {/* Table Context Menu */}
+      <TableContextMenu
+        contextMenu={contextMenu}
+        onClose={() => setContextMenu(null)}
+        onStartEditAlias={handleStartRename}
+        onAutoFitColumn={(col) => handleAutoFitColumn(col, filteredRecords)}
+        onToggleColumnHide={handleToggleColumnHide}
+        onShowAllColumns={handleShowAllColumns}
+        onResetColumnWidth={handleResetColumnWidth}
+        onResetColumnOrder={handleResetColumnOrder}
+        getColDisplayName={getColDisplayName}
+      />
+
+      {/* Rename Column Modal */}
+      <RenameColumnModal
+        renamingColumn={renamingColumn}
+        onClose={() => setRenamingColumn(null)}
+        onSaveAlias={handleSaveAlias}
+        onResetAlias={handleResetAlias}
+      />
+
+    </div>
+  );
+}

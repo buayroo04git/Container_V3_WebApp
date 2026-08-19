@@ -1,0 +1,172 @@
+import React from 'react';
+import { NAVIGATION_SECTIONS } from '../config/navigationConfig';
+
+/**
+ * 🧭 Dynamic Sidebar Component
+ * เรนเดอร์เมนูอัตโนมัติตาม config ใน src/config/navigationConfig.js
+ */
+export default function Sidebar({ activeTab, setActiveTab }) {
+  return (
+    <aside style={{ 
+      width: '240px', 
+      minWidth: '240px',
+      background: '#ffffff', 
+      borderRight: '1px solid #f1f5f9', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      padding: '20px 14px',
+      userSelect: 'none'
+    }}>
+      {/* Brand Header */}
+      <div style={{ 
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        padding: '0 6px 18px 6px',
+        borderBottom: '1px solid #f1f5f9',
+        marginBottom: '18px'
+      }}>
+        <div style={{
+          width: '30px',
+          height: '30px',
+          borderRadius: '7px',
+          background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#ffffff',
+          fontWeight: 800,
+          fontSize: '14px',
+          boxShadow: '0 2px 5px rgba(37, 99, 235, 0.25)'
+        }}>
+          J
+        </div>
+        <div>
+          <h2 style={{ 
+            margin: 0, 
+            fontSize: '14.5px', 
+            fontWeight: 800,
+            color: '#0f172a',
+            letterSpacing: '-0.2px',
+            lineHeight: 1.2
+          }}>
+            JWD Transport
+          </h2>
+          <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8', fontWeight: 500 }}>
+            Container V3 WebApp
+          </p>
+        </div>
+      </div>
+
+      {/* Navigation Groups (Rendered dynamically from NAVIGATION_SECTIONS) */}
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: '22px', flex: 1, overflowY: 'auto' }}>
+        {NAVIGATION_SECTIONS.map((section) => (
+          <div key={section.id || section.title} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            
+            {/* Main Section Header */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '0 6px 4px 6px',
+              fontSize: '12.5px',
+              fontWeight: 700,
+              color: '#1e293b',
+              letterSpacing: '0.1px'
+            }}>
+              <span style={{ fontSize: '15px' }}>{section.icon}</span>
+              <span>{section.title}</span>
+            </div>
+
+            {/* Sub-menu Items */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '8px', marginLeft: '6px' }}>
+              {section.items.map(item => {
+                const isActive = activeTab === item.id;
+                return (
+                  <button
+                    key={item.id}
+                    title={item.description}
+                    onClick={() => setActiveTab(item.id)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '9px',
+                      padding: '8px 10px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      outline: 'none',
+                      background: isActive ? '#eff6ff' : 'transparent',
+                      color: isActive ? '#2563eb' : '#64748b',
+                      cursor: 'pointer',
+                      fontSize: '13px',
+                      fontWeight: isActive ? 700 : 500,
+                      textAlign: 'left',
+                      transition: 'all 0.15s ease',
+                      width: '100%',
+                      lineHeight: 1.35,
+                      boxSizing: 'border-box'
+                    }}
+                    onMouseOver={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.background = '#f8fafc';
+                        e.currentTarget.style.color = '#0f172a';
+                      }
+                    }}
+                    onMouseOut={(e) => {
+                      if (!isActive) {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = '#64748b';
+                      }
+                    }}
+                  >
+                    <span style={{ fontSize: '13px', lineHeight: 1.35, marginTop: '1px', flexShrink: 0 }}>{item.icon}</span>
+                    <span style={{
+                      flex: 1,
+                      whiteSpace: 'normal',
+                      wordBreak: 'break-word',
+                      lineHeight: 1.35
+                    }}>
+                      {item.label}
+                    </span>
+                    {item.badge && (
+                      <span style={{
+                        fontSize: '10px',
+                        padding: '1px 5px',
+                        borderRadius: '999px',
+                        background: isActive ? '#2563eb' : '#e2e8f0',
+                        color: isActive ? '#ffffff' : '#475569',
+                        fontWeight: 700,
+                        flexShrink: 0,
+                        marginTop: '2px'
+                      }}>
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </nav>
+
+      {/* Footer Status */}
+      <div style={{ 
+        marginTop: 'auto', 
+        padding: '12px 6px 0 6px', 
+        fontSize: '11px', 
+        color: '#94a3b8', 
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        borderTop: '1px solid #f1f5f9' 
+      }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#10b981', fontWeight: 600 }}>
+          <span style={{ display: 'inline-block', width: '6px', height: '6px', borderRadius: '50%', background: '#10b981' }} />
+          Online
+        </span>
+        <span style={{ color: '#94a3b8', fontWeight: 500 }}>V3.0.0</span>
+      </div>
+    </aside>
+  );
+}
