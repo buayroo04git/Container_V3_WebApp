@@ -250,7 +250,7 @@ function ScannerViewContent({ setActiveTab, editingSheet, setEditingSheet }) {
   const folderInputRef = useRef(null);
   const cloudFolderInputRef = useRef(null);
   const cloudFileInputRef = useRef(null);
-  const GEMINI_API_KEY = localStorage.getItem('JWD_GEMINI_API_KEY') || import.meta.env.VITE_GEMINI_API_KEY;
+  const GEMINI_API_KEY = localStorage.getItem('JWD_GEMINI_API_KEY') || import.meta.env.VITE_GEMINI_API_KEY || 'AQ.Ab8RN6KXtEXZlgkcfcJtD4Q9VbpsyBHSnWjz13AUiMhuf9Oy0g';
 
   // โหลดคิวใบงานอัตโนมัติเมื่อเปิดเว็บ (ดึงจาก Supabase Cloud ก่อน เพื่อให้ทุกคนตรวจงานได้โดยไม่ต้องล็อกอิน Google)
   useEffect(() => {
