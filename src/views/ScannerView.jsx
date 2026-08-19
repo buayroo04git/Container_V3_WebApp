@@ -250,7 +250,7 @@ function ScannerViewContent({ setActiveTab, editingSheet, setEditingSheet }) {
   const folderInputRef = useRef(null);
   const cloudFolderInputRef = useRef(null);
   const cloudFileInputRef = useRef(null);
-  const GEMINI_API_KEY = localStorage.getItem('JWD_GEMINI_API_KEY') || import.meta.env.VITE_GEMINI_API_KEY || 'AQ.Ab8RN6KXtEXZlgkcfcJtD4Q9VbpsyBHSnWjz13AUiMhuf9Oy0g';
+  const GEMINI_API_KEY = localStorage.getItem('JWD_GEMINI_API_KEY') || import.meta.env.VITE_GEMINI_API_KEY || '';
 
   // โหลดคิวใบงานอัตโนมัติเมื่อเปิดเว็บ (ดึงจาก Supabase Cloud ก่อน เพื่อให้ทุกคนตรวจงานได้โดยไม่ต้องล็อกอิน Google)
   useEffect(() => {
@@ -1873,7 +1873,7 @@ function ScannerViewContent({ setActiveTab, editingSheet, setEditingSheet }) {
 }
 
 export default function ScannerView({ setActiveTab, editingSheet, setEditingSheet }) {
-  const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || localStorage.getItem('JWD_GOOGLE_CLIENT_ID') || '353876659281-v8qg38uf7kj5girrp0omev3lephjbalm.apps.googleusercontent.com';
+  const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || localStorage.getItem('JWD_GOOGLE_CLIENT_ID') || '';
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>

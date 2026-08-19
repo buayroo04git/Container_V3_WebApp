@@ -12,7 +12,7 @@ export default function SettingsView() {
     setGeminiKey(localStorage.getItem('JWD_GEMINI_API_KEY') || import.meta.env.VITE_GEMINI_API_KEY || '');
     setSupabaseUrl(localStorage.getItem('JWD_SUPABASE_URL') || import.meta.env.VITE_SUPABASE_URL || '');
     setSupabaseKey(localStorage.getItem('JWD_SUPABASE_KEY') || import.meta.env.VITE_SUPABASE_ANON_KEY || '');
-    setGoogleDriveKey(localStorage.getItem('JWD_GOOGLE_CLIENT_ID') || import.meta.env.VITE_GOOGLE_CLIENT_ID || '353876659281-v8qg38uf7kj5girrp0omev3lephjbalm.apps.googleusercontent.com');
+    setGoogleDriveKey(localStorage.getItem('JWD_GOOGLE_CLIENT_ID') || import.meta.env.VITE_GOOGLE_CLIENT_ID || '');
   }, []);
 
 
