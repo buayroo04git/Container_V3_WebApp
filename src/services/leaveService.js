@@ -53,7 +53,8 @@ export async function createLeaveRecord(recordData) {
   try {
     const id = recordData.id || `leave_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
     const isIndefinite = recordData.is_indefinite !== false;
-    const duration = calculateDuration(recordData.start_date, recordData.end_date);
+    const targetEndDate = recordData.end_date || (!isIndefinite && recordData.expected_end_date ? recordData.expected_end_date : null);
+    const duration = calculateDuration(recordData.start_date, targetEndDate);
 
     const cleanRecord = {
       id,
@@ -97,7 +98,8 @@ export async function createLeaveRecord(recordData) {
 export async function updateLeaveRecord(id, recordData) {
   try {
     const isIndefinite = recordData.is_indefinite !== false;
-    const duration = calculateDuration(recordData.start_date, recordData.end_date);
+    const targetEndDate = recordData.end_date || (!isIndefinite && recordData.expected_end_date ? recordData.expected_end_date : null);
+    const duration = calculateDuration(recordData.start_date, targetEndDate);
 
     const cleanRecord = {
       ...recordData,
