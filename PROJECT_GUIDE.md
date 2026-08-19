@@ -716,6 +716,36 @@ erDiagram
    - หน้าจอที่มี Master Data อยู่แล้ว ให้ส่งต่อไปยัง Service ฟังก์ชัน (`existingMasterDb`) เพื่อตัดการ Query ซ้ำซ้อนไปยัง Supabase
    - ใช้ `Map` (Hash Map) สำหรับจับคู่เลขตู้แบบ $O(1)$ เสมอ เพื่อความรวดเร็วในการประมวลผลบน Client-side
 
+---
+
+## 🌐 20. การ Deploy ขึ้น Cloud & Vercel CI/CD (Production Deployment Standards)
+
+1. **สถาปัตยกรรม Git & CI/CD:**
+   - โค้ดหลักอยู่ที่ Branch `main` บน GitHub Repository (`buayroo04git/Container_V3_WebApp`)
+   - Vercel เชื่อมต่อผ่าน GitHub Webhook ทำการ Auto-Build และ Auto-Deploy ทุกครั้งที่มีคำสั่ง `git push`
+2. **ระบบความปลอดภัย (Zero Hardcoded Secrets):**
+   - **ไม่มี API Key, Token หรือ Secret ใดๆ ฝังอยู่ในซอร์สโค้ดบน GitHub 100%**
+   - ทุกค่าถูกโหลดผ่าน `import.meta.env.*` จากระบบ Environment Variables ของ Vercel หรือ `.env` ในเครื่อง:
+     - `VITE_GEMINI_API_KEY`: API Key สำหรับ Gemini AI OCR
+     - `VITE_SUPABASE_URL`: Endpoint เชื่อมต่อ Supabase Cloud
+     - `VITE_SUPABASE_ANON_KEY`: Public Client Key ของ Supabase
+     - `VITE_GOOGLE_CLIENT_ID`: OAuth Client ID สำหรับ Google Drive
+3. **ระบบ Sanitize & Header Protection ([`src/supabaseClient.js`](file:///C:/Users/AMD/Desktop/Container_V3_WebApp/src/supabaseClient.js)):**
+   - ล้างอักขระแปลกปลอม, เครื่องหมายคำพูด `"`, `'` และ **อักขระขึ้นบรรทัดใหม่ (`\r`, `\n`)** ออกจาก Environment Variables ทุกตัวก่อนส่งเข้า Header เสมอ ป้องกันข้อผิดพลาด `TypeError: Failed to execute 'set' on 'Headers': Invalid value`
+4. **SPA Routing Config ([`vercel.json`](file:///C:/Users/AMD/Desktop/Container_V3_WebApp/vercel.json)):**
+   - กำหนด Rewrites `{"source": "/(.*)", "destination": "/"}` เพื่อให้ Client-side Routing ของ React ทำงานได้ราบรื่นเมื่อ Refresh หน้า
+
+---
+
+## 📅 21. กฎการคำนวณวันลาและซ่อมบำรุง (Leave & Maintenance Duration Rules)
+
+1. **กรณีระบุวันสิ้นสุดจริง (`end_date` มีค่า):**
+   $$\text{Duration} = (\text{end\_date} - \text{start\_date}) + 1$$
+2. **กรณีอยู่ระหว่างการลา/ซ่อม (`end_date = null`) แต่ระบุวันคาดว่าจะสิ้นสุด (`expected_end_date` มีค่า):**
+   $$\text{Duration} = (\text{expected\_end\_date} - \text{start\_date}) + 1$$
+3. **กรณีลาไม่มีกำหนด (`is_indefinite = true` หรือไม่มี `expected_end_date`):**
+   $$\text{Duration} = (\text{current\_date} - \text{start\_date}) + 1$$
+
 
 
 

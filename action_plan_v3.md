@@ -4,7 +4,8 @@
 > - หมวด `📄 ใบงาน (Job Sheets)` เสร็จสมบูรณ์ 100% พร้อมระบบโหลดคู่ขนานความเร็วสูง
 > - หมวด `📦 Containers (Reconciliation & Master DB)` เสร็จสมบูรณ์ 100% พร้อมระบบโหลดคู่ขนานความเร็วสูง
 > - หมวด `🚚 รถและคนขับ (Truck & Driver Management)` พัฒนาและปรับปรุง DB Schema V2.3 (Foreign Keys, Cascade, Triggers, RPCs, Automated Tests) เสร็จสมบูรณ์ 100%
-> **อัปเดตล่าสุด:** 19 สิงหาคม 2026 (22:55 น.)
+> - หมวด `🌐 Cloud Deployment & CI/CD`: ขึ้นระบบโปรดักชันบน **Vercel** (`buayroo04git/Container_V3_WebApp`) สำเร็จ 100%
+> **อัปเดตล่าสุด:** 20 สิงหาคม 2026 (00:30 น.)
 
 ---
 
@@ -52,6 +53,11 @@
   - ติดตั้ง Triggers คำนวณค่าซ่อมบำรุงอัตโนมัติ (`cost_total`) และอัปเดต `updated_at` อัตโนมัติ
   - เพิ่มพารามิเตอร์ `p_created_by` ให้กับ Stored Procedures (`assign_driver_to_truck_rpc` / `unassign_driver_truck_rpc`)
   - สร้างชุดทดสอบอัตโนมัติ `test_truck_driver_db.js` (ผลทดสอบ 18/18 ผ่าน 100%)
+- [x] **1.8 Cloud Deployment, CI/CD & Performance Tuning:**
+  - ปรับระบบโหลดข้อมูลแบบคู่ขนาน (`Promise.all`) ลดเวลารอเหลือ < 400ms
+  - ระบบ Sanitization & Validation ล้าง `\n`, `\r` จาก Environment Variables ป้องกัน Header Invalid Value Error
+  - ลบ Hardcoded Secrets ออกจากโค้ด 100% ดึงผ่าน Vercel Environment Variables
+  - ปรับตรรกะคำนวณวันลา (`expected_end_date`) และซิงค์ขึ้น Vercel สำเร็จสมบูรณ์
 
 ---
 
