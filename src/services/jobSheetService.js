@@ -849,12 +849,12 @@ export const jobSheetService = {
                   const candidates = findTopContainerMatches(rawOcr, truckDb, 3);
                   const evaluated = evaluateMatchStatus({ ...row, container_no: rawOcr }, candidates);
                   
-                  if (evaluated.color === 'green') {
+                  if (evaluated && evaluated.color === 'green' && Array.isArray(evaluated.candidates) && evaluated.candidates.length > 0) {
                     matchStatus = evaluated.autoResolvedDuplicate ? 'duplicate_auto' : 'matched_green';
-                    finalContainerNo = evaluated.candidates[0].container_no;
-                  } else if (evaluated.color === 'blue') {
+                    finalContainerNo = evaluated.candidates[0]?.container_no || rawOcr;
+                  } else if (evaluated && evaluated.color === 'blue' && Array.isArray(evaluated.candidates) && evaluated.candidates.length > 0) {
                     matchStatus = evaluated.autoResolvedDuplicate ? 'duplicate_auto' : 'matched_green';
-                    finalContainerNo = evaluated.candidates[0].container_no;
+                    finalContainerNo = evaluated.candidates[0]?.container_no || rawOcr;
                   } else {
                     // ⚠️ แถวสีเหลือง (Yellow / Low similarity candidate) ที่ยังไม่ได้กดยืนยัน -> ต้องเป็นเลข OCR ดิบ และสถานะยังไม่ผ่าน (manual_red)
                     matchStatus = 'manual_red';
