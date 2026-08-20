@@ -125,13 +125,13 @@ export const findBestMasterDbMatch = (containerNo, port, truckNo, masterDbList =
  */
 export const jobSheetService = {
   /**
-   * ดึงรายการใบงานที่รอดำเนินการ (Pending) จาก Supabase
+   * ดึงรายการใบงานที่รอดำเนินการ (Pending) จาก Supabase (เฉพาะ Metadata เพื่อความเร็วสูงสุด)
    */
   async fetchPendingJobSheets() {
     try {
       const { data, error } = await supabase
         .from('ocr_cache')
-        .select('*')
+        .select('id, model_used, image_name, image_url, created_at, updated_at')
         .neq('model_used', 'deleted')
         .neq('model_used', 'completed')
         .order('created_at', { ascending: true });
@@ -145,6 +145,26 @@ export const jobSheetService = {
   },
 
   /**
+   * ดึงข้อมูลใบงาน Pending เฉพาะใบเดี่ยว (รวมผลสแกน OCR เต็มชุดเมื่อเปิดตรวจ)
+   */
+  async fetchPendingJobSheetById(id) {
+    if (!id) return { data: null, error: 'No id provided' };
+    try {
+      const { data, error } = await supabase
+        .from('ocr_cache')
+        .select('*')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (error) throw error;
+      return { data, error: null };
+    } catch (error) {
+      console.error('jobSheetService.fetchPendingJobSheetById error:', error);
+      return { data: null, error };
+    }
+  },
+
+  /**
    * ดึงผลสแกน OCR จาก Cache ตามรายการ File Hash
    */
   async fetchOcrCacheByHashes(hashes) {
@@ -152,7 +172,7 @@ export const jobSheetService = {
     try {
       const { data, error } = await supabase
         .from('ocr_cache')
-        .select('*')
+        .select('id, model_used, image_name, image_url, ocr_data, created_at')
         .in('id', hashes);
 
       if (error) throw error;
