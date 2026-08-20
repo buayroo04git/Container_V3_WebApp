@@ -377,7 +377,7 @@ export const findBestMasterDbMatch = (containerNo, port, truckNo, masterDbList =
   return null;
 };
 
-// 🔄 ระบบ Auto-Reconciliation: ซิงค์และจับคู่ ref_master_id ของทุกรายการใน job_sheet_items กับ Master DB อัตโนมัติ
+// 🔄 ระบบ Auto-Reconciliation: ซิงค์และจับคู่ ref_master_id ของทุกรายการใน job_sheet_items กับ Master DB อัตโนมัติ (1:1 Consumption)
 export const autoReconcileUnmatchedRecords = async () => {
   try {
     // 1. ดึง Master DB (container_records) และ job_sheets ทั้งหมด
@@ -399,17 +399,24 @@ export const autoReconcileUnmatchedRecords = async () => {
     // 2. ดึงรายการตู้ทั้งหมดใน job_sheet_items เพื่อ re-link ID ให้ตรงกับ Master DB ใหม่เสมอ
     const { data: allItems } = await supabase
       .from('job_sheet_items')
-      .select('*');
+      .select('*')
+      .order('id', { ascending: true });
 
     if (allItems && allItems.length > 0) {
+      // 🎯 ติดตามการจับคู่แบบ 1:1 Consumption (ป้องกันไม่ให้แถวใน Master DB ถูกใช้ซ้ำ)
+      const consumedMasterIds = new Set();
+
       for (const item of allItems) {
         if (!item.container_no) continue;
         const sheet = sheetMap[item.job_sheet_id] || {};
         const truck = sheet.truck_no || item.truck_no;
 
-        const matched = findBestMasterDbMatch(item.container_no, item.port, truck, masterData, item.job_type);
+        // กรองเฉพาะ Master DB ที่ยังไม่ถูกจับคู่ในรอบนี้
+        const availableMasterData = masterData.filter(m => !consumedMasterIds.has(Number(m.id)));
+        const matched = findBestMasterDbMatch(item.container_no, item.port, truck, availableMasterData, item.job_type, item.date_job);
 
         if (matched) {
+          consumedMasterIds.add(Number(matched.id));
           // ถ้าจับคู่ได้ และ id หรือสถานะมีการเปลี่ยนแปลง -> อัปเดต
           if (item.ref_master_id !== matched.id || item.match_status !== 'matched_green') {
             await supabase
@@ -476,8 +483,7 @@ export const autoReconcileUnmatchedRecords = async () => {
     if (unmatchedOcr && unmatchedOcr.length > 0) {
       for (const ocrItem of unmatchedOcr) {
         if (!ocrItem.container_no) continue;
-        const cleanOcrNo = String(ocrItem.container_no).toUpperCase().replace(/[^A-Z0-9]/g, '');
-        const matched = masterMap.get(cleanOcrNo);
+        const matched = findBestMasterDbMatch(ocrItem.container_no, ocrItem.port, ocrItem.truck_no, masterData, ocrItem.job_type, ocrItem.date_job);
 
         if (matched) {
           await supabase

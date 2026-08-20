@@ -679,8 +679,8 @@ export const jobSheetService = {
             const finalSize = (item.size && item.size !== '-') ? item.size : (matchedDb?.size || '-');
             const finalPort = (item.port && item.port !== '-') ? item.port : (matchedDb?.port || '-');
             const finalDateJob = (item.date_job && item.date_job !== '-') ? item.date_job : (matchedDb?.date_job || '-');
-            const dbBatch = matchedDb?.source_file || matchedDb?.batch_name;
-            const finalBatch = cleanBatchName(sheet.batch_name || dbBatch || 'General_Batch');
+            const dbBatch = matchedDb?.batch_name || (matchedDb?.source_file ? cleanBatchName(matchedDb.source_file) : null);
+            const finalBatch = dbBatch || cleanBatchName(sheet.batch_name || 'General_Batch');
 
             const finalMatchStatus = item.match_status || (matchedDb ? 'matched_green' : 'manual_red');
 
@@ -724,8 +724,8 @@ export const jobSheetService = {
             const finalSize = (rec.size && rec.size !== '-') ? rec.size : (matchedDb?.size || '-');
             const finalPort = (rec.port && rec.port !== '-') ? rec.port : (matchedDb?.port || '-');
             const finalDateJob = (rec.date_job && rec.date_job !== '-') ? rec.date_job : (matchedDb?.date_job || '-');
-            const dbBatch = matchedDb?.source_file || matchedDb?.batch_name;
-            const finalBatch = cleanBatchName(rec.batch_name || dbBatch || 'General_Batch');
+            const dbBatch = matchedDb?.batch_name || (matchedDb?.source_file ? cleanBatchName(matchedDb.source_file) : null);
+            const finalBatch = dbBatch || cleanBatchName(rec.batch_name || 'General_Batch');
 
             const isMatched = rec.match_status !== 'manual_red' && matchedDb !== null;
             const finalMatchStatus = isMatched ? 'matched_green' : 'manual_red';
