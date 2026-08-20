@@ -8,12 +8,78 @@ import { createLeaveRecord, completeLeaveRecord } from './leaveService';
  * จัดการตาราง truck_records และ driver_records พร้อมระบบซิงค์เชื่อมโยงคนขับ-รถประจำ
  */
 
+/**
+ * 🎯 Helper คำนวณการจับคู่แบบ 1:1 Consumption (ตู้ที่ถูกจับคู่แล้วจะไม่ถูกนำมาใช้ซ้ำ)
+ * @param {Array} masterList - รายการแถวใน Master DB (container_records)
+ * @param {Array} completedItems - รายการตู้ที่ตรวจเสร็จแล้วจากใบงาน (job_sheet_items)
+ * @returns {Set<number>} Set ของ Master Record IDs ที่ถูกจับคู่แล้ว (ขนาด = ยอดตู้ที่จับคู่ได้จริง)
+ */
+export function calculateMatchedMasterIds(masterList = [], completedItems = []) {
+  const consumedMasterIds = new Set();
+  const unlinkedItems = [];
+
+  // สร้าง Map ของ Master DB ID เพื่อค้นหาแบบ O(1)
+  const masterIdMap = new Map();
+  masterList.forEach(m => {
+    if (m.id) masterIdMap.set(Number(m.id), m);
+  });
+
+  // Step 1: จับคู่แบบ Direct 1:1 ผ่าน ref_master_id
+  completedItems.forEach(item => {
+    if (!item || item.match_status === 'manual_red' || item.match_status === 'cancelled') return;
+
+    if (item.ref_master_id) {
+      const refId = Number(item.ref_master_id);
+      if (masterIdMap.has(refId) && !consumedMasterIds.has(refId)) {
+        consumedMasterIds.add(refId);
+        return; // จับคู่สำเร็จ 1:1 เรียบร้อย
+      }
+    }
+    // หากไม่มี ref_master_id หรือ ID ไม่อยู่ใน masterList ชุดนี้ -> ส่งต่อไปจับคู่แบบ Fallback
+    unlinkedItems.push(item);
+  });
+
+  // Step 2: Fallback 1:1 Consumption สำหรับข้อมูลเก่า/รายการที่ไม่มี ref_master_id
+  // จับคู่ตาม [เลขตู้ + เบอร์รถ] และตัดโควต้าทีละ 1 แถว (ใช้แล้วหมดไป ไม่นำมานับซ้ำ)
+  for (const item of unlinkedItems) {
+    const cleanItemCno = String(item.container_no || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const itemTruck = String(item.truck_no || '').trim();
+    if (!cleanItemCno) continue;
+
+    // 1. ค้นหาแถวใน Master DB ที่ยังไม่ถูกใช้ (Unconsumed) และเบอร์รถตรงกัน
+    let candidate = null;
+    if (itemTruck && itemTruck !== '-') {
+      candidate = masterList.find(m => {
+        if (consumedMasterIds.has(Number(m.id))) return false;
+        const cleanMCno = String(m.container_no || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const mTruck = String(m.truck_no || '').trim();
+        return cleanMCno === cleanItemCno && mTruck === itemTruck;
+      });
+    }
+
+    // 2. Fallback สำรอง: ถ้าไม่มีเบอร์รถ ให้หาแถวใน Master DB ที่เลขตู้ตรงกันและยังว่างอยู่
+    if (!candidate && (!itemTruck || itemTruck === '-')) {
+      candidate = masterList.find(m => {
+        if (consumedMasterIds.has(Number(m.id))) return false;
+        const cleanMCno = String(m.container_no || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+        return cleanMCno === cleanItemCno;
+      });
+    }
+
+    if (candidate) {
+      consumedMasterIds.add(Number(candidate.id)); // บริโภคโควต้า 1:1
+    }
+  }
+
+  return consumedMasterIds;
+}
+
 // ==========================================
 // 🚛 TRUCKS API
 // ==========================================
 
 /**
- * ดึงรายการรถทั้งหมด พร้อมสรุปสถิติงานจริงจากใบงาน
+ * ดึงรายการรถทั้งหมด พร้อมสรุปสถิติงานจริงจากใบงาน (1:1 Consumption ไม่นับเบิ้ล)
  */
 export async function fetchTrucks() {
   try {
@@ -36,24 +102,6 @@ export async function fetchTrucks() {
     const sheetMap = {};
     sheetsData.forEach(s => { sheetMap[s.id] = s; });
 
-    // 🎯 รวม Set ของงานที่สแกนแล้ว โดยอิง ref_master_id และ [เลขตู้ + เบอร์รถ]
-    const matchedMasterIdSet = new Set();
-    const matchedCnoTruckSet = new Set();
-
-    itemsData.forEach(item => {
-      if (item.match_status !== 'manual_red' && item.match_status !== 'cancelled') {
-        if (item.ref_master_id) {
-          matchedMasterIdSet.add(Number(item.ref_master_id));
-        }
-        const c = String(item.container_no || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-        const sheet = sheetMap[item.job_sheet_id] || {};
-        const t = String(sheet.truck_no || '').trim();
-        if (c && t) {
-          matchedCnoTruckSet.add(`${c}_${t}`);
-        }
-      }
-    });
-
     // 🚚 จัดกลุ่ม Master Container (container_records) ฝั่งใบวางบิลตามเบอร์รถ
     const masterByTruck = {};
     masterData.forEach(m => {
@@ -63,9 +111,24 @@ export async function fetchTrucks() {
       masterByTruck[tNo].push(m);
     });
 
+    // 📄 จัดกลุ่ม Completed Items ตามเบอร์รถ
+    const itemsByTruck = {};
+    itemsData.forEach(item => {
+      if (item.match_status === 'manual_red' || item.match_status === 'cancelled') return;
+      const sheet = sheetMap[item.job_sheet_id] || {};
+      const tNo = String(sheet.truck_no || '').trim();
+      if (!tNo) return;
+      if (!itemsByTruck[tNo]) itemsByTruck[tNo] = [];
+      itemsByTruck[tNo].push({
+        ...item,
+        truck_no: tNo
+      });
+    });
+
     const enrichedTrucks = trucks.map(t => {
       const tNo = String(t.truck_no || '').trim();
       const truckMasterList = masterByTruck[tNo] || [];
+      const truckItems = itemsByTruck[tNo] || [];
       const masterTotal = truckMasterList.length; // 📋 ยอดงานทั้งหมดของรถคันนี้จาก Master DB (ใบวางบิล)
 
       // 🔍 ค้นหาคนขับปัจจุบันจาก truck_operations (Single Source of Truth)
@@ -74,17 +137,9 @@ export async function fetchTrucks() {
         ? (activeOp && activeOp.driver_name && activeOp.driver_name !== '-' ? String(activeOp.driver_name).trim() : '-')
         : (t.assigned_driver_name || '-');
 
-      let matchedCount = 0;
-      truckMasterList.forEach(m => {
-        const isMatchedById = matchedMasterIdSet.has(Number(m.id));
-        const c = String(m.container_no || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-        const isMatchedByCnoTruck = matchedCnoTruckSet.has(`${c}_${tNo}`);
-
-        if (isMatchedById || isMatchedByCnoTruck) {
-          matchedCount++;
-        }
-      });
-
+      // 🎯 1:1 Consumption Matching Algorithm (ตู้ที่จับคู่แล้วจะไม่ถูกใช้ซ้ำ)
+      const matchedMasterIds = calculateMatchedMasterIds(truckMasterList, truckItems);
+      const matchedCount = matchedMasterIds.size;
       const missingCount = Math.max(0, masterTotal - matchedCount);
       const matchRate = masterTotal > 0 ? Math.round((matchedCount / masterTotal) * 100) : 0;
 
@@ -92,7 +147,7 @@ export async function fetchTrucks() {
         ...t,
         assigned_driver_name: liveDriver,    // สะท้อนคนขับปัจจุบันจาก truck_operations สด 100%
         master_containers: masterTotal,      // งานทั้งหมดใน DB (ฝั่งใบวางบิล)
-        matched_containers: matchedCount,    // มีใบงานแล้ว (จับคู่แล้ว)
+        matched_containers: matchedCount,    // มีใบงานแล้ว (จับคู่แล้ว 1:1)
         missing_containers: missingCount,    // ยังไม่มีใบงาน (รอสแกน)
         match_rate: matchRate,               // อัตราความคืบหน้า %
         total_containers: masterTotal        // ยอดงานรวม (งานใน DB)
@@ -505,24 +560,6 @@ export async function fetchDrivers() {
       }
     });
 
-    // 🎯 รวม Set ของงานที่สแกนแล้ว โดยอิง ref_master_id และ [เลขตู้ + เบอร์รถ]
-    const matchedMasterIdSet = new Set();
-    const matchedCnoTruckSet = new Set();
-
-    itemsData.forEach(item => {
-      if (item.match_status !== 'manual_red' && item.match_status !== 'cancelled') {
-        if (item.ref_master_id) {
-          matchedMasterIdSet.add(Number(item.ref_master_id));
-        }
-        const c = String(item.container_no || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-        const sheet = sheetMap[item.job_sheet_id] || {};
-        const t = String(sheet.truck_no || '').trim();
-        if (c && t) {
-          matchedCnoTruckSet.add(`${c}_${t}`);
-        }
-      }
-    });
-
     // 🚚 ฟังก์ชันค้นหาคนขับที่วิ่งงานในวันที่ระบุของรถคันนั้น (ตามช่วงเวลาใน truck_operations)
     const findDriverForJob = (truckNo, jobDateStr) => {
       if (!truckNo || truckNo === '-') return null;
@@ -569,11 +606,30 @@ export async function fetchDrivers() {
       });
     });
 
+    // 📄 จัดกลุ่ม Completed Items จากใบงานตามคนขับจริง
+    const itemsByDriver = {};
+    itemsData.forEach(item => {
+      if (item.match_status === 'manual_red' || item.match_status === 'cancelled') return;
+      const sheet = sheetMap[item.job_sheet_id] || {};
+      const tNo = String(sheet.truck_no || '').trim();
+      const jobDate = item.date_job || sheet.date_job;
+      const drvName = findDriverForJob(tNo, jobDate);
+      if (!drvName || drvName === '-') return;
+
+      if (!itemsByDriver[drvName]) itemsByDriver[drvName] = [];
+      itemsByDriver[drvName].push({
+        ...item,
+        truck_no: tNo,
+        assigned_driver_at_job: drvName
+      });
+    });
+
     const hasOpsTable = !opsRes?.error && Array.isArray(opsRes?.data);
 
     const enrichedDrivers = drivers.map(d => {
       const dName = String(d.driver_name || '').trim();
       const driverMasterList = masterByDriver[dName] || [];
+      const driverItems = itemsByDriver[dName] || [];
       const masterTotal = driverMasterList.length;
 
       // 🔍 ค้นหารถประจำปัจจุบันจาก truck_operations (Single Source of Truth)
@@ -582,18 +638,9 @@ export async function fetchDrivers() {
         ? (activeOp && activeOp.truck_no && activeOp.truck_no !== '-' ? String(activeOp.truck_no).trim() : '-')
         : (d.assigned_truck_no || '-');
 
-      let matchedCount = 0;
-      driverMasterList.forEach(m => {
-        const isMatchedById = matchedMasterIdSet.has(Number(m.id));
-        const c = String(m.container_no || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-        const tNo = m.assigned_truck_at_job || String(m.truck_no || '').trim();
-        const isMatchedByCnoTruck = matchedCnoTruckSet.has(`${c}_${tNo}`);
-
-        if (isMatchedById || isMatchedByCnoTruck) {
-          matchedCount++;
-        }
-      });
-
+      // 🎯 1:1 Consumption Matching Algorithm (ตู้ที่จับคู่แล้วจะไม่ถูกใช้ซ้ำ)
+      const matchedMasterIds = calculateMatchedMasterIds(driverMasterList, driverItems);
+      const matchedCount = matchedMasterIds.size;
       const missingCount = Math.max(0, masterTotal - matchedCount);
       const matchRate = masterTotal > 0 ? Math.round((matchedCount / masterTotal) * 100) : 0;
 
@@ -601,8 +648,8 @@ export async function fetchDrivers() {
         ...d,
         assigned_truck_no: liveTruck,        // สะท้อนรถประจำปัจจุบันจาก truck_operations สด 100%
         master_containers: masterTotal,
-        matched_containers: matchedCount,
-        missing_containers: missingCount,
+        matched_containers: matchedCount,    // จับคู่แล้ว 1:1 ไม่นับเบิ้ล
+        missing_containers: missingCount,    // ยังไม่มีใบงาน
         match_rate: matchRate,
         total_containers: masterTotal
       };

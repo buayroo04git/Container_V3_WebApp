@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { supabase } from '../supabaseClient';
 import { jobSheetService } from '../services/jobSheetService';
 import { autoReconcileUnmatchedRecords, cleanBatchName, normalizeExcelDate } from '../utils/matchingLogic';
+import { calculateMatchedMasterIds } from '../services/truckDriverService';
 import * as XLSX from 'xlsx';
 
 import ContainerKpiSummary from '../components/containers/ContainerKpiSummary';
@@ -156,49 +157,30 @@ export default function DatabaseView({ activeFilter = 'all' }) {
     }
   };
 
-  // 📊 คำนวณ KPI Metrics แบบ Real-time ตามระบบ V3 (นับเฉพาะใบงานที่ตรวจเสร็จแล้ว Completed เท่านั้น)
+  // 📊 คำนวณ KPI Metrics แบบ Real-time ตามระบบ V3 (1:1 Consumption Matching)
   const kpi = useMemo(() => {
     const totalMaster = Array.isArray(masterRecords) ? masterRecords.length : 0;
     
-    const matchedMasterIdSet = new Set();
-    const validScannedMap = new Map();
     const unmatchedList = [];
+    const completedList = [];
     const containerList = Array.isArray(scannedContainers) ? scannedContainers : [];
 
-    // 🎯 กรองเฉพาะที่ตรวจใบงานเสร็จแล้ว (workflow_status === 'completed') เท่านั้น (ใน pending ยังไม่เอามานับ)
+    // 🎯 กรองเฉพาะที่ตรวจใบงานเสร็จแล้ว (workflow_status === 'completed') เท่านั้น
     containerList.forEach(r => {
       if (r.workflow_status !== 'completed') return;
-
-      const cleanCno = String(r.container_no || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-      const cleanTruck = String(r.truck_no || '').trim();
-      if (!cleanCno) return;
 
       if (r.match_status === 'manual_red') {
         unmatchedList.push(r);
       } else if (r.match_status !== 'cancelled') {
-        if (r.ref_master_id) {
-          matchedMasterIdSet.add(Number(r.ref_master_id));
-        }
-        validScannedMap.set(`${cleanCno}_${cleanTruck}`, r);
-        if (!validScannedMap.has(cleanCno)) {
-          validScannedMap.set(cleanCno, r);
-        }
+        completedList.push(r);
       }
     });
 
-    const matchedList = masterRecords.filter(m => {
-      if (matchedMasterIdSet.has(Number(m.id))) return true;
-      const cleanCno = String(m.container_no || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-      const cleanTruck = String(m.truck_no || '').trim();
-      return cleanCno && (validScannedMap.has(`${cleanCno}_${cleanTruck}`) || validScannedMap.has(cleanCno));
-    });
+    // 🎯 ใช้ 1:1 Consumption Matching
+    const matchedMasterIdSet = calculateMatchedMasterIds(masterRecords, completedList);
 
-    const missingList = masterRecords.filter(m => {
-      if (matchedMasterIdSet.has(Number(m.id))) return false;
-      const cleanCno = String(m.container_no || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-      const cleanTruck = String(m.truck_no || '').trim();
-      return cleanCno && !validScannedMap.has(`${cleanCno}_${cleanTruck}`) && !validScannedMap.has(cleanCno);
-    });
+    const matchedList = masterRecords.filter(m => matchedMasterIdSet.has(Number(m.id)));
+    const missingList = masterRecords.filter(m => !matchedMasterIdSet.has(Number(m.id)));
 
     const matchedCount = matchedList.length;
     const unmatchedCount = unmatchedList.length;
