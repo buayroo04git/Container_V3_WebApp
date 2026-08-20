@@ -102,12 +102,59 @@ END $$;
 
 DO $$
 BEGIN
-    -- 4.1 กำหนด Action ที่ถูกต้อง ป้องกันการสะกดผิด
-    IF NOT EXISTS (
+    -- 4.1 กำหนด Action ที่ถูกต้อง ครอบคลุมทุก Action ที่โค้ดใช้งานจริง
+    IF EXISTS (
         SELECT 1 FROM pg_constraint WHERE conname = 'chk_history_action'
     ) THEN
-        ALTER TABLE public.driver_truck_history
-        ADD CONSTRAINT chk_history_action
-        CHECK (action IN ('ASSIGN', 'UNASSIGN', 'TRANSFER', 'MAINTENANCE', 'LEAVE', 'CANCEL', 'STATUS_CHANGE', 'OTHER'));
+        ALTER TABLE public.driver_truck_history DROP CONSTRAINT chk_history_action;
+    END IF;
+
+    ALTER TABLE public.driver_truck_history
+    ADD CONSTRAINT chk_history_action
+    CHECK (action IN (
+        'ASSIGN', 'UNASSIGN', 'TRANSFER',
+        'MAINTENANCE', 'MAINTENANCE_END',
+        'LEAVE', 'RESUME_WORK', 'RESIGN',
+        'CANCEL', 'STATUS_CHANGE', 'OTHER'
+    ));
+END $$;
+
+
+-- -------------------------------------------------------------------------
+-- 5. 📄 Constraints สำหรับสถานะใบงานและรายการตู้ (job_sheets & job_sheet_items)
+-- -------------------------------------------------------------------------
+
+DO $$
+BEGIN
+    -- 5.1 สถานะของ job_sheets
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_job_sheets_status'
+    ) THEN
+        ALTER TABLE public.job_sheets
+        ADD CONSTRAINT chk_job_sheets_status
+        CHECK (status IN ('completed', 'draft', 'deleted', 'in_progress', 'pending'));
+    END IF;
+
+    -- 5.2 สถานะการจับคู่ตู้ของ job_sheet_items
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'chk_js_items_match_status'
+    ) THEN
+        ALTER TABLE public.job_sheet_items
+        ADD CONSTRAINT chk_js_items_match_status
+        CHECK (match_status IN ('matched_green', 'manual_red', 'duplicate_auto', 'cancelled'));
     END IF;
 END $$;
+
+
+-- -------------------------------------------------------------------------
+-- 6. 📅 เพิ่ม Column วันที่แบบ Normalized DATE สำหรับ Report / Query
+-- -------------------------------------------------------------------------
+
+ALTER TABLE public.container_records 
+ADD COLUMN IF NOT EXISTS date_job_parsed DATE;
+
+ALTER TABLE public.job_sheet_items 
+ADD COLUMN IF NOT EXISTS date_job_parsed DATE;
+
+CREATE INDEX IF NOT EXISTS idx_master_date_job_parsed ON public.container_records(date_job_parsed);
+CREATE INDEX IF NOT EXISTS idx_js_items_date_job_parsed ON public.job_sheet_items(date_job_parsed);

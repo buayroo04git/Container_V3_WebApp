@@ -386,7 +386,8 @@ export const jobSheetService = {
         .upsert(sheetHeader, { onConflict: 'id' });
 
       if (sheetErr) {
-        console.warn('job_sheets upsert warning:', sheetErr);
+        console.error('job_sheets upsert failed in fallback:', sheetErr);
+        return { success: false, error: sheetErr };
       }
 
       if (itemsToInsert.length > 0) {
@@ -395,7 +396,14 @@ export const jobSheetService = {
           .insert(itemsToInsert);
 
         if (itemsErr) {
-          console.warn('job_sheet_items insert warning:', itemsErr);
+          console.error('job_sheet_items insert failed in fallback:', itemsErr);
+          // Rollback: ลบหัวใบงานออกทันทีเพื่อป้องกันการเกิด Orphaned Header
+          try {
+            await supabase.from('job_sheets').delete().eq('id', targetSheetId);
+          } catch (rbErr) {
+            console.warn('Rollback warning:', rbErr);
+          }
+          return { success: false, error: itemsErr };
         }
       }
 

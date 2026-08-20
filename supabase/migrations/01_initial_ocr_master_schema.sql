@@ -108,12 +108,16 @@ CREATE INDEX IF NOT EXISTS idx_js_items_date_job ON public.job_sheet_items(date_
 -- -------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.ocr_cache (
     id TEXT PRIMARY KEY,
+    image_name TEXT,
     model_used TEXT DEFAULT 'gemini-3.1-flash-lite',
     image_url TEXT,
     ocr_data JSONB DEFAULT '{}'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- เพิ่ม image_name เผื่อกรณีตารางมีอยู่เดิมแล้ว
+ALTER TABLE public.ocr_cache ADD COLUMN IF NOT EXISTS image_name TEXT;
 
 -- Indexes สำหรับ ocr_cache
 CREATE INDEX IF NOT EXISTS idx_ocr_cache_model_used ON public.ocr_cache(model_used);
@@ -156,7 +160,7 @@ CREATE TABLE IF NOT EXISTS public.column_aliases (
 );
 
 -- -------------------------------------------------------------------------
--- 7. 🛡️ เปิดใช้งาน RLS และ Policies พื้นฐาน
+-- 7. 🛡️ เปิดใช้งาน RLS และ Idempotent Policies
 -- -------------------------------------------------------------------------
 ALTER TABLE public.container_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.job_sheets ENABLE ROW LEVEL SECURITY;
@@ -165,20 +169,32 @@ ALTER TABLE public.ocr_cache ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.ocr_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.column_aliases ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "Allow anon all on container_records" ON public.container_records;
 CREATE POLICY "Allow anon all on container_records" ON public.container_records FOR ALL TO anon USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow auth all on container_records" ON public.container_records;
 CREATE POLICY "Allow auth all on container_records" ON public.container_records FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow anon all on job_sheets" ON public.job_sheets;
 CREATE POLICY "Allow anon all on job_sheets" ON public.job_sheets FOR ALL TO anon USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow auth all on job_sheets" ON public.job_sheets;
 CREATE POLICY "Allow auth all on job_sheets" ON public.job_sheets FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow anon all on job_sheet_items" ON public.job_sheet_items;
 CREATE POLICY "Allow anon all on job_sheet_items" ON public.job_sheet_items FOR ALL TO anon USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow auth all on job_sheet_items" ON public.job_sheet_items;
 CREATE POLICY "Allow auth all on job_sheet_items" ON public.job_sheet_items FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow anon all on ocr_cache" ON public.ocr_cache;
 CREATE POLICY "Allow anon all on ocr_cache" ON public.ocr_cache FOR ALL TO anon USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow auth all on ocr_cache" ON public.ocr_cache;
 CREATE POLICY "Allow auth all on ocr_cache" ON public.ocr_cache FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow anon all on ocr_records" ON public.ocr_records;
 CREATE POLICY "Allow anon all on ocr_records" ON public.ocr_records FOR ALL TO anon USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow auth all on ocr_records" ON public.ocr_records;
 CREATE POLICY "Allow auth all on ocr_records" ON public.ocr_records FOR ALL TO authenticated USING (true) WITH CHECK (true);
 
+DROP POLICY IF EXISTS "Allow anon all on column_aliases" ON public.column_aliases;
 CREATE POLICY "Allow anon all on column_aliases" ON public.column_aliases FOR ALL TO anon USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Allow auth all on column_aliases" ON public.column_aliases;
 CREATE POLICY "Allow auth all on column_aliases" ON public.column_aliases FOR ALL TO authenticated USING (true) WITH CHECK (true);
