@@ -303,7 +303,7 @@ export const jobSheetService = {
         };
       });
 
-      // 1. บันทึกหัวใบงานลง `job_sheets`
+      // 1. สร้าง Payload หัวใบงาน
       const sheetHeader = {
         id: targetSheetId,
         batch_name: batchName,
@@ -318,26 +318,7 @@ export const jobSheetService = {
         created_at: new Date().toISOString()
       };
 
-      const { error: sheetErr } = await supabase
-        .from('job_sheets')
-        .upsert(sheetHeader, { onConflict: 'id' });
-
-      if (sheetErr) {
-        console.warn('job_sheets upsert warning (falling back to detail/records):', sheetErr);
-      }
-
-      // 2. บันทึกรายการตู้ลง `job_sheet_items`
-      if (itemsToInsert.length > 0) {
-        const { error: itemsErr } = await supabase
-          .from('job_sheet_items')
-          .insert(itemsToInsert);
-
-        if (itemsErr) {
-          console.warn('job_sheet_items insert warning:', itemsErr);
-        }
-      }
-
-      // 3. บันทึกแบบเดิมลง `ocr_records` (Backward Compatibility 100%)
+      // 2. สร้าง Payload ข้อมูลสำรอง (ocr_records)
       const legacyRecords = itemsToInsert.map(item => ({
         batch_name: batchName,
         truck_no: truckNo,
@@ -351,23 +332,64 @@ export const jobSheetService = {
         created_at: item.created_at
       }));
 
+      const cacheId = fileHash || targetSheetId;
+      const cacheUpdatePayload = {
+        ...(ocrResult || {}),
+        is_pending: false,
+        saved_at: new Date().toISOString()
+      };
+
+      // 🚀 Data Integrity: ลองบันทึกผ่าน Atomic Database Transaction (RPC) ก่อนเสมอ
+      try {
+        const { data: rpcData, error: rpcError } = await supabase.rpc('complete_job_sheet_rpc', {
+          p_sheet: sheetHeader,
+          p_items: itemsToInsert,
+          p_legacy_records: legacyRecords,
+          p_cache_id: cacheId || '',
+          p_cache_update: cacheUpdatePayload,
+          p_is_edit: Boolean(isCompletedEdit)
+        });
+
+        if (!rpcError && rpcData?.success) {
+          return { success: true, sheetId: targetSheetId, error: null };
+        }
+        if (rpcError) {
+          console.warn('complete_job_sheet_rpc warning, using client-side fallback:', rpcError);
+        }
+      } catch (rpcErr) {
+        console.warn('complete_job_sheet_rpc exception, using client-side fallback:', rpcErr);
+      }
+
+      // 🛡️ Fallback: บันทึกแบบทีละขั้นตอนจาก Client-side (กรณี RPC ยังไม่ถูกรันใน DB)
+      const { error: sheetErr } = await supabase
+        .from('job_sheets')
+        .upsert(sheetHeader, { onConflict: 'id' });
+
+      if (sheetErr) {
+        console.warn('job_sheets upsert warning:', sheetErr);
+      }
+
+      if (itemsToInsert.length > 0) {
+        const { error: itemsErr } = await supabase
+          .from('job_sheet_items')
+          .insert(itemsToInsert);
+
+        if (itemsErr) {
+          console.warn('job_sheet_items insert warning:', itemsErr);
+        }
+      }
+
       if (legacyRecords.length > 0) {
         await supabase.from('ocr_records').insert(legacyRecords);
       }
 
-      // 4. ปรับสถานะ `ocr_cache` เป็น 'completed' และล้าง Base64 ชั่วคราว
-      const cacheId = fileHash || targetSheetId;
       if (cacheId) {
         await supabase
           .from('ocr_cache')
           .update({
             model_used: 'completed',
             image_url: imageUrl,
-            ocr_data: {
-              ...(ocrResult || {}),
-              is_pending: false,
-              saved_at: new Date().toISOString()
-            }
+            ocr_data: cacheUpdatePayload
           })
           .eq('id', cacheId);
       }
