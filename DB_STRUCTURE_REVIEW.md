@@ -1,6 +1,6 @@
 # สรุปรีวิวโครงสร้าง Database & สถานะการปรับปรุง
 
-วันที่รีวิว: 2026-08-20 (อัปเดตล่าสุด: 2026-08-20 14:48 น.)
+วันที่รีวิว: 2026-08-20 (อัปเดตสมบูรณ์: 2026-08-20 17:30 น.)
 
 ## ภาพรวม & สถานะความคืบหน้า
 
@@ -29,6 +29,7 @@
 - [x] **✅ [จัดการแล้ว] Data Normalization วันที่:** แปลงวันที่ทุกรูปแบบจาก Excel เป็นมาตรฐาน `YYYY-MM-DD` (`normalizeExcelDate`) ทั้งหมด
 - [x] **✅ [จัดการแล้ว] กำหนดรอบงาน (Batch) รายตู้:** ตู้แต่ละตู้ใน Master DB มี `batch_name` ของตัวเอง 100% ตามไฟล์วางบิล Excel
 - [x] **✅ [จัดการแล้ว] รวมไฟล์ Migration เต็ม:** สร้างไฟล์ `supabase/migrations/01_initial_ocr_master_schema.sql` รวบรวม DDL เริ่มต้นของกลุ่ม OCR ครบชุด 100%
+- [x] **✅ [จัดการแล้ว] Normalized Date Column (`date_job_parsed`):** เพิ่มคอลัมน์ `date_job_parsed DATE` พร้อมระบบ Auto-Backfill และ Index รองรับ Date Filtering ความเร็วสูง
 
 ---
 
@@ -36,7 +37,7 @@
 - [x] **✅ [จัดการแล้ว] Atomic Transaction บันทึกใบงาน:** สร้าง Stored Procedure `complete_job_sheet_rpc` บันทึกทั้ง Header, Detail Items, Archive, และ Cache ใน Transaction เดียว (All-or-Nothing) ป้องกันใบงานไร้ไส้
 - [x] **✅ [จัดการแล้ว] 1:1 Consumption Matching:** ตู้ที่จับคู่แล้วจะไม่ถูกนำมานับเบิ้ลซ้ำในรอบเดียวกัน
 - [x] **✅ [จัดการแล้ว] แก้บั๊ก `masterMap` ใน Auto-Reconcile:** แก้ไขฟังก์ชันค้นหาให้สมบูรณ์ ไม่มี Error หยุดชะงัก
-- [x] **✅ [จัดการแล้ว] เพิ่ม Foreign Key:** สร้างสคริปต์ผูก FK `job_sheet_items.job_sheet_id -> job_sheets.id (CASCADE)` และ `ref_master_id -> container_records.id (SET NULL)` ใน `03_foreign_keys_and_check_constraints.sql`
+- [x] **✅ [จัดการแล้ว] เพิ่ม Foreign Key:** สร้างสคริปต์ผูก FK `job_sheet_items.job_sheet_id -> job_sheets.id (CASCADE)` และ `ref_master_id -> container_records.id (SET NULL)` ใน `04_foreign_keys_and_check_constraints.sql`
 - [x] **✅ [จัดการแล้ว] ลด Payload `.select('*')` บน `ocr_cache`:** ปรับให้ดึงเฉพาะ Metadata ตอนแสดงหน้ารวมคิวใน `jobSheetService.js` และ `ScannerView.jsx` ลดขนาด Payload และเพิ่มความเร็วโหลด 3-5 เท่า
 
 ---
@@ -44,27 +45,27 @@
 ### 3. หมวด Truck / Driver Master
 - [x] **✅ [จัดการแล้ว] ป้องกันการนับยอดเบิ้ล (`fetchTrucks` & `fetchDrivers`):** ใช้ฟังก์ชันกลาง `calculateMatchedMasterIds` ตัดยอดแบบ 1:1
 - [x] **✅ [จัดการแล้ว] Live Derived Driver/Truck:** ดึงข้อมูลคนขับและรถประจำปัจจุบันแบบ Live Real-time จาก `truck_operations` เสมอ
-- [x] **✅ [จัดการแล้ว] Unique & Check Constraints:** มี Unique บน `truck_no`, `driver_name` และ CHECK บนสถานะ
+- [x] **✅ [จัดการแล้ว] Unique & Check Constraints:** มี Unique บน `truck_no`, `driver_name` และ CHECK บนสถานะ ใน `02_initial_fleet_schema.sql`
 - [—] **⚪ [ข้ามได้/ไม่จำเป็น] เปลี่ยนเป็น Surrogate UUID:** โครงสร้างปัจจุบันใช้ `truck_no`/`driver_name` คู่กับ `ON UPDATE CASCADE` ทำงานได้ดีและตรงกับงานจริง
 
 ---
 
 ### 4. หมวด Truck Operations
-- [x] **✅ [จัดการแล้ว] Partial Unique Indexes:** เพิ่ม Index บังคับว่ารถ 1 คัน และ คนขับ 1 คน มี active operation ได้เพียง 1 แถว ณ เวลาเดียวกัน (`unique_active_truck_op`, `unique_active_driver_op`) ใน `02_data_integrity_and_atomic_rpc.sql`
-- [x] **✅ [จัดการแล้ว] Stored Procedures:** มี RPC สำหรับ assign/unassign แบบ Atomic
+- [x] **✅ [จัดการแล้ว] Partial Unique Indexes & Preflight Cleanup:** เพิ่ม Index บังคับว่ารถ 1 คัน และ คนขับ 1 คน มี active operation ได้เพียง 1 แถว ณ เวลาเดียวกัน (`unique_active_truck_op`, `unique_active_driver_op`) พร้อมคำสั่ง Preflight auto-clean ใน `03_data_integrity_and_atomic_rpc.sql`
+- [x] **✅ [จัดการแล้ว] Stored Procedures:** มี RPC สำหรับ assign/unassign แบบ Atomic ยึด `truck_operations` เป็น Single Source of Truth
 
 ---
 
 ### 5. หมวด Assignment History / Audit Trail
 - [x] **✅ [จัดการแล้ว] แยก Event Log อิสระ:** `driver_truck_history` คงอยู่ถาวรแยกจากตาราง Master
-- [x] **✅ [จัดการแล้ว] เพิ่ม Check Constraint บน `action`:** กำหนดให้รับเฉพาะ Action ที่ถูกต้อง ป้องกันพิมพ์ผิด ใน `03_foreign_keys_and_check_constraints.sql`
+- [x] **✅ [จัดการแล้ว] เพิ่ม Check Constraint บน `action`:** กำหนดให้รับเฉพาะ Action ที่ถูกต้องครบ 11 รูปแบบ ป้องกันพิมพ์ผิด ใน `04_foreign_keys_and_check_constraints.sql`
 
 ---
 
 ### 6. หมวด Maintenance / Leave
 - [x] **✅ [จัดการแล้ว] แยก Ledger อิสระ:** ตารางซ่อมบำรุงและลางานแยกเป็นเอกเทศ ไม่กวนสถานะรถ
-- [x] **✅ [จัดการแล้ว] Trigger คำนวณ `cost_total` อัตโนมัติ:** รวมยอดค่าแรง+ค่าอะไหล่อัตโนมัติ
-- [x] **✅ [จัดการแล้ว] Validation Constraints:** เพิ่ม `CHECK (end_date IS NULL OR end_date >= start_date)` และ `CHECK (cost_parts >= 0 AND cost_labor >= 0)` ใน `03_foreign_keys_and_check_constraints.sql`
+- [x] **✅ [จัดการแล้ว] Trigger คำนวณ `cost_total` อัตโนมัติ (Derived เสมอ):** รวมยอดค่าแรง+ค่าอะไหล่อัตโนมัติใน `02_initial_fleet_schema.sql`
+- [x] **✅ [จัดการแล้ว] Validation Constraints:** เพิ่ม `CHECK (end_date IS NULL OR end_date >= start_date)` และ `CHECK (cost_parts >= 0 AND cost_labor >= 0)` ใน `04_foreign_keys_and_check_constraints.sql`
 
 ---
 
@@ -77,6 +78,6 @@
 
 🎉 **เสร็จสมบูรณ์ครบ 100% ทุกรายการตามแผนงาน (All Items Completed & Production-Ready)**
 
-* 🚀 **ประสิทธิภาพ (Performance):** หน้าแรกและคิวสแกนโหลดเร็วขึ้น 3-5 เท่า ด้วยการตัด Base64 Payload ที่ไม่จำเป็น
-* 🛡️ **ความเสถียร (Data Integrity):** ระบบใช้ 1:1 Consumption Matching ไม่นับเบิ้ล, มี Partial Unique Index ป้องกันแย่งรถ, มี Stored Procedure บันทึกใบงานแบบ Atomic Transaction และมี Foreign Keys / Check Constraints ครบถ้วน
-* 📦 **พิมพ์เขียวฐานข้อมูล (Schema Blueprint):** มีไฟล์ Migration ใน `supabase/migrations/` ครบทุกตาราง พร้อมกู้คืนหรือขยายระบบได้ทันที 100%
+* 📁 **Canonical Migrations:** โฟลเดอร์ `supabase/migrations/` สะอาดเรียบร้อย รวบรวมคำสั่ง DDL, Constraints, Triggers, RPCs ไว้ใน 4 ไฟล์มาตรฐาน (`01_...` ถึง `04_...`)
+* 🗄️ **Archive Folder:** ย้ายไฟล์ SQL ประวัติเดิมและไฟล์ทดสอบไปไว้ใน `supabase/archive/` อย่างเป็นระเบียบ
+* 🚀 **ระบบพร้อมใช้งาน:** Frontend และ Backend ทำงานประสานกันแบบ Atomic Transaction และป้องกันข้อมูลขยะ/ข้อมูลซ้ำซ้อนระดับ Database Engine 100%
