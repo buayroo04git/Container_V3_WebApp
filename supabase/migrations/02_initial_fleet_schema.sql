@@ -133,7 +133,43 @@ CREATE TABLE IF NOT EXISTS public.driver_leave_records (
 );
 
 -- ------------------------------------------------------------------------------
--- 3. Indexes
+-- 3. Core Status Check Constraints
+-- ------------------------------------------------------------------------------
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_truck_status') THEN
+        ALTER TABLE public.truck_records ADD CONSTRAINT chk_truck_status 
+            CHECK (status IN ('active', 'maintenance', 'inactive'));
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_driver_status') THEN
+        ALTER TABLE public.driver_records ADD CONSTRAINT chk_driver_status 
+            CHECK (status IN ('active', 'leave', 'inactive'));
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_op_status') THEN
+        ALTER TABLE public.truck_operations ADD CONSTRAINT chk_op_status 
+            CHECK (status IN ('active', 'completed'));
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_op_type') THEN
+        ALTER TABLE public.truck_operations ADD CONSTRAINT chk_op_type 
+            CHECK (operation_type IN ('primary', 'substitute', 'contract'));
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_maint_status') THEN
+        ALTER TABLE public.truck_maintenance_records ADD CONSTRAINT chk_maint_status 
+            CHECK (status IN ('in_progress', 'completed', 'cancelled'));
+    END IF;
+
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_leave_status') THEN
+        ALTER TABLE public.driver_leave_records ADD CONSTRAINT chk_leave_status 
+            CHECK (status IN ('active_leave', 'completed', 'cancelled'));
+    END IF;
+END $$;
+
+-- ------------------------------------------------------------------------------
+-- 4. High-Performance Indexes
 -- ------------------------------------------------------------------------------
 CREATE INDEX IF NOT EXISTS idx_truck_records_truck ON public.truck_records(truck_no);
 CREATE INDEX IF NOT EXISTS idx_truck_records_driver ON public.truck_records(assigned_driver_name);
@@ -161,7 +197,26 @@ CREATE INDEX IF NOT EXISTS idx_driver_leave_status ON public.driver_leave_record
 CREATE INDEX IF NOT EXISTS idx_driver_leave_date ON public.driver_leave_records(start_date, end_date);
 
 -- ------------------------------------------------------------------------------
--- 4. Triggers for updated_at
+-- 5. Maintenance Cost Calculation Trigger
+-- ------------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.sync_maintenance_cost_total()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF NEW.cost_total IS NULL OR NEW.cost_total = 0 THEN
+        NEW.cost_total = COALESCE(NEW.cost_parts, 0) + COALESCE(NEW.cost_labor, 0);
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_maintenance_cost_total ON public.truck_maintenance_records;
+CREATE TRIGGER trg_maintenance_cost_total
+    BEFORE INSERT OR UPDATE OF cost_parts, cost_labor ON public.truck_maintenance_records
+    FOR EACH ROW
+    EXECUTE FUNCTION public.sync_maintenance_cost_total();
+
+-- ------------------------------------------------------------------------------
+-- 6. Attach updated_at Triggers
 -- ------------------------------------------------------------------------------
 DO $$
 DECLARE
@@ -169,13 +224,13 @@ DECLARE
     tables text[] := ARRAY['truck_records', 'driver_records', 'truck_operations', 'truck_maintenance_records', 'driver_leave_records'];
 BEGIN
     FOREACH t IN ARRAY tables LOOP
-        EXECUTE format('DROP TRIGGER IF EXISTS set_updated_at_%I ON public.%I', t, t);
-        EXECUTE format('CREATE TRIGGER set_updated_at_%I BEFORE UPDATE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.trigger_set_updated_at()', t, t);
+        EXECUTE format('DROP TRIGGER IF EXISTS trg_%I_updated_at ON public.%I', t, t);
+        EXECUTE format('CREATE TRIGGER trg_%I_updated_at BEFORE UPDATE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.trigger_set_updated_at()', t, t);
     END LOOP;
 END $$;
 
 -- ------------------------------------------------------------------------------
--- 5. Row Level Security Policies (Idempotent)
+-- 7. Row Level Security Policies (Idempotent)
 -- ------------------------------------------------------------------------------
 ALTER TABLE public.truck_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.driver_records ENABLE ROW LEVEL SECURITY;
