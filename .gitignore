@@ -28,4 +28,6 @@ client_secret*.json
 .agy/
 .gemini/
 Archive2/
+sample_data/
 test_api*.js
+test_*.js
