@@ -128,6 +128,7 @@ BEGIN
         size,
         job_type,
         date_job,
+        date_job_parsed,
         match_status,
         ref_master_id,
         created_at
@@ -140,6 +141,10 @@ BEGIN
         v_item->>'size',
         v_item->>'job_type',
         v_item->>'date_job',
+        CASE 
+          WHEN (v_item->>'date_job') ~ '^\d{4}-\d{2}-\d{2}' THEN (SUBSTRING(v_item->>'date_job' FROM 1 FOR 10))::DATE 
+          ELSE NULL 
+        END,
         v_item->>'match_status',
         (v_item->>'ref_master_id')::bigint,
         COALESCE((v_item->>'created_at')::timestamptz, NOW())
@@ -241,10 +246,18 @@ BEGIN
         );
     END IF;
 
-    -- ผูกคนขับใหม่เข้ากับรถใหม่
+    -- 🛡️ ปิด active operations เดิมทั้งหมดของรถคันนี้และคนขับคนนี้ (Source of Truth)
+    UPDATE public.truck_operations 
+    SET end_date = p_start_date, status = 'completed', updated_at = NOW() 
+    WHERE truck_no = p_truck_no AND (end_date IS NULL OR status = 'active');
+
+    UPDATE public.truck_operations 
+    SET end_date = p_start_date, status = 'completed', updated_at = NOW() 
+    WHERE driver_name = p_driver_name AND (end_date IS NULL OR status = 'active');
+
+    -- ผูกคนขับใหม่เข้ากับรถใหม่ใน Master Records
     UPDATE public.truck_records SET assigned_driver_name = p_driver_name, updated_at = NOW() WHERE truck_no = p_truck_no;
     UPDATE public.driver_records SET assigned_truck_no = p_truck_no, status = 'active', updated_at = NOW() WHERE driver_name = p_driver_name;
-    UPDATE public.truck_operations SET end_date = p_start_date, status = 'completed', updated_at = NOW() WHERE truck_no = p_truck_no AND (end_date IS NULL OR status = 'active');
 
     -- สร้างงวดการดำเนินงานใหม่
     v_new_op_id := 'op_' || EXTRACT(EPOCH FROM NOW())::BIGINT || '_' || SUBSTRING(MD5(RANDOM()::TEXT) FROM 1 FOR 6);
@@ -289,11 +302,14 @@ BEGIN
     IF p_truck_no IS NOT NULL AND p_truck_no != '-' THEN
         SELECT truck_license INTO v_truck_license FROM public.truck_records WHERE truck_no = p_truck_no;
         UPDATE public.truck_records SET assigned_driver_name = '-', updated_at = NOW() WHERE truck_no = p_truck_no;
-        UPDATE public.truck_operations SET end_date = p_end_date, status = 'completed', updated_at = NOW() WHERE truck_no = p_truck_no AND (end_date IS NULL OR status = 'active');
+        UPDATE public.truck_operations SET end_date = p_end_date, status = 'completed', updated_at = NOW() 
+        WHERE truck_no = p_truck_no AND (end_date IS NULL OR status = 'active');
     END IF;
 
     IF p_driver_name IS NOT NULL AND p_driver_name != '-' THEN
         UPDATE public.driver_records SET assigned_truck_no = '-', updated_at = NOW() WHERE driver_name = p_driver_name;
+        UPDATE public.truck_operations SET end_date = p_end_date, status = 'completed', updated_at = NOW() 
+        WHERE driver_name = p_driver_name AND (end_date IS NULL OR status = 'active');
     END IF;
 
     INSERT INTO public.driver_truck_history (

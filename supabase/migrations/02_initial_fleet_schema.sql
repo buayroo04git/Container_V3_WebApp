@@ -197,14 +197,12 @@ CREATE INDEX IF NOT EXISTS idx_driver_leave_status ON public.driver_leave_record
 CREATE INDEX IF NOT EXISTS idx_driver_leave_date ON public.driver_leave_records(start_date, end_date);
 
 -- ------------------------------------------------------------------------------
--- 5. Maintenance Cost Calculation Trigger
+-- 5. Maintenance Cost Calculation Trigger (Always Derived)
 -- ------------------------------------------------------------------------------
 CREATE OR REPLACE FUNCTION public.sync_maintenance_cost_total()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF NEW.cost_total IS NULL OR NEW.cost_total = 0 THEN
-        NEW.cost_total = COALESCE(NEW.cost_parts, 0) + COALESCE(NEW.cost_labor, 0);
-    END IF;
+    NEW.cost_total = COALESCE(NEW.cost_parts, 0) + COALESCE(NEW.cost_labor, 0);
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

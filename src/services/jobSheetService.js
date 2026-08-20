@@ -317,6 +317,7 @@ export const jobSheetService = {
           size: res.size || null,
           job_type: res.jobType || res.job_type || null,
           date_job: res.date_job || null,
+          date_job_parsed: (res.date_job && res.date_job.length >= 10) ? res.date_job.slice(0, 10) : null,
           match_status: matchStatus,
           ref_master_id: refId,
           created_at: new Date().toISOString()

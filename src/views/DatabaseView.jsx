@@ -991,6 +991,8 @@ const DEFAULT_COLUMN_ORDER = [
           const cNo = row[colMap["container_no"]] ? String(row[colMap["container_no"]]).trim() : "";
           if (!cNo) return;
 
+          const normDateJob = normalizeExcelDate(row[colMap["date_job"]]);
+
           recordsToInsert.push({
             container_no: cNo,
             truck_no: row[colMap["truck_no"]] ? String(row[colMap["truck_no"]]).trim() : "",
@@ -1000,7 +1002,8 @@ const DEFAULT_COLUMN_ORDER = [
             vessel: row[colMap["vessel"]] ? String(row[colMap["vessel"]]).trim() : "",
             port: row[colMap["port"]] ? String(row[colMap["port"]]).trim() : "",
             time_work: row[colMap["time_work"]] ? String(row[colMap["time_work"]]).trim() : "",
-            date_job: normalizeExcelDate(row[colMap["date_job"]]),
+            date_job: normDateJob,
+            date_job_parsed: (normDateJob && normDateJob.length >= 10) ? normDateJob.slice(0, 10) : null,
             planner: row[colMap["planner"]] ? String(row[colMap["planner"]]).trim() : "",
             out_yard: row[colMap["out_yard"]] ? String(row[colMap["out_yard"]]).trim() : "",
             at_gate_port: row[colMap["at_gate_port"]] ? String(row[colMap["at_gate_port"]]).trim() : "",

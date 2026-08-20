@@ -166,10 +166,25 @@ END $$;
 
 
 -- -------------------------------------------------------------------------
--- 5. 📅 Normalized Date Columns (date_job_parsed)
+-- 5. 📅 Normalized Date Columns (date_job_parsed) & Backfill
 -- -------------------------------------------------------------------------
 ALTER TABLE public.container_records ADD COLUMN IF NOT EXISTS date_job_parsed DATE;
 ALTER TABLE public.job_sheet_items ADD COLUMN IF NOT EXISTS date_job_parsed DATE;
+
+-- Auto backfill from existing text date_job
+UPDATE public.container_records
+SET date_job_parsed = CASE 
+    WHEN date_job ~ '^\d{4}-\d{2}-\d{2}' THEN (SUBSTRING(date_job FROM 1 FOR 10))::DATE 
+    ELSE NULL 
+END
+WHERE date_job IS NOT NULL AND date_job != '-' AND date_job_parsed IS NULL;
+
+UPDATE public.job_sheet_items
+SET date_job_parsed = CASE 
+    WHEN date_job ~ '^\d{4}-\d{2}-\d{2}' THEN (SUBSTRING(date_job FROM 1 FOR 10))::DATE 
+    ELSE NULL 
+END
+WHERE date_job IS NOT NULL AND date_job != '-' AND date_job_parsed IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_master_date_job_parsed ON public.container_records(date_job_parsed);
 CREATE INDEX IF NOT EXISTS idx_js_items_date_job_parsed ON public.job_sheet_items(date_job_parsed);
