@@ -283,11 +283,11 @@ export default function TrucksView() {
   // Delete Truck
   const handleDeleteTruck = async (id, truckNo) => {
     if (!window.confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบรถเบอร์ ${truckNo}?`)) return;
-    const { error } = await deleteTruck(id, truckNo);
-    if (error) {
-      toastError('ลบไม่สำเร็จ: ' + error);
+    const res = await deleteTruck(id, truckNo);
+    if (res?.error) {
+      toastError('ลบไม่สำเร็จ: ' + res.error);
     } else {
-      success(`ลบรถเบอร์ ${truckNo} เรียบร้อยแล้ว`);
+      success(res?.message || `ลบรถเบอร์ ${truckNo} เรียบร้อยแล้ว`);
       loadData();
     }
   };

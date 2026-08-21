@@ -1,123 +1,10 @@
 import { supabase } from '../supabaseClient';
 import { getAllPendingFromDB } from '../utils/pendingDb';
-import { findTopContainerMatches, evaluateMatchStatus, cleanBatchName } from '../utils/matchingLogic';
+import { findTopContainerMatches, evaluateMatchStatus, cleanBatchName, findBestMasterDbMatch, isDateMatching, normalizeExcelDate } from '../utils/matchingLogic';
 
-/**
- * 📅 Helper ตรวจสอบว่าวันที่ 2 ค่าตรงกันหรือไม่ (รองรับหลายรูปแบบ เช่น 5/Apr/2026, 05/04/2026, 5/4/26)
- */
-const isDateMatching = (date1, date2) => {
-  if (!date1 || !date2 || date1 === '-' || date2 === '-') return false;
-  const d1 = String(date1).trim().toLowerCase();
-  const d2 = String(date2).trim().toLowerCase();
-  if (d1 === d2) return true;
+export { findBestMasterDbMatch, isDateMatching };
 
-  const day1 = d1.match(/^(\d{1,2})/)?.[1];
-  const day2 = d2.match(/^(\d{1,2})/)?.[1];
-  if (day1 && day2 && Number(day1) === Number(day2)) {
-    return true;
-  }
-  return false;
-};
 
-/**
- * 🎯 ค้นหาแถวใน Master DB ที่ตรงกับเลขตู้ ท่าเรือ เบอร์รถ ประเภทงาน และวันที่ได้แม่นยำที่สุด
- * (แก้ปัญหาตู้ซ้ำ Dis/Load หรือตู้ที่วิ่งหลายรอบ/หลายวันในไฟล์ใบวางบิลเดียวกัน)
- */
-export const findBestMasterDbMatch = (containerNo, port, truckNo, masterDbList = [], jobType = null, dateJob = null) => {
-  if (!containerNo || !masterDbList || masterDbList.length === 0) return null;
-  const cleanCno = String(containerNo).toUpperCase().replace(/[^A-Z0-9]/g, '');
-  if (!cleanCno) return null;
-  const cleanPort = String(port || '').trim().toUpperCase();
-  const cleanTruck = String(truckNo || '').trim();
-  const cleanJob = String(jobType || '').trim().toUpperCase();
-  const cleanDate = String(dateJob || '').trim();
-
-  const allMatches = masterDbList.filter(m => {
-    const mCno = String(m.container_no || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-    return mCno === cleanCno;
-  });
-
-  if (allMatches.length === 0) return null;
-
-  // 🚚 1. ต้องเป็น "เบอร์รถเดียวกัน" เท่านั้น (Truck-First Strict)
-  if (!cleanTruck || cleanTruck === '-') {
-    return null; // ไม่มีเบอร์รถ -> แจ้งให้ตรวจสอบ
-  }
-
-  const truckMatches = allMatches.filter(m => String(m.truck_no || '').trim() === cleanTruck);
-  if (truckMatches.length === 0) {
-    return null; // ไม่พบงานของรถคันนี้ใน Master DB -> แจ้งให้ตรวจสอบ
-  }
-
-  // ถ้าในกลุ่มรถคันนี้มีเพียง 1 รายการ
-  if (truckMatches.length === 1) {
-    return truckMatches[0];
-  }
-
-  // 🎯 2. กรณีมีมากกว่า 1 งานในรถคันเดียวกัน:
-  // ⭐️ ระดับ 1: [เบอร์รถ] + [ประเภทงาน Dis/Load] + [ท่าเรือ] + [วันที่ Date Job]
-  if (cleanJob && cleanJob !== '-' && cleanPort && cleanPort !== '-' && cleanDate && cleanDate !== '-') {
-    const match1 = truckMatches.find(m => {
-      const mJob = String(m.dis_load || '').trim().toUpperCase();
-      const mPort = String(m.port || '').trim().toUpperCase();
-      const jobMatches = (cleanJob.includes('DIS') && mJob.includes('DIS')) || (cleanJob.includes('LOAD') && mJob.includes('LOAD'));
-      const portMatches = mPort === cleanPort || mPort.includes(cleanPort) || cleanPort.includes(mPort);
-      const dateMatches = isDateMatching(cleanDate, m.date_job);
-      return jobMatches && portMatches && dateMatches;
-    });
-    if (match1) return match1;
-  }
-
-  // ⭐️ ระดับ 2: [เบอร์รถ] + [ประเภทงาน Dis/Load] + [ท่าเรือ]
-  if (cleanJob && cleanJob !== '-' && cleanPort && cleanPort !== '-') {
-    const match2 = truckMatches.find(m => {
-      const mJob = String(m.dis_load || '').trim().toUpperCase();
-      const mPort = String(m.port || '').trim().toUpperCase();
-      const jobMatches = (cleanJob.includes('DIS') && mJob.includes('DIS')) || (cleanJob.includes('LOAD') && mJob.includes('LOAD'));
-      const portMatches = mPort === cleanPort || mPort.includes(cleanPort) || cleanPort.includes(mPort);
-      return jobMatches && portMatches;
-    });
-    if (match2) return match2;
-  }
-
-  // ⭐️ ระดับ 3: [เบอร์รถ] + [ประเภทงาน Dis/Load] + [วันที่ Date Job]
-  if (cleanJob && cleanJob !== '-' && cleanDate && cleanDate !== '-') {
-    const match3 = truckMatches.find(m => {
-      const mJob = String(m.dis_load || '').trim().toUpperCase();
-      const jobMatches = (cleanJob.includes('DIS') && mJob.includes('DIS')) || (cleanJob.includes('LOAD') && mJob.includes('LOAD'));
-      const dateMatches = isDateMatching(cleanDate, m.date_job);
-      return jobMatches && dateMatches;
-    });
-    if (match3) return match3;
-  }
-
-  // ⭐️ ระดับ 4: [เบอร์รถ] + [ประเภทงาน Dis/Load]
-  if (cleanJob && cleanJob !== '-') {
-    const match4 = truckMatches.find(m => {
-      const mJob = String(m.dis_load || '').trim().toUpperCase();
-      return (cleanJob.includes('DIS') && mJob.includes('DIS')) || (cleanJob.includes('LOAD') && mJob.includes('LOAD'));
-    });
-    if (match4) return match4;
-  }
-
-  // ⭐️ ระดับ 5: [เบอร์รถ] + [ท่าเรือ]
-  if (cleanPort && cleanPort !== '-') {
-    const match5 = truckMatches.find(m => {
-      const mPort = String(m.port || '').trim().toUpperCase();
-      return mPort === cleanPort || mPort.includes(cleanPort) || cleanPort.includes(mPort);
-    });
-    if (match5) return match5;
-  }
-
-  // ⭐️ ระดับ 6: [เบอร์รถ] + [วันที่ Date Job]
-  if (cleanDate && cleanDate !== '-') {
-    const match6 = truckMatches.find(m => isDateMatching(cleanDate, m.date_job));
-    if (match6) return match6;
-  }
-
-  // ⚠️ ถ้ายังไม่แมตช์ตามลำดับนี้ -> คืนค่า null เพื่อแจ้งให้ผู้ใช้ตรวจสอบ
-  return null;
-};
 
 /**
  * 📄 JobSheet Service
@@ -131,7 +18,7 @@ export const jobSheetService = {
     try {
       const { data, error } = await supabase
         .from('ocr_cache')
-        .select('id, model_used, image_name, image_url, created_at, updated_at')
+        .select('id, model_used, image_name, ocr_data, created_at, updated_at')
         .neq('model_used', 'deleted')
         .neq('model_used', 'completed')
         .order('created_at', { ascending: true });
@@ -172,7 +59,7 @@ export const jobSheetService = {
     try {
       const { data, error } = await supabase
         .from('ocr_cache')
-        .select('id, model_used, image_name, image_url, ocr_data, created_at')
+        .select('id, model_used, image_name, ocr_data, created_at')
         .in('id', hashes);
 
       if (error) throw error;
@@ -266,21 +153,6 @@ export const jobSheetService = {
     try {
       const targetSheetId = sheetId || fileHash || `JS_${Date.now()}_${truckNo}`;
 
-      // ถ้าเป็นการแก้ไขใบงานเดิม -> ลบข้อมูลเดิมของใบงานนี้ออกก่อน
-      if (isCompletedEdit) {
-        try {
-          await supabase.from('job_sheets').delete().eq('id', targetSheetId);
-          await supabase.from('job_sheet_items').delete().eq('job_sheet_id', targetSheetId);
-          if (imageUrl) {
-            await supabase.from('ocr_records').delete().eq('image_url', imageUrl);
-          } else {
-            await supabase.from('ocr_records').delete().match({ batch_name: batchName, truck_no: truckNo });
-          }
-        } catch (delErr) {
-          console.warn('Old records deletion warning:', delErr);
-        }
-      }
-
       // กรองเฉพาะแถวตู้ที่มีข้อมูลจริง
       const validItems = matchingResults.filter(
         res => !res.isEmpty && !res.isCancelled && (res.container_no || res.port || res.size)
@@ -307,6 +179,8 @@ export const jobSheetService = {
         }
 
         const matchStatus = isMatched ? 'matched_green' : 'manual_red';
+        const rawDate = res.date_job || null;
+        const parsedDate = rawDate ? normalizeExcelDate(rawDate) || (rawDate.length >= 10 ? rawDate.slice(0, 10) : null) : null;
 
         return {
           job_sheet_id: targetSheetId,
@@ -316,13 +190,18 @@ export const jobSheetService = {
           port: res.port || null,
           size: res.size || null,
           job_type: res.jobType || res.job_type || null,
-          date_job: res.date_job || null,
-          date_job_parsed: (res.date_job && res.date_job.length >= 10) ? res.date_job.slice(0, 10) : null,
+          date_job: rawDate,
+          date_job_parsed: parsedDate,
           match_status: matchStatus,
           ref_master_id: refId,
           created_at: new Date().toISOString()
         };
       });
+
+      // ดึงวันที่ใบงานจากรายการตู้แรกที่มีวันที่
+      const firstItemWithDate = itemsToInsert.find(i => i.date_job && i.date_job !== '-' && i.date_job !== 'null');
+      const sheetDateJob = firstItemWithDate?.date_job || '-';
+      const sheetDateParsed = firstItemWithDate?.date_job_parsed || null;
 
       // 1. สร้าง Payload หัวใบงาน
       const sheetHeader = {
@@ -336,11 +215,14 @@ export const jobSheetService = {
         matched_count: greenCount,
         unmatched_count: redCount,
         status: 'completed',
+        date_job: sheetDateJob,
+        date_job_parsed: sheetDateParsed,
         created_at: new Date().toISOString()
       };
 
-      // 2. สร้าง Payload ข้อมูลสำรอง (ocr_records)
+      // 2. สร้าง Payload ข้อมูลสำรอง (ocr_records พร้อม job_sheet_id)
       const legacyRecords = itemsToInsert.map(item => ({
+        job_sheet_id: targetSheetId,
         batch_name: batchName,
         truck_no: truckNo,
         image_url: imageUrl,
@@ -348,6 +230,7 @@ export const jobSheetService = {
         port: item.port,
         size: item.size,
         date_job: item.date_job,
+        date_job_parsed: item.date_job_parsed,
         match_status: item.match_status,
         ref_db_id: item.ref_master_id,
         created_at: item.created_at
@@ -361,6 +244,7 @@ export const jobSheetService = {
       };
 
       // 🚀 Data Integrity: ลองบันทึกผ่าน Atomic Database Transaction (RPC) ก่อนเสมอ
+      // หมายเหตุ: การลบข้อมูลเดิมตอน Edit ถูกจัดการแบบ Atomic ภายใน complete_job_sheet_rpc แล้ว
       try {
         const { data: rpcData, error: rpcError } = await supabase.rpc('complete_job_sheet_rpc', {
           p_sheet: sheetHeader,
@@ -382,6 +266,18 @@ export const jobSheetService = {
       }
 
       // 🛡️ Fallback: บันทึกแบบทีละขั้นตอนจาก Client-side (กรณี RPC ยังไม่ถูกรันใน DB)
+      if (isCompletedEdit) {
+        try {
+          await supabase.from('job_sheet_items').delete().eq('job_sheet_id', targetSheetId);
+          await supabase.from('ocr_records').delete().eq('job_sheet_id', targetSheetId);
+          if (imageUrl) {
+            await supabase.from('ocr_records').delete().eq('image_url', imageUrl).is('job_sheet_id', null);
+          }
+        } catch (delErr) {
+          console.warn('Old records deletion warning in fallback:', delErr);
+        }
+      }
+
       const { error: sheetErr } = await supabase
         .from('job_sheets')
         .upsert(sheetHeader, { onConflict: 'id' });
@@ -433,30 +329,40 @@ export const jobSheetService = {
   /**
    * ดึงรายการใบงานที่บันทึกแล้วทั้งหมด (High-Speed Parallelized Fetching)
    */
-  async fetchCompletedJobSheets(existingMasterDb = null) {
+  async fetchCompletedJobSheets(existingMasterDb = null, options = {}) {
     try {
+      const { startDate = null, endDate = null } = options;
       // 0. ดึง Master DB, job_sheets และ job_sheet_items แบบ Parallel ทันที
-      const masterPromise = existingMasterDb
-        ? Promise.resolve({ data: existingMasterDb })
-        : supabase
-            .from('container_records')
-            .select('id, container_no, truck_no, port, size, dis_load, date_job, batch_name, source_file');
+      let masterQuery = supabase
+        .from('container_records')
+        .select('id, container_no, truck_no, port, size, dis_load, date_job, date_job_parsed, batch_name, source_file');
 
-      const sheetsPromise = supabase
+      let sheetsQuery = supabase
         .from('job_sheets')
         .select('*')
         .neq('status', 'deleted')
         .order('created_at', { ascending: false });
 
-      const itemsPromise = supabase
+      let itemsQuery = supabase
         .from('job_sheet_items')
-        .select('id, job_sheet_id, line_no, container_no, raw_ocr_text, port, size, job_type, date_job, match_status')
+        .select('id, job_sheet_id, line_no, container_no, raw_ocr_text, port, size, job_type, date_job, date_job_parsed, match_status')
         .order('created_at', { ascending: false });
+
+      // Apply Date Filters
+      if (startDate && endDate) {
+        masterQuery = masterQuery.gte('date_job_parsed', startDate).lte('date_job_parsed', endDate);
+        sheetsQuery = sheetsQuery.gte('date_job_parsed', startDate).lte('date_job_parsed', endDate);
+        itemsQuery = itemsQuery.gte('date_job_parsed', startDate).lte('date_job_parsed', endDate);
+      }
+
+      const masterPromise = existingMasterDb
+        ? Promise.resolve({ data: existingMasterDb })
+        : masterQuery;
 
       const [masterRes, sheetsRes, itemsRes] = await Promise.all([
         masterPromise,
-        sheetsPromise,
-        itemsPromise
+        sheetsQuery,
+        itemsQuery
       ]);
 
       const masterDbList = masterRes?.data || [];
@@ -592,19 +498,31 @@ export const jobSheetService = {
   async updateCompletedContainers(updates = [], sheetId = null) {
     try {
       for (const item of updates) {
-        const { id, isRed, ...updateFields } = item;
+        const { id, isRed, job_sheet_item_id, ocr_record_id, ...updateFields } = item;
+        const targetItemId = job_sheet_item_id || id;
         
-        // อัปเดตใน job_sheet_items
-        await supabase
-          .from('job_sheet_items')
-          .update(updateFields)
-          .eq('id', id);
+        // 1. อัปเดตใน job_sheet_items โดยตรง
+        if (targetItemId) {
+          await supabase
+            .from('job_sheet_items')
+            .update(updateFields)
+            .eq('id', targetItemId);
+        }
 
-        // อัปเดตใน ocr_records (legacy)
-        await supabase
-          .from('ocr_records')
-          .update(updateFields)
-          .eq('id', id);
+        // 2. ถ้ามี ocr_record_id เจาะจง ให้อัปเดต ocr_records ด้วย id นั้น
+        if (ocr_record_id) {
+          await supabase
+            .from('ocr_records')
+            .update(updateFields)
+            .eq('id', ocr_record_id);
+        } else if (sheetId && item.container_no) {
+          // ซิงค์ไปยัง ocr_records ที่ผูกกับ sheetId เดียวกัน
+          await supabase
+            .from('ocr_records')
+            .update(updateFields)
+            .eq('job_sheet_id', sheetId)
+            .eq('container_no', item.container_no);
+        }
       }
 
       // ถ้ามี sheetId ให้อัปเดตยอดตู้เขียว/ตู้แดงในตาราง job_sheets ด้วย
@@ -642,11 +560,10 @@ export const jobSheetService = {
       if (sheet.id) {
         await supabase.from('job_sheets').update({ status: 'deleted' }).eq('id', sheet.id);
         await supabase.from('job_sheet_items').delete().eq('job_sheet_id', sheet.id);
+        await supabase.from('ocr_records').delete().eq('job_sheet_id', sheet.id);
       }
       if (sheet.image_url) {
-        await supabase.from('ocr_records').delete().eq('image_url', sheet.image_url);
-      } else if (sheet.batch_name && sheet.truck_no) {
-        await supabase.from('ocr_records').delete().match({ batch_name: sheet.batch_name, truck_no: sheet.truck_no });
+        await supabase.from('ocr_records').delete().eq('image_url', sheet.image_url).is('job_sheet_id', null);
       }
       return { success: true, error: null };
     } catch (error) {
@@ -656,36 +573,258 @@ export const jobSheetService = {
   },
 
   /**
-   * 📊 ดึงประวัติเลขตู้ทั้งหมดที่ได้จากการทำ OCR จากใบงาน (ทั้ง Completed และ Pending)
-   * สำหรับหน้า '📊 OCR Container History'
+   * 📄 ดึงรายการใบงานที่บันทึกแล้วแบบ Server-Side Pagination พร้อมรายการตู้
    */
+  async fetchPaginatedCompletedJobSheets({
+    page = 1,
+    pageSize = 50,
+    searchTerm = '',
+    batchFilter = 'ALL',
+    truckFilter = 'ALL',
+    monthFilter = '',
+    sortConfig = { key: 'created_at', direction: 'desc' }
+  } = {}) {
+    try {
+      let query = supabase
+        .from('job_sheets')
+        .select('*', { count: 'exact' })
+        .neq('status', 'deleted');
+
+      // 🔍 1. Server-Side Search
+      if (searchTerm && searchTerm.trim()) {
+        const cleanTerm = searchTerm.trim();
+        query = query.or(`batch_name.ilike.%${cleanTerm}%,truck_no.ilike.%${cleanTerm}%,image_name.ilike.%${cleanTerm}%`);
+      }
+
+      // 📁 2. Batch Filter
+      if (batchFilter && batchFilter !== 'ALL') {
+        query = query.eq('batch_name', batchFilter);
+      }
+
+      // 🚚 3. Truck Filter
+      if (truckFilter && truckFilter !== 'ALL') {
+        query = query.eq('truck_no', truckFilter);
+      }
+
+      // 📅 4. Month Filter (e.g. '2026-08')
+      if (monthFilter && monthFilter.trim()) {
+        const [year, month] = monthFilter.trim().split('-');
+        if (year && month) {
+          const startDate = `${year}-${month}-01`;
+          const lastDay = new Date(Number(year), Number(month), 0).getDate();
+          const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
+          query = query.gte('created_at', `${startDate}T00:00:00.000Z`).lte('created_at', `${endDate}T23:59:59.999Z`);
+        }
+      }
+
+      // ↕️ 5. Sorting
+      const sortColumn = sortConfig.key || 'created_at';
+      const isAscending = sortConfig.direction === 'asc';
+      query = query.order(sortColumn, { ascending: isAscending, nullsFirst: false });
+
+      // 📄 6. Server-Side Pagination
+      if (pageSize !== 'ALL') {
+        const size = Number(pageSize) || 50;
+        const from = (page - 1) * size;
+        const to = from + size - 1;
+        query = query.range(from, to);
+      }
+
+      const { data, count, error } = await query;
+      if (error) throw error;
+
+      // 📦 7. ดึงรายการตู้ (job_sheet_items) ของใบงานในหน้านี้
+      const sheetIds = (data || []).map(s => s.id).filter(Boolean);
+      const itemsMap = {};
+      if (sheetIds.length > 0) {
+        const { data: itemsData, error: itemsErr } = await supabase
+          .from('job_sheet_items')
+          .select('*')
+          .in('job_sheet_id', sheetIds)
+          .order('line_no', { ascending: true });
+
+        if (!itemsErr && itemsData) {
+          itemsData.forEach(item => {
+            if (!itemsMap[item.job_sheet_id]) {
+              itemsMap[item.job_sheet_id] = [];
+            }
+            itemsMap[item.job_sheet_id].push(item);
+          });
+        }
+      }
+
+      const formattedData = (data || []).map(sheet => {
+        const sheetItems = itemsMap[sheet.id] || sheet.job_sheet_items || [];
+        const items = sheetItems.map(i => ({
+          ...i,
+          originalText: i.raw_ocr_text || i.container_no,
+          match_status: i.match_status,
+          is_red: i.match_status === 'manual_red',
+          is_matched: i.match_status !== 'manual_red'
+        }));
+        return {
+          ...sheet,
+          containers: items,
+          total: sheet.total_containers || items.length,
+          green: sheet.matched_count ?? items.filter(i => i.match_status !== 'manual_red').length,
+          red: sheet.unmatched_count ?? items.filter(i => i.match_status === 'manual_red').length
+        };
+      });
+
+      return {
+        data: formattedData,
+        totalCount: count || 0,
+        totalPages: (pageSize === 'ALL' || !count) ? 1 : Math.ceil(count / Number(pageSize)),
+        currentPage: page,
+        error: null
+      };
+    } catch (error) {
+      console.error('jobSheetService.fetchPaginatedCompletedJobSheets error:', error);
+      return { data: [], totalCount: 0, totalPages: 1, currentPage: page, error };
+    }
+  },
+
+  /**
+   * 📊 ดึงประวัติเลขตู้แบบ Server-Side Pagination จาก Database View `vw_ocr_container_history`
+   * รองรับ Filters, Search, Sorting และจำกัดปริมาณข้อมูลต่อหน้าอย่างแท้จริง
+   */
+  async fetchPaginatedOcrContainersHistory({
+    page = 1,
+    pageSize = 50,
+    searchTerm = '',
+    statusFilter = 'ALL',
+    batchFilter = 'ALL',
+    truckFilter = 'ALL',
+    sortConfig = { key: 'created_at', direction: 'desc' }
+  } = {}) {
+    try {
+      let query = supabase
+        .from('vw_ocr_container_history')
+        .select('*', { count: 'exact' });
+
+      // 🔍 1. Server-Side Search (ค้นหาเลขตู้, เบอร์รถ, รอบงาน)
+      if (searchTerm && searchTerm.trim()) {
+        const cleanTerm = searchTerm.trim();
+        query = query.or(`container_no.ilike.%${cleanTerm}%,truck_no.ilike.%${cleanTerm}%,batch_name.ilike.%${cleanTerm}%`);
+      }
+
+      // 🏷️ 2. Workflow / Match Status Filter
+      if (statusFilter === 'COMPLETED') {
+        query = query.eq('workflow_status', 'completed');
+      } else if (statusFilter === 'PENDING') {
+        query = query.eq('workflow_status', 'pending');
+      } else if (statusFilter === 'MATCHED') {
+        query = query.eq('match_status', 'matched_green');
+      } else if (statusFilter === 'UNMATCHED') {
+        query = query.in('match_status', ['unmatched_red', 'manual_red']);
+      }
+
+      // 📁 3. Batch Filter
+      if (batchFilter && batchFilter !== 'ALL') {
+        query = query.eq('batch_name', batchFilter);
+      }
+
+      // 🚚 4. Truck Filter
+      if (truckFilter && truckFilter !== 'ALL') {
+        query = query.eq('truck_no', truckFilter);
+      }
+
+      // ↕️ 5. Sorting
+      const sortColumn = sortConfig.key || 'created_at';
+      const isAscending = sortConfig.direction === 'asc';
+      query = query.order(sortColumn, { ascending: isAscending, nullsFirst: false });
+
+      // 📄 6. Server-Side Pagination (.range)
+      if (pageSize !== 'ALL') {
+        const size = Number(pageSize) || 50;
+        const from = (page - 1) * size;
+        const to = from + size - 1;
+        query = query.range(from, to);
+      }
+
+      const { data, count, error } = await query;
+      if (error) {
+        // ถ้ายังไม่ได้รัน migration view ใน Supabase ให้แจ้งเตือนและ fallback
+        console.warn('vw_ocr_container_history query failed, falling back to legacy fetch. Make sure to run migration 06.', error);
+        throw error;
+      }
+
+      return {
+        data: data || [],
+        totalCount: count || 0,
+        totalPages: (pageSize === 'ALL' || !count) ? 1 : Math.ceil(count / Number(pageSize)),
+        currentPage: page,
+        error: null
+      };
+    } catch (error) {
+      console.error('jobSheetService.fetchPaginatedOcrContainersHistory error:', error);
+      return { data: [], totalCount: 0, totalPages: 1, currentPage: page, error };
+    }
+  },
+
+  /**
+   * 📊 ดึงสถิติ KPI รวมของระบบ OCR (Total, Completed, Pending, Matched, Unmatched)
+   */
+  async fetchOcrKpis() {
+    try {
+      const [itemsRes, cacheRes, unmatchedRes] = await Promise.all([
+        supabase.from('job_sheet_items').select('*', { count: 'exact', head: true }),
+        supabase.from('ocr_cache').select('*', { count: 'exact', head: true }).not('model_used', 'in', '("completed","deleted")'),
+        supabase.from('job_sheet_items').select('*', { count: 'exact', head: true }).eq('match_status', 'manual_red')
+      ]);
+
+      const completed = itemsRes.count || 0;
+      const pending = cacheRes.count || 0;
+      const unmatched = unmatchedRes.count || 0;
+      const matched = Math.max(0, completed - unmatched);
+      const total = completed + pending;
+
+      return { total, completed, pending, matched, unmatched };
+    } catch (e) {
+      console.error('Failed to fetch KPI counts:', e);
+      return { total: 0, completed: 0, pending: 0, matched: 0, unmatched: 0 };
+    }
+  },
+
   /**
    * 📊 ดึงประวัติเลขตู้ทั้งหมดที่ได้จากการทำ OCR จากใบงาน (ทั้ง Completed และ Pending)
-   * รองรับ High-Speed Parallel Fetching และไม่ดึง Base64 รูปภาพหนัก
+   * สำหรับหน้า '📊 OCR Container History'
+   * รองรับ High-Speed Parallel Fetching, Date Filtering และไม่ดึง Base64 รูปภาพหนัก
    */
-  async fetchAllOcrContainersHistory(existingMasterDb = null) {
+  async fetchAllOcrContainersHistory(existingMasterDb = null, options = {}) {
     try {
+      const { startDate = null, endDate = null } = options;
       const allContainers = [];
 
       // ⚡ 1. ดึงข้อมูลทั้งหมดแบบ Parallel 100% (High-Speed Optimization)
-      const masterPromise = existingMasterDb
-        ? Promise.resolve({ data: existingMasterDb })
-        : supabase
-            .from('container_records')
-            .select('id, container_no, truck_no, port, size, dis_load, date_job, batch_name, source_file');
+      let masterQuery = supabase
+        .from('container_records')
+        .select('id, container_no, truck_no, port, size, dis_load, date_job, date_job_parsed, batch_name, source_file');
 
-      const sheetsPromise = supabase
+      let sheetsQuery = supabase
         .from('job_sheets')
-        .select('id, batch_name, truck_no, image_name, image_url, drive_file_id, created_at, status')
+        .select('id, batch_name, truck_no, image_name, image_url, drive_file_id, created_at, status, date_job, date_job_parsed')
         .neq('status', 'deleted')
         .order('created_at', { ascending: false });
 
-      const itemsPromise = supabase
+      let itemsQuery = supabase
         .from('job_sheet_items')
-        .select('id, job_sheet_id, line_no, container_no, raw_ocr_text, port, size, job_type, date_job, match_status, ref_master_id, created_at')
+        .select('id, job_sheet_id, line_no, container_no, raw_ocr_text, port, size, job_type, date_job, date_job_parsed, match_status, ref_master_id, created_at')
         .order('created_at', { ascending: false });
 
+      // Apply Date Filters
+      if (startDate && endDate) {
+        masterQuery = masterQuery.gte('date_job_parsed', startDate).lte('date_job_parsed', endDate);
+        sheetsQuery = sheetsQuery.gte('date_job_parsed', startDate).lte('date_job_parsed', endDate);
+        itemsQuery = itemsQuery.gte('date_job_parsed', startDate).lte('date_job_parsed', endDate);
+      }
+
+      const masterPromise = existingMasterDb
+        ? Promise.resolve({ data: existingMasterDb })
+        : masterQuery;
+
       // ดึงเฉพาะ metadata จาก ocr_cache ไม่ดึง Base64 image_data เพื่อความเร็วสูงสุด
+      // Pending cache ดึงทั้งหมด เพราะอาจยังไม่มี date_job_parsed
       const cachePromise = supabase
         .from('ocr_cache')
         .select('id, image_name, ocr_data, model_used, created_at')
@@ -695,8 +834,8 @@ export const jobSheetService = {
 
       const [masterRes, sheetsRes, itemsRes, cacheRes] = await Promise.all([
         masterPromise,
-        sheetsPromise,
-        itemsPromise,
+        sheetsQuery,
+        itemsQuery,
         cachePromise
       ]);
 
@@ -738,6 +877,9 @@ export const jobSheetService = {
             allContainers.push({
               id: `completed_item_${item.id}`,
               db_id: item.id,
+              job_sheet_item_id: item.id,
+              ocr_record_id: null,
+              source_table: 'job_sheet_items',
               sheet_id: item.job_sheet_id,
               container_no: item.container_no,
               raw_ocr_text: item.raw_ocr_text || item.container_no,
@@ -746,6 +888,7 @@ export const jobSheetService = {
               size: finalSize,
               job_type: finalJobType,
               date_job: finalDateJob,
+              date_job_parsed: item.date_job_parsed || null,
               match_status: finalMatchStatus,
               workflow_status: 'completed',
               batch_name: finalBatch,
@@ -761,11 +904,17 @@ export const jobSheetService = {
 
       // ถ้ายังไม่มีใน job_sheet_items ให้ดึงจาก ocr_records (Fallback)
       if (allContainers.length === 0) {
-        const { data: legacyRecords } = await supabase
+        let legacyQuery = supabase
           .from('ocr_records')
           .select('*')
           .neq('match_status', 'deleted')
           .order('created_at', { ascending: false });
+
+        if (startDate && endDate) {
+          legacyQuery = legacyQuery.gte('date_job_parsed', startDate).lte('date_job_parsed', endDate);
+        }
+
+        const { data: legacyRecords } = await legacyQuery;
 
         if (legacyRecords && legacyRecords.length > 0) {
           legacyRecords.forEach(rec => {
@@ -784,7 +933,10 @@ export const jobSheetService = {
             allContainers.push({
               id: `legacy_${rec.id}`,
               db_id: rec.id,
-              sheet_id: rec.image_url,
+              job_sheet_item_id: null,
+              ocr_record_id: rec.id,
+              source_table: 'ocr_records',
+              sheet_id: rec.job_sheet_id || rec.image_url,
               container_no: rec.container_no,
               raw_ocr_text: rec.container_no,
               line_no: '-',
@@ -792,6 +944,7 @@ export const jobSheetService = {
               size: finalSize,
               job_type: finalJobType,
               date_job: finalDateJob,
+              date_job_parsed: rec.date_job_parsed || null,
               match_status: finalMatchStatus,
               workflow_status: 'completed',
               batch_name: finalBatch,
@@ -1061,10 +1214,29 @@ export const jobSheetService = {
 
       // 2. ถ้าเป็น Completed
       if (containerItem.workflow_status === 'completed') {
-        const dbId = containerItem.db_id;
+        const jsItemId = containerItem.job_sheet_item_id || (containerItem.source_table === 'job_sheet_items' ? containerItem.db_id : null);
+        const ocrRecId = containerItem.ocr_record_id || (containerItem.source_table === 'ocr_records' ? containerItem.db_id : null);
 
-        // อัปเดตใน ocr_records (legacy)
-        if (dbId) {
+        // 2.1 อัปเดตใน job_sheet_items
+        if (jsItemId) {
+          try {
+            await supabase
+              .from('job_sheet_items')
+              .update({
+                container_no: cleanCno,
+                job_type: cleanJobType,
+                port: cleanPort,
+                size: cleanSize,
+                match_status: matchStatus
+              })
+              .eq('id', jsItemId);
+          } catch (e) {
+            console.warn('job_sheet_items update err:', e);
+          }
+        }
+
+        // 2.2 อัปเดตใน ocr_records ด้วย id ของ ocr_records โดยตรง
+        if (ocrRecId) {
           const updatePayload = {
             container_no: cleanCno,
             port: cleanPort,
@@ -1076,30 +1248,27 @@ export const jobSheetService = {
           const { error: ocrErr } = await supabase
             .from('ocr_records')
             .update(updatePayload)
-            .eq('id', dbId);
+            .eq('id', ocrRecId);
 
           if (ocrErr) {
             console.error('ocr_records update error:', ocrErr);
             throw ocrErr;
           }
-        }
+        } else if (containerItem.sheet_id) {
+          // ซิงค์ ocr_records ที่ผูกกับ job_sheet_id เดียวกัน
+          const updatePayload = {
+            container_no: cleanCno,
+            port: cleanPort,
+            size: cleanSize,
+            match_status: matchStatus
+          };
+          if (cleanTruck) updatePayload.truck_no = cleanTruck;
 
-        // อัปเดตใน job_sheet_items
-        if (dbId) {
-          try {
-            await supabase
-              .from('job_sheet_items')
-              .update({
-                container_no: cleanCno,
-                job_type: cleanJobType,
-                port: cleanPort,
-                size: cleanSize,
-                match_status: matchStatus
-              })
-              .eq('id', dbId);
-          } catch (e) {
-            console.warn('job_sheet_items update err:', e);
-          }
+          await supabase
+            .from('ocr_records')
+            .update(updatePayload)
+            .eq('job_sheet_id', containerItem.sheet_id)
+            .eq('container_no', containerItem.container_no || cleanCno);
         }
 
         // อัปเดตใน ocr_cache และ localStorage ถ้ามีรูปภาพนี้

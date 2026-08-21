@@ -275,7 +275,7 @@ function ScannerViewContent({ setActiveTab, editingSheet, setEditingSheet }) {
       // 1. ดึงจาก Supabase ก่อน (พนักงานทุกคนเปิดดูได้ทันที 100% โดยไม่ต้องล็อกอิน Google)
       const { data: cloudPending, error: supaErr } = await supabase
         .from('ocr_cache')
-        .select('id, model_used, image_name, image_url, ocr_data, created_at')
+        .select('id, model_used, image_name, ocr_data, created_at')
         .neq('model_used', 'deleted')
         .neq('model_used', 'completed')
         .order('created_at', { ascending: false });

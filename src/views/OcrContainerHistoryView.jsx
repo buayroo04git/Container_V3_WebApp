@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { supabase } from '../supabaseClient';
 import { jobSheetService } from '../services/jobSheetService';
+import { containerService } from '../services/containerService';
 import { normalizeExcelDate } from '../utils/matchingLogic';
 import Badge from '../components/ui/Badge';
 import TableContextMenu from '../components/ui/TableContextMenu';
@@ -74,9 +75,15 @@ const OCR_DEFAULT_WIDTHS = {
 
 export default function OcrContainerHistoryView({ setActiveTab }) {
   const [containers, setContainers] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [masterDb, setMasterDb] = useState([]);
+  const [kpis, setKpis] = useState({ total: 0, completed: 0, pending: 0, matched: 0, unmatched: 0 });
+  const [availableBatches, setAvailableBatches] = useState([]);
+  const [availableTrucks, setAvailableTrucks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'COMPLETED' | 'PENDING' | 'MATCHED' | 'UNMATCHED'
   const [selectedBatchFilter, setSelectedBatchFilter] = useState('ALL');
   const [selectedTruckFilter, setSelectedTruckFilter] = useState('ALL');
@@ -90,14 +97,53 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
 
   const menuRef = useRef(null);
 
+  // 1. โหลดข้อมูล Metadata (KPIs, Batches, Trucks, Master DB) ตอนเปิดหน้าจอ
   useEffect(() => {
-    loadData();
+    const fetchMetadata = async () => {
+      try {
+        const [kpiRes, batchesRes, trucksRes, masterRes] = await Promise.all([
+          jobSheetService.fetchOcrKpis(),
+          supabase.from('job_sheets').select('batch_name').neq('status', 'deleted').limit(150),
+          supabase.from('truck_records').select('truck_no').order('truck_no'),
+          containerService.fetchMasterContainers()
+        ]);
+        if (kpiRes) setKpis(kpiRes);
+        if (batchesRes?.data) {
+          const bSet = new Set(batchesRes.data.map(b => b.batch_name).filter(Boolean));
+          setAvailableBatches(Array.from(bSet).sort());
+        }
+        if (trucksRes?.data) {
+          const tSet = new Set(trucksRes.data.map(t => t.truck_no).filter(Boolean));
+          setAvailableTrucks(Array.from(tSet).sort());
+        }
+        if (masterRes?.data) {
+          setMasterDb(masterRes.data);
+        }
+      } catch (e) {
+        console.error('Error fetching OCR metadata:', e);
+      }
+    };
+    fetchMetadata();
   }, []);
 
-  // รีเซ็ตกลับไปหน้าที่ 1 เมื่อตัวกรองหรือคำค้นหาเปลี่ยน
+  // 2. Debounce การพิมพ์ค้นหา (300ms) เพื่อไม่ให้ยิง Query ทุกตัวอักษร
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  // 3. รีเซ็ตกลับไปหน้าที่ 1 เมื่อตัวกรองเปลี่ยน
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, statusFilter, selectedBatchFilter, selectedTruckFilter, rowsPerPage]);
+  }, [statusFilter, selectedBatchFilter, selectedTruckFilter, rowsPerPage]);
+
+  // 4. ดึงข้อมูลตารางแบบ Server-Side Pagination จริงเมื่อเงื่อนไขเปลี่ยน
+  useEffect(() => {
+    loadPaginatedData();
+  }, [currentPage, rowsPerPage, debouncedSearch, statusFilter, selectedBatchFilter, selectedTruckFilter, sortConfig]);
 
   const handleSort = (key) => {
     setSortConfig(prev => {
@@ -108,21 +154,36 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
     });
   };
 
-  const loadData = async () => {
+  const loadPaginatedData = async () => {
     setIsLoading(true);
     try {
-      // ⚡ โหลด Master Records พร้อมดึงประวัติ OCR แบบประหยัด Bandwidth
-      const masterRes = await supabase
-        .from('container_records')
-        .select('id, container_no, truck_no, port, size, dis_load, date_job, batch_name, source_file');
-      const masterData = masterRes?.data || [];
-      setMasterDb(masterData);
+      const res = await jobSheetService.fetchPaginatedOcrContainersHistory({
+        page: currentPage,
+        pageSize: rowsPerPage,
+        searchTerm: debouncedSearch,
+        statusFilter,
+        batchFilter: selectedBatchFilter,
+        truckFilter: selectedTruckFilter,
+        sortConfig
+      });
 
-      const histRes = await jobSheetService.fetchAllOcrContainersHistory(masterData);
-      if (histRes.error) throw histRes.error;
-      setContainers(histRes.data || []);
+      if (res.error) {
+        // Fallback: ถ้า View ใน Postgres ยังไม่ได้สร้าง ให้ดึงแบบเดิมชั่วคราว
+        const fallbackRes = await jobSheetService.fetchAllOcrContainersHistory();
+        if (fallbackRes.error) throw fallbackRes.error;
+        const all = fallbackRes.data || [];
+        const size = rowsPerPage === 'ALL' ? all.length : (Number(rowsPerPage) || 50);
+        const start = (currentPage - 1) * size;
+        setContainers(all.slice(start, start + size));
+        setTotalCount(all.length);
+        setTotalPages(Math.ceil(all.length / (size || 50)) || 1);
+      } else {
+        setContainers(res.data || []);
+        setTotalCount(res.totalCount || 0);
+        setTotalPages(res.totalPages || 1);
+      }
     } catch (err) {
-      console.error('Failed to load OCR container history:', err);
+      console.error('Failed to load paginated OCR containers:', err);
       alert('ไม่สามารถดึงข้อมูลประวัติตู้ OCR ได้: ' + (err.message || err));
     } finally {
       setIsLoading(false);
@@ -154,113 +215,12 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
     }
   };
 
-  // ดึงรายการ Batch ทั้งหมด
-  const availableBatches = useMemo(() => {
-    const set = new Set(containers.map(c => c.batch_name).filter(Boolean));
-    return Array.from(set).sort();
-  }, [containers]);
-
-  // ดึงรายการ Truck ทั้งหมด
-  const availableTrucks = useMemo(() => {
-    const set = new Set();
-    containers.forEach(c => {
-      const t = String(c.truck_no || '').trim();
-      if (t && t !== '-') set.add(t);
-    });
-    return Array.from(set).sort();
-  }, [containers]);
-
-  // คำนวณ KPI สถิติตัวเลข (นับเฉพาะใบงานที่ตรวจเสร็จแล้ว Completed เท่านั้น)
-  const kpis = useMemo(() => {
-    const total = containers.length;
-    let completed = 0;
-    let pending = 0;
-    let matched = 0;
-    let unmatched = 0;
-
-    containers.forEach(c => {
-      if (c.workflow_status === 'completed') {
-        completed++;
-        if (c.match_status === 'manual_red') unmatched++;
-        else matched++;
-      } else if (c.workflow_status === 'pending') {
-        pending++;
-      }
-    });
-
-    return { total, completed, pending, matched, unmatched };
-  }, [containers]);
-
-  // กรองข้อมูลตาม Search และ Filters
-  const filteredContainers = useMemo(() => {
-    return containers.filter(c => {
-      if (statusFilter === 'COMPLETED' && c.workflow_status !== 'completed') return false;
-      if (statusFilter === 'PENDING' && c.workflow_status !== 'pending') return false;
-      if (statusFilter === 'MATCHED' && c.match_status === 'manual_red') return false;
-      if (statusFilter === 'UNMATCHED' && c.match_status !== 'manual_red') return false;
-
-      if (selectedBatchFilter !== 'ALL' && c.batch_name !== selectedBatchFilter) return false;
-
-      if (selectedTruckFilter !== 'ALL' && String(c.truck_no || '').trim() !== selectedTruckFilter) return false;
-
-      if (searchTerm.trim()) {
-        const q = searchTerm.trim().toLowerCase();
-        const matchNo = String(c.container_no || '').toLowerCase().includes(q);
-        const matchRaw = String(c.raw_ocr_text || '').toLowerCase().includes(q);
-        const matchTruck = String(c.truck_no || '').toLowerCase().includes(q);
-        const matchBatch = String(c.batch_name || '').toLowerCase().includes(q);
-        const matchPort = String(c.port || '').toLowerCase().includes(q);
-        if (!matchNo && !matchRaw && !matchTruck && !matchBatch && !matchPort) {
-          return false;
-        }
-      }
-
-      return true;
-    });
-  }, [containers, statusFilter, selectedBatchFilter, selectedTruckFilter, searchTerm]);
-
-  // 🔀 เรียงลำดับข้อมูล (Sorting) ตามคอลัมน์ที่เลือก
-  const sortedContainers = useMemo(() => {
-    const list = [...filteredContainers];
-    if (!sortConfig.key) return list;
-
-    return list.sort((a, b) => {
-      let valA = a[sortConfig.key];
-      let valB = b[sortConfig.key];
-
-      if (sortConfig.key === 'size') {
-        const numA = Number(String(valA || '').replace(/[^0-9]/g, '')) || 0;
-        const numB = Number(String(valB || '').replace(/[^0-9]/g, '')) || 0;
-        return sortConfig.direction === 'asc' ? numA - numB : numB - numA;
-      }
-
-      if (sortConfig.key === 'created_at') {
-        const timeA = new Date(valA || 0).getTime();
-        const timeB = new Date(valB || 0).getTime();
-        return sortConfig.direction === 'asc' ? timeA - timeB : timeB - timeA;
-      }
-
-      const strA = String(valA || '').toLowerCase();
-      const strB = String(valB || '').toLowerCase();
-
-      const comp = strA.localeCompare(strB, 'th-TH', { numeric: true, sensitivity: 'base' });
-      return sortConfig.direction === 'asc' ? comp : -comp;
-    });
-  }, [filteredContainers, sortConfig]);
-
-  // คำนวณการแบ่งหน้า (Pagination Slice จาก sortedContainers)
-  const totalRows = sortedContainers.length;
-  const totalPages = rowsPerPage === 'ALL' ? 1 : Math.max(1, Math.ceil(totalRows / (typeof rowsPerPage === 'number' ? rowsPerPage : 50)));
-
-  const paginatedContainers = useMemo(() => {
-    if (rowsPerPage === 'ALL') return sortedContainers;
-    const count = Number(rowsPerPage) || 50;
-    const start = (currentPage - 1) * count;
-    return sortedContainers.slice(start, start + count);
-  }, [sortedContainers, currentPage, rowsPerPage]);
-
+  // แถวที่แสดงผลในตาราง (คือชุดข้อมูลที่เพิ่งโหลดมาจาก Server ตาม Page ปัจจุบัน)
+  const paginatedContainers = containers;
+  const sortedContainers = containers; // สำหรับฟังก์ชัน Export หรือ Helper
+  const totalRows = totalCount;
   const startIndex = rowsPerPage === 'ALL' ? 0 : (currentPage - 1) * (Number(rowsPerPage) || 50);
-  const endIndex = rowsPerPage === 'ALL' ? totalRows : Math.min(startIndex + (Number(rowsPerPage) || 50), totalRows);
+  const endIndex = rowsPerPage === 'ALL' ? totalRows : Math.min(startIndex + containers.length, totalRows);
 
   // Hook สำหรับจัดการคอลัมน์ (Visibility, Reorder, Resize, Auto-fit, Context Menu)
   const {
@@ -394,7 +354,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
 
         <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
           <button
-            onClick={loadData}
+            onClick={loadPaginatedData}
             disabled={isLoading}
             style={{
               height: '36px',
@@ -626,7 +586,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
               📋 รายการตู้ทั้งหมดจากใบงาน
             </span>
             <span style={{ fontSize: '12px', color: '#64748b', background: '#f1f5f9', padding: '2px 8px', borderRadius: '12px', fontWeight: 700 }}>
-              {sortedContainers.length.toLocaleString()} รายการ
+              {totalCount.toLocaleString()} รายการ
             </span>
           </div>
 

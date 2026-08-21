@@ -66,6 +66,8 @@ CREATE TABLE IF NOT EXISTS public.job_sheets (
     matched_count INT DEFAULT 0,
     unmatched_count INT DEFAULT 0,
     status TEXT DEFAULT 'completed',           -- 'completed', 'draft', 'deleted'
+    date_job TEXT DEFAULT '-',
+    date_job_parsed DATE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -74,6 +76,8 @@ CREATE TABLE IF NOT EXISTS public.job_sheets (
 CREATE INDEX IF NOT EXISTS idx_job_sheets_truck_no ON public.job_sheets(truck_no);
 CREATE INDEX IF NOT EXISTS idx_job_sheets_batch_name ON public.job_sheets(batch_name);
 CREATE INDEX IF NOT EXISTS idx_job_sheets_status ON public.job_sheets(status);
+CREATE INDEX IF NOT EXISTS idx_job_sheets_date_job ON public.job_sheets(date_job);
+CREATE INDEX IF NOT EXISTS idx_job_sheets_date_parsed ON public.job_sheets(date_job_parsed);
 CREATE INDEX IF NOT EXISTS idx_job_sheets_created_at ON public.job_sheets(created_at DESC);
 
 
@@ -116,8 +120,9 @@ CREATE TABLE IF NOT EXISTS public.ocr_cache (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- เพิ่ม image_name เผื่อกรณีตารางมีอยู่เดิมแล้ว
+-- เพิ่ม image_name และ image_url เผื่อกรณีตารางมีอยู่เดิมแล้ว
 ALTER TABLE public.ocr_cache ADD COLUMN IF NOT EXISTS image_name TEXT;
+ALTER TABLE public.ocr_cache ADD COLUMN IF NOT EXISTS image_url TEXT;
 
 -- Indexes สำหรับ ocr_cache
 CREATE INDEX IF NOT EXISTS idx_ocr_cache_model_used ON public.ocr_cache(model_used);
@@ -129,6 +134,7 @@ CREATE INDEX IF NOT EXISTS idx_ocr_cache_created_at ON public.ocr_cache(created_
 -- -------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.ocr_records (
     id BIGSERIAL PRIMARY KEY,
+    job_sheet_id TEXT,
     batch_name TEXT DEFAULT 'General_Batch',
     truck_no TEXT DEFAULT '-',
     image_url TEXT,
@@ -136,16 +142,19 @@ CREATE TABLE IF NOT EXISTS public.ocr_records (
     port TEXT DEFAULT '-',
     size TEXT DEFAULT '-',
     date_job TEXT DEFAULT '-',
+    date_job_parsed DATE,
     match_status TEXT DEFAULT 'matched_green',
     ref_db_id BIGINT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- Indexes สำหรับ ocr_records
+CREATE INDEX IF NOT EXISTS idx_ocr_records_sheet_id ON public.ocr_records(job_sheet_id);
 CREATE INDEX IF NOT EXISTS idx_ocr_records_cno ON public.ocr_records(container_no);
 CREATE INDEX IF NOT EXISTS idx_ocr_records_truck ON public.ocr_records(truck_no);
 CREATE INDEX IF NOT EXISTS idx_ocr_records_batch ON public.ocr_records(batch_name);
 CREATE INDEX IF NOT EXISTS idx_ocr_records_date ON public.ocr_records(date_job);
+CREATE INDEX IF NOT EXISTS idx_ocr_records_date_parsed ON public.ocr_records(date_job_parsed);
 
 
 -- -------------------------------------------------------------------------

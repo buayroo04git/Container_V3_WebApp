@@ -43,8 +43,9 @@
 ---
 
 ### 3. หมวด Truck / Driver Master
-- [x] **✅ [จัดการแล้ว] ป้องกันการนับยอดเบิ้ล (`fetchTrucks` & `fetchDrivers`):** ใช้ฟังก์ชันกลาง `calculateMatchedMasterIds` ตัดยอดแบบ 1:1
-- [x] **✅ [จัดการแล้ว] Live Derived Driver/Truck:** ดึงข้อมูลคนขับและรถประจำปัจจุบันแบบ Live Real-time จาก `truck_operations` เสมอ
+- [x] **✅ [จัดการแล้ว] ป้องกันการนับยอดเบิ้ล (`fetchTrucks` & `fetchDrivers`):** ตัดยอดแบบ Strict 1:1 Matching โดยบังคับเช็กจาก `ref_master_id` เท่านั้น (ตัด Fallback ออกเพื่อกันเพี้ยน)
+- [x] **✅ [จัดการแล้ว] Live Derived Driver/Truck (Timeline Matching):** ดึงยอดผลงานตู้และข้อมูลคนขับประจำปัจจุบันแบบ Live Real-time โดยอิงตามวันที่ทำงานจริงเทียบกับ Timeline ใน `truck_operations` เสมอ
+- [x] **✅ [จัดการแล้ว] Safe / Soft Deletion:** หากคนขับหรือรถมีประวัติงานในระบบ ระบบจะระงับการใช้งาน (inactive) แทนการลบ เพื่อรักษา Ledger และกัน Foreign Key Constraint Error
 - [x] **✅ [จัดการแล้ว] Unique & Check Constraints:** มี Unique บน `truck_no`, `driver_name` และ CHECK บนสถานะ ใน `02_initial_fleet_schema.sql`
 - [—] **⚪ [ข้ามได้/ไม่จำเป็น] เปลี่ยนเป็น Surrogate UUID:** โครงสร้างปัจจุบันใช้ `truck_no`/`driver_name` คู่กับ `ON UPDATE CASCADE` ทำงานได้ดีและตรงกับงานจริง
 

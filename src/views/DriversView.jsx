@@ -259,11 +259,11 @@ export default function DriversView() {
   // Delete Driver
   const handleDeleteDriver = async (id, driverName) => {
     if (!window.confirm(`คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลคุณ ${driverName}?`)) return;
-    const { error } = await deleteDriver(id, driverName);
-    if (error) {
-      toastError('ลบไม่สำเร็จ: ' + error);
+    const res = await deleteDriver(id, driverName);
+    if (res?.error) {
+      toastError('ลบไม่สำเร็จ: ' + res.error);
     } else {
-      success(`ลบข้อมูลคุณ ${driverName} เรียบร้อยแล้ว`);
+      success(res?.message || `ลบข้อมูลคุณ ${driverName} เรียบร้อยแล้ว`);
       loadData();
     }
   };

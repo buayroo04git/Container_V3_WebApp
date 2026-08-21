@@ -58,6 +58,8 @@ DECLARE
   v_sheet_id text;
   v_item jsonb;
   v_rec jsonb;
+  v_sheet_date text;
+  v_sheet_date_parsed date;
 BEGIN
   v_sheet_id := p_sheet->>'id';
 
@@ -65,16 +67,26 @@ BEGIN
     RAISE EXCEPTION 'Missing sheet id';
   END IF;
 
-  -- ถ้าเป็นการแก้ไข ให้ล้างข้อมูลเดิมออกก่อน
+  -- สกัดวันที่สำหรับหัวใบงาน
+  v_sheet_date := COALESCE(p_sheet->>'date_job', '-');
+  IF (p_sheet->>'date_job_parsed') ~ '^\d{4}-\d{2}-\d{2}' THEN
+    v_sheet_date_parsed := (p_sheet->>'date_job_parsed')::DATE;
+  ELSIF v_sheet_date ~ '^\d{4}-\d{2}-\d{2}' THEN
+    v_sheet_date_parsed := (SUBSTRING(v_sheet_date FROM 1 FOR 10))::DATE;
+  ELSE
+    v_sheet_date_parsed := NULL;
+  END IF;
+
+  -- ถ้าเป็นการแก้ไข ให้ล้างข้อมูลเดิมออกก่อนอย่างแม่นยำ (Target by job_sheet_id)
   IF p_is_edit THEN
     DELETE FROM public.job_sheet_items WHERE job_sheet_id = v_sheet_id;
-    DELETE FROM public.job_sheets WHERE id = v_sheet_id;
+    DELETE FROM public.ocr_records WHERE job_sheet_id = v_sheet_id;
     
     IF p_sheet->>'image_url' IS NOT NULL AND p_sheet->>'image_url' != '' THEN
-      DELETE FROM public.ocr_records WHERE image_url = p_sheet->>'image_url';
-    ELSE
-      DELETE FROM public.ocr_records WHERE batch_name = p_sheet->>'batch_name' AND truck_no = p_sheet->>'truck_no';
+      DELETE FROM public.ocr_records WHERE image_url = p_sheet->>'image_url' AND job_sheet_id IS NULL;
     END IF;
+
+    DELETE FROM public.job_sheets WHERE id = v_sheet_id;
   END IF;
 
   -- 1. บันทึกหัวใบงาน (job_sheets)
@@ -89,7 +101,10 @@ BEGIN
     matched_count,
     unmatched_count,
     status,
-    created_at
+    date_job,
+    date_job_parsed,
+    created_at,
+    updated_at
   ) VALUES (
     v_sheet_id,
     p_sheet->>'batch_name',
@@ -101,7 +116,10 @@ BEGIN
     COALESCE((p_sheet->>'matched_count')::int, 0),
     COALESCE((p_sheet->>'unmatched_count')::int, 0),
     COALESCE(p_sheet->>'status', 'completed'),
-    COALESCE((p_sheet->>'created_at')::timestamptz, NOW())
+    v_sheet_date,
+    v_sheet_date_parsed,
+    COALESCE((p_sheet->>'created_at')::timestamptz, NOW()),
+    NOW()
   )
   ON CONFLICT (id) DO UPDATE SET
     batch_name = EXCLUDED.batch_name,
@@ -113,7 +131,9 @@ BEGIN
     matched_count = EXCLUDED.matched_count,
     unmatched_count = EXCLUDED.unmatched_count,
     status = EXCLUDED.status,
-    created_at = EXCLUDED.created_at;
+    date_job = EXCLUDED.date_job,
+    date_job_parsed = EXCLUDED.date_job_parsed,
+    updated_at = NOW();
 
   -- 2. บันทึกรายการตู้ (job_sheet_items)
   IF p_items IS NOT NULL AND jsonb_array_length(p_items) > 0 THEN
@@ -142,6 +162,7 @@ BEGIN
         v_item->>'job_type',
         v_item->>'date_job',
         CASE 
+          WHEN (v_item->>'date_job_parsed') ~ '^\d{4}-\d{2}-\d{2}' THEN (v_item->>'date_job_parsed')::DATE
           WHEN (v_item->>'date_job') ~ '^\d{4}-\d{2}-\d{2}' THEN (SUBSTRING(v_item->>'date_job' FROM 1 FOR 10))::DATE 
           ELSE NULL 
         END,
@@ -152,11 +173,12 @@ BEGIN
     END LOOP;
   END IF;
 
-  -- 3. บันทึกข้อมูลประวัติ (ocr_records - Backward Compatibility)
+  -- 3. บันทึกข้อมูลประวัติ (ocr_records - Backward Compatibility & Accurate Targeting)
   IF p_legacy_records IS NOT NULL AND jsonb_array_length(p_legacy_records) > 0 THEN
     FOR v_rec IN SELECT * FROM jsonb_array_elements(p_legacy_records)
     LOOP
       INSERT INTO public.ocr_records (
+        job_sheet_id,
         batch_name,
         truck_no,
         image_url,
@@ -164,10 +186,12 @@ BEGIN
         port,
         size,
         date_job,
+        date_job_parsed,
         match_status,
         ref_db_id,
         created_at
       ) VALUES (
+        v_sheet_id,
         v_rec->>'batch_name',
         v_rec->>'truck_no',
         v_rec->>'image_url',
@@ -175,6 +199,11 @@ BEGIN
         v_rec->>'port',
         v_rec->>'size',
         v_rec->>'date_job',
+        CASE 
+          WHEN (v_rec->>'date_job_parsed') ~ '^\d{4}-\d{2}-\d{2}' THEN (v_rec->>'date_job_parsed')::DATE
+          WHEN (v_rec->>'date_job') ~ '^\d{4}-\d{2}-\d{2}' THEN (SUBSTRING(v_rec->>'date_job' FROM 1 FOR 10))::DATE 
+          ELSE NULL 
+        END,
         v_rec->>'match_status',
         (v_rec->>'ref_db_id')::bigint,
         COALESCE((v_rec->>'created_at')::timestamptz, NOW())
@@ -188,7 +217,8 @@ BEGIN
     SET 
       model_used = 'completed',
       image_url = p_sheet->>'image_url',
-      ocr_data = p_cache_update
+      ocr_data = p_cache_update,
+      updated_at = NOW()
     WHERE id = p_cache_id;
   END IF;
 

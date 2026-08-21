@@ -265,7 +265,7 @@ export const determineMajorityBatch = (matchingResults, fallbackBatch = null) =>
 };
 
 /**
- * 📅 Helper ตรวจสอบว่าวันที่ 2 ค่าตรงกันหรือไม่ (รองรับหลายรูปแบบ เช่น 5/Apr/2026, 05/04/2026, 5/4/26)
+ * 📅 Helper ตรวจสอบว่าวันที่ 2 ค่าตรงกันหรือไม่ (รองรับ ISO YYYY-MM-DD, 5/Apr/2026, 05/04/2026, 5/4/26)
  */
 export const isDateMatching = (date1, date2) => {
   if (!date1 || !date2 || date1 === '-' || date2 === '-') return false;
@@ -273,6 +273,12 @@ export const isDateMatching = (date1, date2) => {
   const d2 = String(date2).trim().toLowerCase();
   if (d1 === d2) return true;
 
+  // 1. เปรียบเทียบมาตรฐาน ISO YYYY-MM-DD ผ่าน normalizeExcelDate
+  const norm1 = normalizeExcelDate(date1);
+  const norm2 = normalizeExcelDate(date2);
+  if (norm1 && norm2 && norm1 === norm2) return true;
+
+  // 2. ถ้ามีฝั่งใดฝั่งหนึ่งเป็นวันในเดือน (เช่น 5 และ 05/04/2026)
   const day1 = d1.match(/^(\d{1,2})/)?.[1];
   const day2 = d2.match(/^(\d{1,2})/)?.[1];
   if (day1 && day2 && Number(day1) === Number(day2)) {
@@ -313,14 +319,14 @@ export const findBestMasterDbMatch = (containerNo, port, truckNo, masterDbList =
   }
 
   // 🎯 2. กรณีมีมากกว่า 1 งานในรถคันเดียวกัน:
-  // ⭐️ ระดับ 1: [เบอร์รถ] + [ประเภทงาน Dis/Load] + [ท่าเรือ] + [วันที่ Date Job]
+  // ⭐️ ระดับ 1: [เบอร์รถ] + [ประเภทงาน Dis/Load] + [ท่าเรือ] + [วันที่ Date Job / date_job_parsed]
   if (cleanJob && cleanJob !== '-' && cleanPort && cleanPort !== '-' && cleanDate && cleanDate !== '-') {
     const match1 = truckMatches.find(m => {
       const mJob = String(m.dis_load || '').trim().toUpperCase();
       const mPort = String(m.port || '').trim().toUpperCase();
       const jobMatches = (cleanJob.includes('DIS') && mJob.includes('DIS')) || (cleanJob.includes('LOAD') && mJob.includes('LOAD'));
       const portMatches = mPort === cleanPort || mPort.includes(cleanPort) || cleanPort.includes(mPort);
-      const dateMatches = isDateMatching(cleanDate, m.date_job);
+      const dateMatches = isDateMatching(cleanDate, m.date_job_parsed || m.date_job);
       return jobMatches && portMatches && dateMatches;
     });
     if (match1) return match1;
@@ -338,12 +344,12 @@ export const findBestMasterDbMatch = (containerNo, port, truckNo, masterDbList =
     if (match2) return match2;
   }
 
-  // ⭐️ ระดับ 3: [เบอร์รถ] + [ประเภทงาน Dis/Load] + [วันที่ Date Job]
+  // ⭐️ ระดับ 3: [เบอร์รถ] + [ประเภทงาน Dis/Load] + [วันที่ Date Job / date_job_parsed]
   if (cleanJob && cleanJob !== '-' && cleanDate && cleanDate !== '-') {
     const match3 = truckMatches.find(m => {
       const mJob = String(m.dis_load || '').trim().toUpperCase();
       const jobMatches = (cleanJob.includes('DIS') && mJob.includes('DIS')) || (cleanJob.includes('LOAD') && mJob.includes('LOAD'));
-      const dateMatches = isDateMatching(cleanDate, m.date_job);
+      const dateMatches = isDateMatching(cleanDate, m.date_job_parsed || m.date_job);
       return jobMatches && dateMatches;
     });
     if (match3) return match3;
@@ -367,9 +373,9 @@ export const findBestMasterDbMatch = (containerNo, port, truckNo, masterDbList =
     if (match5) return match5;
   }
 
-  // ⭐️ ระดับ 6: [เบอร์รถ] + [วันที่ Date Job]
+  // ⭐️ ระดับ 6: [เบอร์รถ] + [วันที่ Date Job / date_job_parsed]
   if (cleanDate && cleanDate !== '-') {
-    const match6 = truckMatches.find(m => isDateMatching(cleanDate, m.date_job));
+    const match6 = truckMatches.find(m => isDateMatching(cleanDate, m.date_job_parsed || m.date_job));
     if (match6) return match6;
   }
 

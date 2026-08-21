@@ -79,7 +79,7 @@ BEGIN
         ALTER TABLE public.truck_maintenance_records
             ADD CONSTRAINT fk_maint_truck_no
             FOREIGN KEY (truck_no) REFERENCES public.truck_records(truck_no)
-            ON UPDATE CASCADE ON DELETE CASCADE;
+            ON UPDATE CASCADE ON DELETE RESTRICT;
     END IF;
 
     -- 2.4 ผูก driver_leave_records(driver_name) -> driver_records(driver_name)
@@ -93,7 +93,7 @@ BEGIN
         ALTER TABLE public.driver_leave_records
             ADD CONSTRAINT fk_leave_driver_name
             FOREIGN KEY (driver_name) REFERENCES public.driver_records(driver_name)
-            ON UPDATE CASCADE ON DELETE CASCADE;
+            ON UPDATE CASCADE ON DELETE RESTRICT;
     END IF;
 END $$;
 

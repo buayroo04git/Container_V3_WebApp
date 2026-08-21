@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { supabase } from '../supabaseClient';
 import { jobSheetService } from '../services/jobSheetService';
 import { containerService } from '../services/containerService';
 import { findTopContainerMatches, normalizeExcelDate } from '../utils/matchingLogic';
@@ -6,6 +7,19 @@ import TableContextMenu from '../components/ui/TableContextMenu';
 import RenameColumnModal from '../components/ui/RenameColumnModal';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
+
+function getPageNumbers(current, total) {
+  if (total <= 7) {
+    return Array.from({ length: total }, (_, i) => i + 1);
+  }
+  if (current <= 4) {
+    return [1, 2, 3, 4, 5, '...', total];
+  }
+  if (current >= total - 3) {
+    return [1, '...', total - 4, total - 3, total - 2, total - 1, total];
+  }
+  return [1, '...', current - 1, current, current + 1, '...', total];
+}
 
 const BATCH_RAW_COLUMNS = [
   'index',
@@ -48,11 +62,17 @@ const BATCH_DEFAULT_WIDTHS = {
 
 export default function BatchManagerView() {
   const [jobSheetsList, setJobSheetsList] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [masterDb, setMasterDb] = useState([]);
+  const [availableBatches, setAvailableBatches] = useState([]);
+  const [availableTrucks, setAvailableTrucks] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedBatchFilter, setSelectedBatchFilter] = useState('ALL');
   const [selectedTruckFilter, setSelectedTruckFilter] = useState('ALL');
+  const [selectedMonth, setSelectedMonth] = useState('');
   const [activeDetailSheet, setActiveDetailSheet] = useState(null);
   
   // State สำหรับหน้าต่างแก้ไขเฉพาะตู้ที่ยังไม่พบ (Red Containers Editor)
@@ -60,27 +80,79 @@ export default function BatchManagerView() {
   const [redEditRows, setRedEditRows] = useState([]);
   const [isSavingRed, setIsSavingRed] = useState(false);
 
-  // Sorting
+  // 📄 ระบบ Pagination & Sorting
+  const [currentPage, setCurrentPage] = useState(1);
+  const [rowsPerPage, setRowsPerPage] = useState(50); // 25, 50, 100, 200, 'ALL'
   const [sortConfig, setSortConfig] = useState({ key: 'saved_at', direction: 'desc' });
 
   const menuRef = useRef(null);
 
+  // 1. โหลด Metadata ตอนเปิดหน้าจอ
   useEffect(() => {
-    loadAllData();
+    const fetchMetadata = async () => {
+      try {
+        const [batchesRes, trucksRes, masterRes] = await Promise.all([
+          supabase.from('job_sheets').select('batch_name').neq('status', 'deleted').limit(150),
+          supabase.from('truck_records').select('truck_no').order('truck_no'),
+          containerService.fetchMasterContainers()
+        ]);
+        if (batchesRes?.data) {
+          const bSet = new Set(batchesRes.data.map(b => b.batch_name).filter(Boolean));
+          setAvailableBatches(Array.from(bSet).sort());
+        }
+        if (trucksRes?.data) {
+          const tSet = new Set(trucksRes.data.map(t => t.truck_no).filter(Boolean));
+          setAvailableTrucks(Array.from(tSet).sort());
+        }
+        if (masterRes?.data) {
+          setMasterDb(masterRes.data);
+        }
+      } catch (e) {
+        console.error('Error fetching metadata:', e);
+      }
+    };
+    fetchMetadata();
   }, []);
 
-  const loadAllData = async () => {
+  // 2. Debounce Search (300ms)
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setCurrentPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  // 3. รีเซ็ตกลับไปหน้า 1 เมื่อตัวกรองเปลี่ยน
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedBatchFilter, selectedTruckFilter, selectedMonth, rowsPerPage]);
+
+  // 4. โหลดข้อมูลแบบ Server-Side Pagination จริง
+  useEffect(() => {
+    loadPaginatedData();
+  }, [currentPage, rowsPerPage, debouncedSearch, selectedBatchFilter, selectedTruckFilter, selectedMonth, sortConfig]);
+
+  const loadPaginatedData = async () => {
     setIsLoading(true);
     try {
-      // ⚡ โหลดทั้ง Master DB และ Completed Sheets พร้อมกันแบบ Parallel
-      const [masterRes, completedRes] = await Promise.all([
-        containerService.fetchMasterContainers(),
-        jobSheetService.fetchCompletedJobSheets()
-      ]);
+      const res = await jobSheetService.fetchPaginatedCompletedJobSheets({
+        page: currentPage,
+        pageSize: rowsPerPage,
+        searchTerm: debouncedSearch,
+        batchFilter: selectedBatchFilter,
+        truckFilter: selectedTruckFilter,
+        monthFilter: selectedMonth,
+        sortConfig: {
+          key: sortConfig.key === 'saved_at' ? 'created_at' : sortConfig.key,
+          direction: sortConfig.direction
+        }
+      });
 
-      if (masterRes?.data) setMasterDb(masterRes.data);
-      if (completedRes?.error) throw completedRes.error;
-      setJobSheetsList(completedRes?.data || []);
+      if (res.error) throw res.error;
+      setJobSheetsList(res.data || []);
+      setTotalCount(res.totalCount || 0);
+      setTotalPages(res.totalPages || 1);
     } catch (err) {
       console.error('Fetch Completed Error:', err);
       alert('ไม่สามารถดึงข้อมูลประวัติใบงานได้: ' + (err.message || err));
@@ -132,60 +204,8 @@ export default function BatchManagerView() {
   };
 
   const fetchCompletedRecords = async () => {
-    setIsLoading(true);
-    try {
-      const { data, error } = await jobSheetService.fetchCompletedJobSheets();
-      if (error) throw error;
-      setJobSheetsList(data || []);
-    } catch (err) {
-      console.error('Fetch Completed Error:', err);
-      alert('ไม่สามารถดึงข้อมูลประวัติใบงานได้: ' + (err.message || err));
-    } finally {
-      setIsLoading(false);
-    }
+    await loadPaginatedData();
   };
-
-  const jobSheets = useMemo(() => {
-    return jobSheetsList;
-  }, [jobSheetsList]);
-
-  const availableBatches = useMemo(() => {
-    const set = new Set(jobSheets.map(s => s.batch_name).filter(Boolean));
-    return Array.from(set);
-  }, [jobSheets]);
-
-  const availableTrucks = useMemo(() => {
-    const set = new Set();
-    jobSheets.forEach(s => {
-      const t = String(s.truck_no || '').trim();
-      if (t && t !== '-') set.add(t);
-    });
-    return Array.from(set).sort();
-  }, [jobSheets]);
-
-  const filteredSheets = useMemo(() => {
-    let result = jobSheets;
-
-    if (selectedBatchFilter !== 'ALL') {
-      result = result.filter(s => s.batch_name === selectedBatchFilter);
-    }
-
-    if (selectedTruckFilter !== 'ALL') {
-      result = result.filter(s => String(s.truck_no || '').trim() === selectedTruckFilter);
-    }
-
-    if (searchTerm.trim()) {
-      const q = searchTerm.trim().toLowerCase();
-      result = result.filter(s => 
-        (s.truck_no && s.truck_no.toLowerCase().includes(q)) ||
-        (s.batch_name && s.batch_name.toLowerCase().includes(q)) ||
-        (s.image_name && s.image_name.toLowerCase().includes(q)) ||
-        s.containers.some(c => c.container_no && c.container_no.toLowerCase().includes(q))
-      );
-    }
-
-    return result;
-  }, [jobSheets, selectedBatchFilter, selectedTruckFilter, searchTerm]);
 
   const handleSort = (key) => {
     setSortConfig(prev => {
@@ -196,48 +216,25 @@ export default function BatchManagerView() {
     });
   };
 
-  const sortedSheets = useMemo(() => {
-    const list = [...filteredSheets];
-    if (!sortConfig.key) return list;
-
-    return list.sort((a, b) => {
-      let valA = a[sortConfig.key];
-      let valB = b[sortConfig.key];
-
-      if (sortConfig.key === 'total') {
-        valA = a.containers ? a.containers.length : 0;
-        valB = b.containers ? b.containers.length : 0;
-        return sortConfig.direction === 'asc' ? valA - valB : valB - valA;
-      }
-
-      if (sortConfig.key === 'saved_at') {
-        const timeA = new Date(valA || 0).getTime();
-        const timeB = new Date(valB || 0).getTime();
-        return sortConfig.direction === 'asc' ? timeA - timeB : timeB - timeA;
-      }
-
-      const strA = String(valA || '').toLowerCase();
-      const strB = String(valB || '').toLowerCase();
-
-      const comp = strA.localeCompare(strB, 'th-TH', { numeric: true, sensitivity: 'base' });
-      return sortConfig.direction === 'asc' ? comp : -comp;
-    });
-  }, [filteredSheets, sortConfig]);
+  const sortedSheets = jobSheetsList;
+  const totalRows = totalCount;
+  const startIndex = rowsPerPage === 'ALL' ? 0 : (currentPage - 1) * (Number(rowsPerPage) || 50);
+  const endIndex = rowsPerPage === 'ALL' ? totalRows : Math.min(startIndex + jobSheetsList.length, totalRows);
 
   const kpiStats = useMemo(() => {
-    const totalSheets = jobSheets.length;
+    const totalSheets = jobSheetsList.length;
     let totalContainers = 0;
     let totalGreen = 0;
     let totalRed = 0;
 
-    jobSheets.forEach(s => {
-      totalContainers += s.containers.length;
-      totalGreen += s.green;
-      totalRed += s.red;
+    jobSheetsList.forEach(s => {
+      totalContainers += s.containers ? s.containers.length : 0;
+      totalGreen += s.green || 0;
+      totalRed += s.red || 0;
     });
 
     return { totalSheets, totalContainers, totalGreen, totalRed };
-  }, [jobSheets]);
+  }, [jobSheetsList]);
 
   // Hook สำหรับจัดการคอลัมน์
   const {
@@ -294,7 +291,7 @@ export default function BatchManagerView() {
 
   // เปิดหน้าต่างแก้ไขเฉพาะตู้ที่ยังไม่พบใน DB (Red Containers Editor)
   const openRedEditor = (sheet) => {
-    const onlyRed = (sheet.containers || []).filter(c => c.is_red);
+    const onlyRed = (sheet.containers || []).filter(c => c.is_red || c.match_status === 'manual_red');
     setEditingRedSheet(sheet);
     setRedEditRows(onlyRed.map(c => ({
       id: c.id,
@@ -446,6 +443,26 @@ export default function BatchManagerView() {
 
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
             
+            {/* Month Filter */}
+            <input
+              type="month"
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              style={{
+                height: '35px',
+                padding: '0 8px',
+                borderRadius: '7px',
+                border: '1px solid #cbd5e1',
+                background: '#ffffff',
+                color: '#334155',
+                fontSize: '13px',
+                fontWeight: 600,
+                outline: 'none',
+                cursor: 'pointer'
+              }}
+              title="เลือกเดือนที่ต้องการแสดงข้อมูล"
+            />
+
             {/* Search Box */}
             <div style={{ position: 'relative', width: '220px' }}>
               <input
@@ -567,7 +584,7 @@ export default function BatchManagerView() {
             <div style={{ fontSize: '28px', marginBottom: '10px' }}>⏳</div>
             กำลังโหลดข้อมูลประวัติใบงาน...
           </div>
-        ) : filteredSheets.length === 0 ? (
+        ) : sortedSheets.length === 0 ? (
           <div style={{ padding: '60px', textAlign: 'center', color: '#64748b', fontSize: '14px' }}>
             <div style={{ fontSize: '36px', marginBottom: '10px', opacity: 0.6 }}>📭</div>
             {searchTerm || selectedBatchFilter !== 'ALL' ? 'ไม่พบใบงานที่ตรงตามเงื่อนไขการค้นหา' : 'ยังไม่มีประวัติใบงานที่บันทึก'}
@@ -1042,7 +1059,7 @@ export default function BatchManagerView() {
                         })()}
                       </td>
                       <td style={{ padding: '10px 12px', textAlign: 'center' }}>
-                        {c.is_red ? (
+                        {(c.is_red || c.match_status === 'manual_red') ? (
                           <span style={{ color: '#dc2626', fontWeight: 700, fontSize: '12px' }}>
                             🔴 ไม่พบใน DB
                           </span>

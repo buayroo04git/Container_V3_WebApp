@@ -2,6 +2,7 @@ import { supabase } from '../supabaseClient';
 import { recordAssignmentHistory, getLastMaintenanceRecord, getLastLeaveRecord } from './historyService';
 import { createMaintenanceRecord, completeMaintenanceRecord } from './maintenanceService';
 import { createLeaveRecord, completeLeaveRecord } from './leaveService';
+import { normalizeExcelDate } from '../utils/matchingLogic';
 
 /**
  * 🚚 Service Layer: Truck & Driver Management
@@ -16,7 +17,6 @@ import { createLeaveRecord, completeLeaveRecord } from './leaveService';
  */
 export function calculateMatchedMasterIds(masterList = [], completedItems = []) {
   const consumedMasterIds = new Set();
-  const unlinkedItems = [];
 
   // สร้าง Map ของ Master DB ID เพื่อค้นหาแบบ O(1)
   const masterIdMap = new Map();
@@ -24,7 +24,7 @@ export function calculateMatchedMasterIds(masterList = [], completedItems = []) 
     if (m.id) masterIdMap.set(Number(m.id), m);
   });
 
-  // Step 1: จับคู่แบบ Direct 1:1 ผ่าน ref_master_id
+  // จับคู่เฉพาะตู้ที่มี ref_master_id ตรงกับ Master DB แบบ 1:1 เท่านั้น (Strict ref_master_id Matching)
   completedItems.forEach(item => {
     if (!item || item.match_status === 'manual_red' || item.match_status === 'cancelled') return;
 
@@ -32,44 +32,9 @@ export function calculateMatchedMasterIds(masterList = [], completedItems = []) 
       const refId = Number(item.ref_master_id);
       if (masterIdMap.has(refId) && !consumedMasterIds.has(refId)) {
         consumedMasterIds.add(refId);
-        return; // จับคู่สำเร็จ 1:1 เรียบร้อย
       }
     }
-    // หากไม่มี ref_master_id หรือ ID ไม่อยู่ใน masterList ชุดนี้ -> ส่งต่อไปจับคู่แบบ Fallback
-    unlinkedItems.push(item);
   });
-
-  // Step 2: Fallback 1:1 Consumption สำหรับข้อมูลเก่า/รายการที่ไม่มี ref_master_id
-  // จับคู่ตาม [เลขตู้ + เบอร์รถ] และตัดโควต้าทีละ 1 แถว (ใช้แล้วหมดไป ไม่นำมานับซ้ำ)
-  for (const item of unlinkedItems) {
-    const cleanItemCno = String(item.container_no || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-    const itemTruck = String(item.truck_no || '').trim();
-    if (!cleanItemCno) continue;
-
-    // 1. ค้นหาแถวใน Master DB ที่ยังไม่ถูกใช้ (Unconsumed) และเบอร์รถตรงกัน
-    let candidate = null;
-    if (itemTruck && itemTruck !== '-') {
-      candidate = masterList.find(m => {
-        if (consumedMasterIds.has(Number(m.id))) return false;
-        const cleanMCno = String(m.container_no || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-        const mTruck = String(m.truck_no || '').trim();
-        return cleanMCno === cleanItemCno && mTruck === itemTruck;
-      });
-    }
-
-    // 2. Fallback สำรอง: ถ้าไม่มีเบอร์รถ ให้หาแถวใน Master DB ที่เลขตู้ตรงกันและยังว่างอยู่
-    if (!candidate && (!itemTruck || itemTruck === '-')) {
-      candidate = masterList.find(m => {
-        if (consumedMasterIds.has(Number(m.id))) return false;
-        const cleanMCno = String(m.container_no || '').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
-        return cleanMCno === cleanItemCno;
-      });
-    }
-
-    if (candidate) {
-      consumedMasterIds.add(Number(candidate.id)); // บริโภคโควต้า 1:1
-    }
-  }
 
   return consumedMasterIds;
 }
@@ -85,10 +50,10 @@ export async function fetchTrucks() {
   try {
     const [trucksRes, masterRes, itemsRes, sheetsRes, opsRes] = await Promise.all([
       supabase.from('truck_records').select('*').order('truck_no', { ascending: true }),
-      supabase.from('container_records').select('id, container_no, truck_no, port, dis_load, date_job'),
-      supabase.from('job_sheet_items').select('id, job_sheet_id, container_no, match_status, ref_master_id'),
-      supabase.from('job_sheets').select('id, truck_no').neq('status', 'deleted'),
-      supabase.from('truck_operations').select('id, truck_no, driver_name, start_date, end_date, status')
+      supabase.from('container_records').select('id, container_no, truck_no, port, dis_load, date_job, date_job_parsed').limit(10000),
+      supabase.from('job_sheet_items').select('id, job_sheet_id, container_no, match_status, ref_master_id, date_job, date_job_parsed').limit(10000),
+      supabase.from('job_sheets').select('id, truck_no, status, created_at').neq('status', 'deleted').limit(10000),
+      supabase.from('truck_operations').select('id, truck_no, driver_name, start_date, end_date, status').limit(5000)
     ]);
 
     if (trucksRes.error) throw trucksRes.error;
@@ -462,29 +427,86 @@ export async function updateTruck(id, truckData) {
 }
 
 /**
- * ลบข้อมูลรถ
+ * ลบข้อมูลรถ (Safe Delete: Soft-delete เป็น inactive หากมีประวัติในระบบ เพื่อป้องกัน FK Constraint & รักษา Ledger)
  */
 export async function deleteTruck(id, truckNo) {
   try {
+    const cleanTruck = String(truckNo || '').trim();
+    let hasHistory = false;
+
+    if (cleanTruck && cleanTruck !== '-') {
+      const [opsCheck, maintCheck] = await Promise.all([
+        supabase.from('truck_operations').select('id').eq('truck_no', cleanTruck).limit(1),
+        supabase.from('truck_maintenance_records').select('id').eq('truck_no', cleanTruck).limit(1)
+      ]);
+
+      if ((opsCheck?.data && opsCheck.data.length > 0) || (maintCheck?.data && maintCheck.data.length > 0)) {
+        hasHistory = true;
+      }
+    }
+
+    if (hasHistory) {
+      // 🛡️ Soft Delete: ปรับสถานะเป็น inactive, ปลดคนขับ และปิดงวดงาน
+      await supabase.from('truck_records').update({
+        status: 'inactive',
+        assigned_driver_name: '-',
+        updated_at: new Date().toISOString()
+      }).eq('id', id);
+
+      if (cleanTruck && cleanTruck !== '-') {
+        await supabase.from('truck_operations').update({
+          end_date: new Date().toISOString().slice(0, 10),
+          status: 'completed',
+          updated_at: new Date().toISOString()
+        }).eq('truck_no', cleanTruck).eq('status', 'active');
+
+        await supabase.from('driver_records').update({
+          assigned_truck_no: '-',
+          updated_at: new Date().toISOString()
+        }).eq('assigned_truck_no', cleanTruck);
+
+        recordAssignmentHistory({
+          driverName: '-',
+          truckNo: cleanTruck,
+          action: 'STATUS_CHANGE',
+          reason: 'ระงับใช้งานรถ (Soft Delete เนื่องจากมีประวัติงาน/ซ่อมบำรุงในระบบ)'
+        });
+      }
+
+      return { error: null, softDeleted: true, message: `รถเบอร์ ${cleanTruck} มีประวัติการใช้งาน/ซ่อมบำรุงในระบบ ระบบจึงได้ปรับสถานะเป็น "ระงับใช้งาน" (Soft Delete) เพื่อรักษาประวัติการทำงาน` };
+    }
+
+    // 🗑️ Hard Delete สำหรับรายการที่ไม่มีประวัติผูกพัน
     const { error } = await supabase
       .from('truck_records')
       .delete()
       .eq('id', id);
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23503' || String(error.message || '').includes('violates foreign key')) {
+        await supabase.from('truck_records').update({
+          status: 'inactive',
+          assigned_driver_name: '-',
+          updated_at: new Date().toISOString()
+        }).eq('id', id);
+
+        return { error: null, softDeleted: true, message: `ไม่สามารถลบถาวรได้เนื่องจากมีข้อมูลอ้างอิง ระบบจึงปรับสถานะเป็น "ระงับใช้งาน" (Soft Delete)` };
+      }
+      throw error;
+    }
 
     // ปลดเบอร์รถในตาราง driver_records
-    if (truckNo) {
+    if (cleanTruck && cleanTruck !== '-') {
       await supabase
         .from('driver_records')
         .update({ assigned_truck_no: '-', updated_at: new Date().toISOString() })
-        .eq('assigned_truck_no', String(truckNo).trim());
+        .eq('assigned_truck_no', cleanTruck);
     }
 
-    return { error: null };
+    return { error: null, softDeleted: false };
   } catch (err) {
     console.error('deleteTruck error:', err);
-    return { error: err.message };
+    return { error: err.message, softDeleted: false };
   }
 }
 
@@ -533,11 +555,11 @@ export async function fetchDrivers() {
   try {
     const [driversRes, masterRes, itemsRes, sheetsRes, opsRes, trucksRes] = await Promise.all([
       supabase.from('driver_records').select('*').order('driver_name', { ascending: true }),
-      supabase.from('container_records').select('id, container_no, truck_no, port, dis_load, date_job'),
-      supabase.from('job_sheet_items').select('id, job_sheet_id, container_no, match_status, ref_master_id'),
-      supabase.from('job_sheets').select('id, truck_no, date_job').neq('status', 'deleted'),
-      supabase.from('truck_operations').select('id, truck_no, driver_name, start_date, end_date, status'),
-      supabase.from('truck_records').select('truck_no, assigned_driver_name')
+      supabase.from('container_records').select('id, container_no, truck_no, port, dis_load, date_job, date_job_parsed').limit(10000),
+      supabase.from('job_sheet_items').select('id, job_sheet_id, container_no, match_status, ref_master_id, date_job, date_job_parsed').limit(10000),
+      supabase.from('job_sheets').select('id, truck_no, status, created_at').neq('status', 'deleted').limit(10000),
+      supabase.from('truck_operations').select('id, truck_no, driver_name, start_date, end_date, status').limit(5000),
+      supabase.from('truck_records').select('truck_no, assigned_driver_name').limit(1000)
     ]);
 
     if (driversRes.error) throw driversRes.error;
@@ -551,52 +573,48 @@ export async function fetchDrivers() {
     const sheetMap = {};
     sheetsData.forEach(s => { sheetMap[s.id] = s; });
 
-    // Map truck_no -> assigned_driver_name fallback
-    const truckFallbackDriverMap = {};
-    trucksData.forEach(t => {
-      const tNo = String(t.truck_no || '').trim();
-      if (tNo && t.assigned_driver_name && t.assigned_driver_name !== '-') {
-        truckFallbackDriverMap[tNo] = String(t.assigned_driver_name).trim();
-      }
-    });
-
-    // 🚚 ฟังก์ชันค้นหาคนขับที่วิ่งงานในวันที่ระบุของรถคันนั้น (ตามช่วงเวลาใน truck_operations)
+    // 🚚 ฟังก์ชันค้นหาคนขับที่วิ่งงานจริงในวันนั้น ตามช่วงเวลาใน truck_operations เท่านั้น (Strict Timeline)
     const findDriverForJob = (truckNo, jobDateStr) => {
       if (!truckNo || truckNo === '-') return null;
       const cleanTruck = String(truckNo).trim();
-      const cleanDate = jobDateStr ? String(jobDateStr).slice(0, 10) : null;
 
-      // 1. ค้นหาจาก truck_operations ที่ช่วงเวลาตรงกับ date_job
-      if (cleanDate && opsData.length > 0) {
-        const matchedOp = opsData.find(op => {
-          if (String(op.truck_no || '').trim() !== cleanTruck) return false;
-          const sDate = op.start_date ? String(op.start_date).slice(0, 10) : null;
-          const eDate = op.end_date ? String(op.end_date).slice(0, 10) : null;
-          if (sDate && cleanDate < sDate) return false;
-          if (eDate && cleanDate > eDate) return false;
-          return true;
-        });
-
-        if (matchedOp && matchedOp.driver_name && matchedOp.driver_name !== '-') {
-          return String(matchedOp.driver_name).trim();
+      // แปลงวันที่ date_job ให้อยู่ในรูปแบบ ISO YYYY-MM-DD เพื่อเทียบช่วงเวลา
+      let isoDate = null;
+      if (jobDateStr && jobDateStr !== '-') {
+        const norm = normalizeExcelDate(jobDateStr);
+        if (/^\d{4}-\d{2}-\d{2}$/.test(norm)) {
+          isoDate = norm;
         }
       }
 
-      // 2. ถ้าไม่มีช่วงเวลาระบุ หรือไม่เจองวด ให้หาจาก Active Operation ของรถคันนี้
-      const activeOp = opsData.find(op => String(op.truck_no || '').trim() === cleanTruck && op.status === 'active');
-      if (activeOp && activeOp.driver_name && activeOp.driver_name !== '-') {
-        return String(activeOp.driver_name).trim();
+      // ถ้าไม่มีวันที่ระบุ ไม่สามารถระบุคนขับตามช่วงเวลาได้
+      if (!isoDate || opsData.length === 0) return null;
+
+      // ค้นหา Operation ของรถคันนี้ที่ครอบคลุมวันที่ทำงานนั้น (start_date <= date_job <= end_date)
+      const matchedOp = opsData.find(op => {
+        if (String(op.truck_no || '').trim() !== cleanTruck) return false;
+        const sDate = op.start_date ? String(op.start_date).slice(0, 10) : null;
+        const eDate = op.end_date ? String(op.end_date).slice(0, 10) : null;
+        
+        // ถ้ามี start_date แล้ว date_job มาก่อนวันเริ่ม -> ไม่ใช่งวดนี้
+        if (sDate && isoDate < sDate) return false;
+        // ถ้ามี end_date แล้ว date_job เลยวันสิ้นสุด -> ไม่ใช่งวดนี้
+        if (eDate && isoDate > eDate) return false;
+        return true;
+      });
+
+      if (matchedOp && matchedOp.driver_name && matchedOp.driver_name !== '-') {
+        return String(matchedOp.driver_name).trim();
       }
 
-      // 3. Fallback: คนขับประจำรถปัจจุบันใน truck_records
-      return truckFallbackDriverMap[cleanTruck] || null;
+      return null;
     };
 
-    // 👤 จัดกลุ่มงานตู้จาก Master DB ตามคนขับจริง
+    // 👤 จัดกลุ่มงานตู้จาก Master DB ตามคนขับจริงตาม Timeline
     const masterByDriver = {};
     masterData.forEach(m => {
       const tNo = String(m.truck_no || '').trim();
-      const drvName = findDriverForJob(tNo, m.date_job);
+      const drvName = findDriverForJob(tNo, m.date_job_parsed || m.date_job);
       if (!drvName || drvName === '-') return;
 
       if (!masterByDriver[drvName]) masterByDriver[drvName] = [];
@@ -606,13 +624,13 @@ export async function fetchDrivers() {
       });
     });
 
-    // 📄 จัดกลุ่ม Completed Items จากใบงานตามคนขับจริง
+    // 📄 จัดกลุ่ม Completed Items จากใบงานตามคนขับจริงตาม Timeline
     const itemsByDriver = {};
     itemsData.forEach(item => {
       if (item.match_status === 'manual_red' || item.match_status === 'cancelled') return;
       const sheet = sheetMap[item.job_sheet_id] || {};
       const tNo = String(sheet.truck_no || '').trim();
-      const jobDate = item.date_job || sheet.date_job;
+      const jobDate = item.date_job_parsed || item.date_job || sheet.date_job_parsed || sheet.date_job;
       const drvName = findDriverForJob(tNo, jobDate);
       if (!drvName || drvName === '-') return;
 
@@ -1039,36 +1057,93 @@ export async function updateDriver(id, driverData) {
 }
 
 /**
- * ลบข้อมูลคนขับ
+ * ลบข้อมูลคนขับ (Safe Delete: Soft-delete เป็น inactive หากมีประวัติในระบบ เพื่อป้องกัน FK Constraint & รักษา Ledger)
  */
 export async function deleteDriver(id, driverName) {
   try {
+    const cleanName = String(driverName || '').trim();
+    let hasHistory = false;
+
+    if (cleanName && cleanName !== '-') {
+      const [opsCheck, leaveCheck] = await Promise.all([
+        supabase.from('truck_operations').select('id').eq('driver_name', cleanName).limit(1),
+        supabase.from('driver_leave_records').select('id').eq('driver_name', cleanName).limit(1)
+      ]);
+
+      if ((opsCheck?.data && opsCheck.data.length > 0) || (leaveCheck?.data && leaveCheck.data.length > 0)) {
+        hasHistory = true;
+      }
+    }
+
+    if (hasHistory) {
+      // 🛡️ Soft Delete: ปรับสถานะเป็น inactive, ปลดรถ และปิดงวดงาน
+      await supabase.from('driver_records').update({
+        status: 'inactive',
+        assigned_truck_no: '-',
+        updated_at: new Date().toISOString()
+      }).eq('id', id);
+
+      if (cleanName && cleanName !== '-') {
+        await supabase.from('truck_operations').update({
+          end_date: new Date().toISOString().slice(0, 10),
+          status: 'completed',
+          updated_at: new Date().toISOString()
+        }).eq('driver_name', cleanName).eq('status', 'active');
+
+        await supabase.from('truck_records').update({
+          assigned_driver_name: '-',
+          updated_at: new Date().toISOString()
+        }).eq('assigned_driver_name', cleanName);
+
+        recordAssignmentHistory({
+          driverName: cleanName,
+          truckNo: '-',
+          action: 'RESIGN',
+          reason: 'พ้นสภาพคนขับ/ระงับใช้งาน (Soft Delete เนื่องจากมีประวัติงาน/การลาในระบบ)'
+        });
+      }
+
+      return { error: null, softDeleted: true, message: `คุณ ${cleanName} มีประวัติการทำงาน/การลาในระบบ ระบบจึงได้ปรับสถานะเป็น "ระงับใช้งาน" (Soft Delete) เพื่อรักษาประวัติการทำงาน` };
+    }
+
+    // 🗑️ Hard Delete สำหรับรายการที่ไม่มีประวัติผูกพัน
     const { error } = await supabase
       .from('driver_records')
       .delete()
       .eq('id', id);
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23503' || String(error.message || '').includes('violates foreign key')) {
+        await supabase.from('driver_records').update({
+          status: 'inactive',
+          assigned_truck_no: '-',
+          updated_at: new Date().toISOString()
+        }).eq('id', id);
+
+        return { error: null, softDeleted: true, message: `ไม่สามารถลบถาวรได้เนื่องจากมีข้อมูลอ้างอิง ระบบจึงปรับสถานะเป็น "ระงับใช้งาน" (Soft Delete)` };
+      }
+      throw error;
+    }
 
     // ปลดชื่อคนขับในตาราง truck_records
-    if (driverName) {
+    if (cleanName && cleanName !== '-') {
       await supabase
         .from('truck_records')
         .update({ assigned_driver_name: '-', updated_at: new Date().toISOString() })
-        .eq('assigned_driver_name', String(driverName).trim());
+        .eq('assigned_driver_name', cleanName);
 
       recordAssignmentHistory({
-        driverName: String(driverName).trim(),
+        driverName: cleanName,
         truckNo: '-',
         action: 'UNASSIGN',
         reason: 'ลบข้อมูลคนขับออกจากระบบ'
       });
     }
 
-    return { error: null };
+    return { error: null, softDeleted: false };
   } catch (err) {
     console.error('deleteDriver error:', err);
-    return { error: err.message };
+    return { error: err.message, softDeleted: false };
   }
 }
 
