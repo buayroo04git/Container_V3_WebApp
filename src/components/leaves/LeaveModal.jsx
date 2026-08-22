@@ -72,11 +72,29 @@ export default function LeaveModal({
 
     setSaving(true);
     try {
+      const isIndefinite = formData.is_indefinite === true;
+      const targetEndDate = formData.end_date || (!isIndefinite && formData.expected_end_date ? formData.expected_end_date : null);
+      const todayStr = new Date().toISOString().slice(0, 10);
+      let computedStatus = formData.status;
+      let actualEnd = formData.end_date || null;
+
+      if (targetEndDate) {
+        if (targetEndDate < todayStr) {
+          computedStatus = 'completed';
+          if (!actualEnd) actualEnd = targetEndDate;
+        } else {
+          computedStatus = 'active_leave';
+        }
+      } else {
+        computedStatus = 'active_leave';
+      }
+
       const payload = {
         ...formData,
-        end_date: formData.end_date || null,
-        expected_end_date: formData.is_indefinite ? null : (formData.expected_end_date || null),
-        status: formData.end_date ? 'completed' : 'active_leave'
+        end_date: actualEnd,
+        expected_end_date: isIndefinite ? null : (formData.expected_end_date || targetEndDate || null),
+        is_indefinite: isIndefinite,
+        status: computedStatus
       };
       await onSave(payload, record?.id);
       onClose();

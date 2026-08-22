@@ -72,6 +72,32 @@
 
 ## 📝 บันทึกประวัติการปรับปรุง (Changelog)
 
+### 🚀 2026-08-22: ระบบมอบหมายการดำเนินงานรถ/คนขับด่วนผ่านหน้าตาราง (Quick Operation Assignment)
+* ✅ **Interactive Selector บนหน้าข้อมูลรถ (`TrucksView.jsx`):**
+  * คอลัมน์ "คนขับประจำ" (`assigned_driver_name`) สามารถคลิกเลือกคนขับได้จาก Dropdown ในเซลล์
+  * เมื่อเลือกคนขับ จะ **เปิด Modal เพิ่มการดำเนินงานรถ (`OperationModal`) อัตโนมัติ** โดยไม่บันทึกตรงๆ ลงตาราง Master
+  * มีตัวเลือก "🚫 ปลดคนขับออก (Unassign)..." เพื่อสิ้นสุดงวดการดำเนินงานและปลดการครองรถอย่างถูกต้อง
+* ✅ **Interactive Selector บนหน้าข้อมูลคนขับ (`DriversView.jsx`):**
+  * คอลัมน์ "เบอร์รถ" (`assigned_truck_no`) สามารถคลิกเลือกเบอร์รถได้จาก Dropdown ในเซลล์
+  * เมื่อเลือกรถ จะ **เปิด Modal เพิ่มการดำเนินงานรถ (`OperationModal`) อัตโนมัติ** พร้อมส่งชื่อคนขับและเบอร์รถที่เลือกเข้าไปในฟอร์มทันที
+  * มีตัวเลือก "🚫 ปลดรถประจำออก (Unassign)..." เพื่อสิ้นสุดงวดการดำเนินงานอย่างถูกต้อง
+* ✅ **Auto-Close Previous Active Operations & Seamless Handover (`operationsService.js` & `assign_driver_to_truck_rpc`):**
+  * เมื่อมีการบันทึกการดำเนินงานใหม่ ระบบจะปิด active operation เดิมของทั้งรถคันนั้น และคนขับท่านนั้นโดยอัตโนมัติ 100%
+  * **Seamless Transition (วันสิ้นสุด = วันก่อนหน้าวันเริ่ม 1 วัน):** กำหนดให้ `end_date` ของคนขับเดิมสิ้นสุดใน **วันก่อนหน้าวันเริ่มต้นของคนขับใหม่ (New Start Date - 1 วัน)** เพื่อให้ Timeline ประวัติศาสตร์ต่อเนื่องกันพอดี และไม่เกิดการทับซ้อนกันในวันส่งมอบ (No Transition Day Overlap)
+  * เคลียร์การผูกโยงข้ามของรถเดิม/คนขับเดิมใน `truck_records` และ `driver_records` ครบวงจร พร้อมบันทึก Audit History
+* ✅ **Strict Date Overlap Validation & Intelligent Warning (`OperationModal.jsx` & `operationsService.js`):**
+  * มีระบบ **Date Overlap Engine (`checkOperationDateOverlap`)** ตรวจสอบการทับซ้อนของช่วงเวลาแบบ Real-time ทันทีที่เลือกวันที่เริ่ม/สิ้นสุด
+    * หากวันที่เลือกไปทับซ้อนกับงวดในอดีตที่ปิดไปแล้ว (`completed`) ของรถหรือคนขับ ระบบจะแสดงกล่องแจ้งเตือนสีแดง `🚫` ระบุรายละเอียดคนขับ/รถและช่วงเวลาเดิมที่ชนอย่างชัดเจน
+    * บล็อกการกดปุ่มบันทึก (`disabled`) ทันที ป้องกัน Human Error และรักษา Data Integrity ของระบบ 100%
+* ✅ **Auto Leave Status Evaluation & Self-Healing Sanitizer (`leaveService.js` & `DriverLeavesView.jsx`):**
+  * มีระบบ **Smart Status Engine** ตรวจสอบวันสิ้นสุดการลาอัตโนมัติ: หากใบลางานมีวันที่สิ้นสุด (`end_date` หรือ `expected_end_date`) และวันที่นั้นผ่านมาแล้วในอดีต (`endDate < วันนี้`) ➡️ ระบบจะปรับสถานะเป็น **`🟢 สิ้นสุดแล้ว` (completed)** ให้อัตโนมัติทันที
+  * พร้อมระบุวันสิ้นสุดจริงและคำนวณจำนวนวันลาจริง (`duration_days`) พร้อมซิงค์อัปเดตลง Supabase อัตโนมัติในเบื้องหลัง
+* ✅ **Live Driver Leave Status Synchronization (`truckDriverService.js`):**
+  * ฟังก์ชัน `fetchDrivers()` จะตรวจสอบกับตาราง `driver_leave_records` แบบสด 100%: คนขับจะอยู่ในสถานะ `leave` เฉพาะเมื่อมีใบลางานที่ครอบคลุมถึงวันนี้จริงๆ เท่านั้น
+  * หากพ้นกำหนดวันลาแล้ว ระบบจะ **Auto-Restore สถานะของคนขับกลับเป็น `🟢 ปกติ (active)`** ในหน้าข้อมูลคนขับทันที พร้อมซิงค์ปรับแก้ในตาราง `driver_records` ให้อัตโนมัติ
+* ✅ **Auto-Complete Leave on Truck Assignment (`operationsService.js` & `assign_driver_to_truck_rpc`):**
+  * หากคนขับกำลังอยู่ในสถานะลางาน (`active_leave`) แล้วถูกนำไปมอบหมายให้วิ่งรถ (สร้างการดำเนินงานใหม่) ➡️ ระบบจะ **ปิดใบลางานที่ค้างอยู่ให้อัตโนมัติ** โดยกำหนดวันสิ้นสุดการลาเป็น **วันก่อนหน้าวันเริ่มวิ่งรถ (`startDate - 1 วัน`)** และปรับสถานะคนขับกลับเป็น `🟢 ปกติ (Active)` ทันที 100%
+
 ### 🚀 2026-08-19: ระบบบันทึกการซ่อมบำรุงรถ & บันทึกการลางานคนขับแบบละเอียด V2.2
 * ✅ **Dedicated Maintenance & Leave DB Architecture (`create_maintenance_and_leave_tables.sql`):**
   * **`public.truck_maintenance_records`:** เก็บประวัติการเข้าซ่อม, ประเภทการซ่อม (เช็กระยะ, เครื่องยนต์, เบรก, ยาง, ไฟ, ตัวถัง), อู่/ศูนย์บริการ, เลขไมล์, ค่าอะไหล่, ค่าแรง, ยอดรวม, เลขที่บิล, รายการอะไหล่, ผู้ส่งซ่อม, และสถานะ

@@ -37,6 +37,58 @@ function saveOperationsToStorage(list) {
 }
 
 /**
+ * 🧹 ฟังก์ชันตรวจและจัดระเบียบข้อมูลวันสิ้นสุด (Self-Healing Overlap Sanitizer)
+ * แก้ไขงวดในอดีตที่ end_date ชนกับ start_date ของงวดถัดไปให้เป็นวันก่อนหน้าอัตโนมัติ
+ */
+function sanitizeOperationsData(list) {
+  if (!Array.isArray(list) || list.length === 0) return list;
+  
+  const trucksMap = {};
+  list.forEach(op => {
+    const t = String(op.truck_no || '').trim();
+    if (!t) return;
+    if (!trucksMap[t]) trucksMap[t] = [];
+    trucksMap[t].push(op);
+  });
+
+  const idsToFix = [];
+
+  Object.values(trucksMap).forEach(ops => {
+    ops.sort((a, b) => (a.start_date || '').localeCompare(b.start_date || ''));
+
+    for (let i = 0; i < ops.length - 1; i++) {
+      const current = ops[i];
+      const next = ops[i + 1];
+      
+      if (current.end_date && next.start_date && current.end_date === next.start_date && current.id !== next.id) {
+        const fixedEnd = getPreviousDay(next.start_date, current.start_date);
+        if (fixedEnd !== current.end_date) {
+          current.end_date = fixedEnd;
+          idsToFix.push({ id: current.id, end_date: fixedEnd });
+        }
+      }
+    }
+  });
+
+  if (idsToFix.length > 0) {
+    setTimeout(async () => {
+      for (const item of idsToFix) {
+        try {
+          await supabase
+            .from('truck_operations')
+            .update({ end_date: item.end_date, updated_at: new Date().toISOString() })
+            .eq('id', item.id);
+        } catch (e) {
+          console.warn('Self-healing operation end_date fix error:', e);
+        }
+      }
+    }, 50);
+  }
+
+  return list;
+}
+
+/**
  * 📥 ดึงรายการการดำเนินงานทั้งหมดจาก Supabase (Fetch All Operations)
  */
 export async function fetchOperations() {
@@ -49,21 +101,117 @@ export async function fetchOperations() {
     if (sbError) {
       const isMissing = sbError.code === 'PGRST205' || sbError.message?.includes('schema cache');
       console.warn('Supabase fetch truck_operations warning (using local fallback):', sbError.message);
-      // ถ้า table ยังไม่ได้สร้าง หรือมี error ให้ fallback ไปยัง LocalStorage
-      const localList = getAllOperationsFromStorage();
+      const localList = sanitizeOperationsData(getAllOperationsFromStorage());
       return { data: localList, error: null, isTableMissing: isMissing };
     }
 
     if (sbData) {
-      saveOperationsToStorage(sbData);
-      return { data: sbData, error: null, isTableMissing: false };
+      const cleanData = sanitizeOperationsData(sbData);
+      saveOperationsToStorage(cleanData);
+      return { data: cleanData, error: null, isTableMissing: false };
     }
   } catch (e) {
     console.error('fetchOperations exception:', e);
   }
 
-  const localList = getAllOperationsFromStorage();
+  const localList = sanitizeOperationsData(getAllOperationsFromStorage());
   return { data: localList, error: null, isTableMissing: false };
+}
+
+/**
+ * 📅 คำนวณวันก่อนหน้า (1 วันก่อนหน้า dateStr)
+ */
+export function getPreviousDay(dateStr, fallbackStartDate = null) {
+  if (!dateStr) return dateStr;
+  try {
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const d = new Date(year, month, day);
+      d.setDate(d.getDate() - 1);
+      
+      const prevYear = d.getFullYear();
+      const prevMonth = String(d.getMonth() + 1).padStart(2, '0');
+      const prevDay = String(d.getDate()).padStart(2, '0');
+      const prevStr = `${prevYear}-${prevMonth}-${prevDay}`;
+      
+      if (fallbackStartDate && prevStr < fallbackStartDate) {
+        return fallbackStartDate;
+      }
+      return prevStr;
+    }
+  } catch (e) {
+    console.error('getPreviousDay error:', e);
+  }
+  return dateStr;
+}
+
+/**
+ * 🔍 ตรวจสอบการทับซ้อนของช่วงเวลาการดำเนินงาน (Check Date Overlap)
+ */
+export function checkOperationDateOverlap(operations, targetTruckNo, targetDriverName, newStartDate, newEndDate, isOngoing, excludeOpId = null) {
+  if (!targetTruckNo || !newStartDate || !Array.isArray(operations)) return [];
+
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const startA = newStartDate;
+  const endA = isOngoing ? '9999-12-31' : (newEndDate || newStartDate);
+  const cleanTruck = String(targetTruckNo).trim();
+  const cleanDriver = String(targetDriverName || '').trim().toLowerCase();
+
+  const conflicts = [];
+
+  for (const op of operations) {
+    if (excludeOpId && String(op.id) === String(excludeOpId)) continue;
+
+    const opTruck = String(op.truck_no || '').trim();
+    const opDriver = String(op.driver_name || '').trim().toLowerCase();
+    const isSameTruck = opTruck === cleanTruck;
+    const isSameDriver = cleanDriver && opDriver === cleanDriver;
+
+    if (!isSameTruck && !isSameDriver) continue;
+
+    const startB = op.start_date;
+    if (!startB) continue;
+
+    const isOpActive = op.status === 'active' || !op.end_date;
+    const endB = isOpActive ? '9999-12-31' : op.end_date;
+
+    // เช็กเงื่อนไขการทับซ้อนของช่วงเวลา: startA <= endB && endA >= startB
+    const isOverlapping = (startA <= endB) && (endA >= startB);
+
+    if (isOverlapping) {
+      // 🌟 กรณีที่เป็นการเปลี่ยนมือ (Handover) รถที่กำลัง Active อยู่:
+      // จะอนุญาตให้ตัดรอบเปลี่ยนมืออัตโนมัติได้ ก็ต่อเมื่อ วันที่เริ่มใหม่อยู่ใน "วันนี้หรืออนาคต" (startA >= todayStr) เท่านั้น!
+      // หากเลือกวันเริ่มย้อนหลังในอดีต (startA < todayStr) จะถือว่าเป็นการ "ย้อนหลังไปทับช่วงเวลาที่คนขับเดิมกำลังปฏิบัติงานอยู่" ทันที
+      if (isOpActive && isOngoing && startA >= todayStr && isSameTruck && !isSameDriver) {
+        continue;
+      }
+
+      conflicts.push({
+        id: op.id,
+        truck_no: op.truck_no,
+        driver_name: op.driver_name,
+        start_date: op.start_date,
+        end_date: op.end_date,
+        status: op.status,
+        isSameTruck,
+        isSameDriver,
+        reason: isOpActive
+          ? (isSameTruck
+              ? `รถเบอร์ ${op.truck_no} ปัจจุบันมี [${op.driver_name}] กำลังปฏิบัติงานอยู่ (เริ่ม ${op.start_date} - ปัจจุบัน) ไม่สามารถเลือกวันเริ่มย้อนหลังทับช่วงเวลาเดิมได้`
+              : `คนขับ [${op.driver_name}] ปัจจุบันกำลังขับรถเบอร์ ${op.truck_no} อยู่ (เริ่ม ${op.start_date} - ปัจจุบัน) ไม่สามารถเลือกวันเริ่มย้อนหลังทับช่วงเวลาเดิมได้`)
+          : (isSameTruck && isSameDriver
+              ? `รถ ${op.truck_no} และคนขับ ${op.driver_name} เคยมีประวัติการดำเนินงานอยู่แล้วในช่วงเวลานี้`
+              : (isSameTruck
+                  ? `รถเบอร์ ${op.truck_no} มีประวัติถูกใช้งานโดย [${op.driver_name}] ในช่วงเวลานี้แล้ว`
+                  : `คนขับ [${op.driver_name}] มีประวัติขับรถเบอร์ ${op.truck_no} ในช่วงเวลานี้แล้ว`))
+      });
+    }
+  }
+
+  return conflicts;
 }
 
 /**
@@ -77,6 +225,109 @@ export async function createOperation(opData) {
     const endDate = opData.end_date ? opData.end_date : null;
     const isOngoing = !endDate;
 
+    // 🛡️ ป้องกันการบันทึกช่วงเวลาทับซ้อนกับประวัติในอดีต (Strict Overlap Validation)
+    const existingOpsRes = await fetchOperations();
+    const existingOps = existingOpsRes?.data || getAllOperationsFromStorage();
+    const conflicts = checkOperationDateOverlap(existingOps, truckNo, driverName, startDate, endDate, isOngoing);
+    if (conflicts.length > 0) {
+      throw new Error(`ไม่สามารถบันทึกได้เนื่องจากช่วงเวลาทับซ้อนกับประวัติเดิม: ${conflicts[0].reason} (${conflicts[0].start_date} ถึง ${conflicts[0].end_date || 'ปัจจุบัน'})`);
+    }
+
+    // 🚀 ถ้าเป็นงานกำลังดำเนินงาน (Ongoing / Active) ให้ลองเรียกใช้ RPC ก่อนเพื่อความสมบูรณ์และ Atomic 100%
+    if (isOngoing && truckNo && driverName) {
+      try {
+        const { data: rpcRes, error: rpcErr } = await supabase.rpc('assign_driver_to_truck_rpc', {
+          p_truck_no: truckNo,
+          p_driver_name: driverName,
+          p_start_date: startDate,
+          p_operation_type: opData.operation_type || 'primary',
+          p_remark: opData.remark?.trim() || '-',
+          p_created_by: 'Admin'
+        });
+
+        if (!rpcErr && rpcRes?.success) {
+          const prevEndDate = getPreviousDay(startDate);
+
+          // 🛡️ ปรับแก้ end_date ใน Supabase ให้เป็นวันก่อนหน้า (startDate - 1 วัน) ทันที
+          try {
+            if (truckNo) {
+              await supabase
+                .from('truck_operations')
+                .update({
+                  end_date: prevEndDate,
+                  status: 'completed',
+                  updated_at: new Date().toISOString()
+                })
+                .neq('id', rpcRes.operation_id)
+                .eq('truck_no', truckNo)
+                .or(`end_date.eq.${startDate},end_date.is.null,status.eq.active`);
+            }
+            if (driverName) {
+              await supabase
+                .from('truck_operations')
+                .update({
+                  end_date: prevEndDate,
+                  status: 'completed',
+                  updated_at: new Date().toISOString()
+                })
+                .neq('id', rpcRes.operation_id)
+                .eq('driver_name', driverName)
+                .or(`end_date.eq.${startDate},end_date.is.null,status.eq.active`);
+            }
+
+            // 🏖️ ถ้าคนขับกำลังอยู่ในสถานะลา ให้ปิดใบลางานที่ค้างอยู่ให้อัตโนมัติ (Auto complete active leave)
+            if (driverName) {
+              await supabase
+                .from('driver_leave_records')
+                .update({
+                  end_date: prevEndDate,
+                  status: 'completed',
+                  updated_at: new Date().toISOString()
+                })
+                .eq('driver_name', driverName)
+                .eq('status', 'active_leave');
+
+              await supabase
+                .from('driver_records')
+                .update({ status: 'active', updated_at: new Date().toISOString() })
+                .eq('driver_name', driverName);
+            }
+          } catch (syncErr) {
+            console.warn('Sync prevEndDate and leave status to Supabase error:', syncErr);
+          }
+
+          const rpcRecord = {
+            id: rpcRes.operation_id || ('op_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7)),
+            truck_no: truckNo,
+            driver_name: driverName,
+            start_date: startDate,
+            end_date: null,
+            status: 'active',
+            operation_type: opData.operation_type || 'primary',
+            remark: opData.remark?.trim() || '-',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          };
+
+          // ซิงค์ Local Cache
+          const allOps = getAllOperationsFromStorage();
+          allOps.forEach(item => {
+            if ((String(item.truck_no).trim() === truckNo || String(item.driver_name).trim() === driverName) && item.id !== rpcRecord.id && (!item.end_date || item.status === 'active' || item.end_date === startDate)) {
+              item.end_date = getPreviousDay(startDate, item.start_date);
+              item.status = 'completed';
+            }
+          });
+          allOps.unshift(rpcRecord);
+          saveOperationsToStorage(allOps);
+
+          return { data: rpcRecord, error: null };
+        }
+      } catch (rpcEx) {
+        console.warn('RPC assign_driver_to_truck_rpc fallback to client sync:', rpcEx);
+      }
+    }
+
+    const prevEndDate = getPreviousDay(startDate);
     const newRecord = {
       id: 'op_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
       truck_no: truckNo,
@@ -91,20 +342,72 @@ export async function createOperation(opData) {
     };
 
     // 🔄 กฎอัจฉริยะ 1: ถ้าเป็น Record ใหม่ที่ยังไม่มีวันสิ้นสุด (Ongoing)
-    // ให้ค้นหา Record เก่าของรถคันนี้ที่ยังเปิดอยู่ แล้วปิดวันสิ้นสุดให้อัตโนมัติ (1 วันก่อนหน้าวันเริ่มใหม่ หรือวันเริ่มใหม่)
+    // ให้ค้นหา Record เก่าของทั้งรถคันนี้และคนขับท่านนี้ที่ยังเปิดอยู่ แล้วปิดวันสิ้นสุดให้เป็นวันก่อนหน้า (startDate - 1 วัน) อัตโนมัติ
     if (isOngoing) {
       try {
-        await supabase
-          .from('truck_operations')
-          .update({
-            end_date: startDate,
-            status: 'completed',
-            updated_at: new Date().toISOString()
-          })
-          .eq('truck_no', truckNo)
-          .eq('status', 'active');
+        // ปิด active op เดิมของรถคันนี้
+        if (truckNo) {
+          await supabase
+            .from('truck_operations')
+            .update({
+              end_date: prevEndDate,
+              status: 'completed',
+              updated_at: new Date().toISOString()
+            })
+            .eq('truck_no', truckNo)
+            .eq('status', 'active');
+        }
+
+        // ปิด active op เดิมของคนขับท่านนี้
+        if (driverName) {
+          await supabase
+            .from('truck_operations')
+            .update({
+              end_date: prevEndDate,
+              status: 'completed',
+              updated_at: new Date().toISOString()
+            })
+            .eq('driver_name', driverName)
+            .eq('status', 'active');
+        }
+
+        // ปลดรถเดิมของคนขับคนนี้ใน truck_records
+        if (driverName) {
+          await supabase
+            .from('truck_records')
+            .update({ assigned_driver_name: '-', updated_at: new Date().toISOString() })
+            .eq('assigned_driver_name', driverName)
+            .neq('truck_no', truckNo);
+        }
+
+        // ปลดคนขับเดิมของรถคันนี้ใน driver_records
+        if (truckNo) {
+          await supabase
+            .from('driver_records')
+            .update({ assigned_truck_no: '-', updated_at: new Date().toISOString() })
+            .eq('assigned_truck_no', truckNo)
+            .neq('driver_name', driverName);
+        }
+
+        // 🏖️ ปิด active leave เดิมของคนขับคนนี้ (ถ้ามี)
+        if (driverName) {
+          await supabase
+            .from('driver_leave_records')
+            .update({
+              end_date: prevEndDate,
+              status: 'completed',
+              updated_at: new Date().toISOString()
+            })
+            .eq('driver_name', driverName)
+            .eq('status', 'active_leave');
+
+          await supabase
+            .from('driver_records')
+            .update({ status: 'active', updated_at: new Date().toISOString() })
+            .eq('driver_name', driverName);
+        }
       } catch (e) {
-        console.warn('Auto-close previous record warning:', e);
+        console.warn('Auto-close previous active record warning:', e);
       }
     }
 
@@ -125,7 +428,7 @@ export async function createOperation(opData) {
     const allOps = getAllOperationsFromStorage();
     if (isOngoing) {
       allOps.forEach(item => {
-        if (String(item.truck_no).trim() === truckNo && (!item.end_date || item.status === 'active')) {
+        if ((String(item.truck_no).trim() === truckNo || String(item.driver_name).trim() === driverName) && (!item.end_date || item.status === 'active')) {
           item.end_date = startDate;
           item.status = 'completed';
         }
@@ -181,11 +484,24 @@ export async function createOperation(opData) {
 export async function updateOperation(id, opData) {
   try {
     const isOngoing = !opData.end_date;
+    const truckNo = String(opData.truck_no || '').trim();
+    const driverName = String(opData.driver_name || '').trim();
+    const startDate = opData.start_date;
+    const endDate = opData.end_date ? opData.end_date : null;
+
+    // 🛡️ ป้องกันการบันทึกช่วงเวลาทับซ้อนกับประวัติเดิม (Strict Overlap Validation)
+    const existingOpsRes = await fetchOperations();
+    const existingOps = existingOpsRes?.data || getAllOperationsFromStorage();
+    const conflicts = checkOperationDateOverlap(existingOps, truckNo, driverName, startDate, endDate, isOngoing, id);
+    if (conflicts.length > 0) {
+      throw new Error(`ไม่สามารถแก้ไขได้เนื่องจากช่วงเวลาทับซ้อนกับประวัติเดิม: ${conflicts[0].reason} (${conflicts[0].start_date} ถึง ${conflicts[0].end_date || 'ปัจจุบัน'})`);
+    }
+
     const updatePayload = {
-      truck_no: String(opData.truck_no || '').trim(),
-      driver_name: String(opData.driver_name || '').trim(),
-      start_date: opData.start_date,
-      end_date: opData.end_date ? opData.end_date : null,
+      truck_no: truckNo,
+      driver_name: driverName,
+      start_date: startDate,
+      end_date: endDate,
       status: isOngoing ? 'active' : 'completed',
       operation_type: opData.operation_type || 'primary',
       remark: opData.remark?.trim() || '-',

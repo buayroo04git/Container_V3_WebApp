@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { fetchOperations, checkOperationDateOverlap, getPreviousDay, getAllOperationsFromStorage } from '../../services/operationsService';
 
 /**
  * 🚛 Modal Form สำหรับเพิ่ม / แก้ไข บันทึกการดำเนินงานรถ & มอบหมายคนขับ
@@ -22,6 +23,22 @@ export default function OperationModal({
   });
   const [autoActivateDriver, setAutoActivateDriver] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [allOperations, setAllOperations] = useState([]);
+
+  // โหลดรายการการดำเนินงานทั้งหมดเพื่อตรวจเช็กการทับซ้อนของช่วงเวลา
+  useEffect(() => {
+    if (isOpen) {
+      fetchOperations().then(res => {
+        if (res?.data) {
+          setAllOperations(res.data);
+        } else {
+          setAllOperations(getAllOperationsFromStorage());
+        }
+      }).catch(() => {
+        setAllOperations(getAllOperationsFromStorage());
+      });
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (operation) {
@@ -30,7 +47,7 @@ export default function OperationModal({
         driver_name: operation.driver_name || '',
         operation_type: operation.operation_type || 'primary',
         start_date: operation.start_date || new Date().toISOString().slice(0, 10),
-        isOngoing: !operation.end_date || operation.status === 'active',
+        isOngoing: operation.isOngoing !== undefined ? operation.isOngoing : (!operation.end_date || operation.status === 'active'),
         end_date: operation.end_date || '',
         remark: operation.remark && operation.remark !== '-' ? operation.remark : ''
       });
@@ -59,6 +76,34 @@ export default function OperationModal({
     return driverList.find(d => String(d.driver_name).trim().toLowerCase() === String(formData.driver_name).trim().toLowerCase()) || null;
   }, [formData.driver_name, driverList]);
 
+  // 🛡️ ตรวจสอบความทับซ้อนของช่วงเวลากับประวัติเดิมในระบบแบบ Real-time
+  const dateConflicts = useMemo(() => {
+    if (!formData.truck_no || !formData.start_date || allOperations.length === 0) {
+      return [];
+    }
+    return checkOperationDateOverlap(
+      allOperations,
+      formData.truck_no,
+      formData.driver_name,
+      formData.start_date,
+      formData.end_date,
+      formData.isOngoing,
+      operation?.id || null
+    );
+  }, [allOperations, formData.truck_no, formData.driver_name, formData.start_date, formData.end_date, formData.isOngoing, operation?.id]);
+
+  // ฟังก์ชันแปลงวันที่แสดงผล
+  const formatDateDisplay = (dateStr) => {
+    if (!dateStr || dateStr === '-') return 'ปัจจุบัน';
+    try {
+      const [y, m, d] = dateStr.split('-');
+      if (y && m && d) return `${d}/${m}/${y}`;
+      return dateStr;
+    } catch {
+      return dateStr;
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleSubmit = async (e) => {
@@ -73,6 +118,14 @@ export default function OperationModal({
     }
     if (!formData.start_date) {
       alert('กรุณาระบุวันที่เริ่มดำเนินงาน');
+      return;
+    }
+    if (!formData.isOngoing && formData.end_date && formData.end_date < formData.start_date) {
+      alert('วันที่สิ้นสุดต้องไม่มาก่อนวันที่เริ่มต้น');
+      return;
+    }
+    if (dateConflicts.length > 0) {
+      alert('ไม่สามารถบันทึกได้: ตรวจพบช่วงเวลาทับซ้อนกับประวัติเดิมในระบบ กรุณาเลือกวันที่ใหม่');
       return;
     }
 
@@ -135,7 +188,7 @@ export default function OperationModal({
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <span style={{ fontSize: '22px' }}>🚚</span>
             <h3 style={{ margin: 0, fontSize: '18px', fontWeight: 800, color: '#0f172a' }}>
-              {operation ? 'แก้ไขบันทึกการดำเนินงานรถ' : 'เพิ่มการดำเนินงานรถ (มอบหมายคนขับใหม่)'}
+              {operation?.id ? 'แก้ไขบันทึกการดำเนินงานรถ' : 'เพิ่มการดำเนินงานรถ (มอบหมายคนขับใหม่)'}
             </h3>
           </div>
           <button
@@ -182,8 +235,8 @@ export default function OperationModal({
               >
                 <option value="">-- เลือกรถ --</option>
                 {truckList.map(t => (
-                  <option key={t.id} value={t.truck_no}>
-                    รถ {t.truck_no}
+                  <option key={t.id || t.truck_no} value={t.truck_no}>
+                    รถ {t.truck_no} {t.assigned_driver_name && t.assigned_driver_name !== '-' ? `(คนขับ: ${t.assigned_driver_name})` : ''}
                   </option>
                 ))}
               </select>
@@ -203,6 +256,22 @@ export default function OperationModal({
                   <div><strong>ทะเบียน:</strong> {selectedTruck.truck_license || '-'}</div>
                   <div><strong>เจ้าของ/สังกัด:</strong> {selectedTruck.owner || '-'}</div>
                   <div><strong>ประเภท/ยี่ห้อ:</strong> {selectedTruck.truck_type || '-'} {selectedTruck.brand && selectedTruck.brand !== '-' ? `(${selectedTruck.brand})` : ''}</div>
+                </div>
+              )}
+
+              {/* 🔄 แจ้งเตือนกรณีรถคันนี้มีคนขับเดิมอยู่แล้ว */}
+              {selectedTruck && selectedTruck.assigned_driver_name && selectedTruck.assigned_driver_name !== '-' && selectedTruck.assigned_driver_name !== formData.driver_name && (
+                <div style={{
+                  marginTop: '6px',
+                  padding: '7px 9px',
+                  background: '#fffbeb',
+                  border: '1px solid #fde68a',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  color: '#92400e',
+                  lineHeight: '1.4'
+                }}>
+                  🔄 คนขับเดิม: <strong>{selectedTruck.assigned_driver_name}</strong> (ระบบจะสิ้นสุดงวดเดิมในวันที่ <strong>{formatDateDisplay(getPreviousDay(formData.start_date))}</strong> ให้อัตโนมัติ)
                 </div>
               )}
             </div>
@@ -230,8 +299,8 @@ export default function OperationModal({
               >
                 <option value="">-- เลือกคนขับ --</option>
                 {driverList.map(d => (
-                  <option key={d.id} value={d.driver_name}>
-                    {d.driver_name} {d.status === 'leave' ? '(🟡 ลางาน)' : (d.status === 'inactive' ? '(⚪ พักงาน/ออก)' : '')}
+                  <option key={d.id || d.driver_name} value={d.driver_name}>
+                    {d.driver_name} {d.assigned_truck_no && d.assigned_truck_no !== '-' ? `(ประจำรถ ${d.assigned_truck_no})` : ''} {d.status === 'leave' ? '(🟡 ลางาน)' : (d.status === 'inactive' ? '(⚪ พักงาน/ออก)' : '')}
                   </option>
                 ))}
               </select>
@@ -251,6 +320,22 @@ export default function OperationModal({
                   <div><strong>เบอร์โทร:</strong> {selectedDriver.phone || '-'}</div>
                   <div><strong>ใบขับขี่:</strong> {selectedDriver.license_type || '-'} {selectedDriver.license_no && selectedDriver.license_no !== '-' ? `(${selectedDriver.license_no})` : ''}</div>
                   <div><strong>สถานะพนักงาน:</strong> {selectedDriver.status === 'active' ? '🟢 ปกติ (Active)' : (selectedDriver.status === 'leave' ? '🟡 ลางาน (On Leave)' : '⚪ พักงาน/ออก (Inactive)')}</div>
+                </div>
+              )}
+
+              {/* 🔄 แจ้งเตือนกรณีคนขับท่านนี้ประจำรถคันอื่นอยู่แล้ว */}
+              {selectedDriver && selectedDriver.assigned_truck_no && selectedDriver.assigned_truck_no !== '-' && String(selectedDriver.assigned_truck_no).trim() !== String(formData.truck_no).trim() && (
+                <div style={{
+                  marginTop: '6px',
+                  padding: '7px 9px',
+                  background: '#fffbeb',
+                  border: '1px solid #fde68a',
+                  borderRadius: '6px',
+                  fontSize: '11px',
+                  color: '#92400e',
+                  lineHeight: '1.4'
+                }}>
+                  🔄 รถประจำเดิม: <strong>รถ {selectedDriver.assigned_truck_no}</strong> (ระบบจะสิ้นสุดงวดเดิมในวันที่ <strong>{formatDateDisplay(getPreviousDay(formData.start_date))}</strong> ให้อัตโนมัติ)
                 </div>
               )}
 
@@ -375,6 +460,35 @@ export default function OperationModal({
                 <span>การดำเนินงานนี้จะนับต่อเนื่องไปเรื่อยๆ จนกว่าจะมีการเปลี่ยนคนขับใหม่ หรือเข้ามากำหนดวันสิ้นสุด</span>
               </div>
             )}
+
+            {/* 🔴 Date Conflict / Overlap Error Banner */}
+            {dateConflicts.length > 0 && (
+              <div style={{
+                marginTop: '12px',
+                padding: '12px 14px',
+                background: '#fef2f2',
+                border: '1.5px solid #fecaca',
+                borderLeft: '5px solid #ef4444',
+                borderRadius: '10px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '16px' }}>🚫</span>
+                  <div style={{ fontSize: '13px', fontWeight: 800, color: '#991b1b' }}>
+                    ไม่สามารถบันทึกได้: ตรวจพบช่วงเวลาทับซ้อนกับประวัติเดิม
+                  </div>
+                </div>
+                <div style={{ fontSize: '12px', color: '#b91c1c', lineHeight: '1.5' }}>
+                  {dateConflicts.map((c, i) => (
+                    <div key={c.id || i} style={{ marginBottom: '4px' }}>
+                      • <strong>{c.reason}</strong> (ช่วงวันที่ {formatDateDisplay(c.start_date)} ถึง {formatDateDisplay(c.end_date)})
+                    </div>
+                  ))}
+                </div>
+                <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#7f1d1d', marginTop: '6px', paddingTop: '6px', borderTop: '1px dashed #fca5a5' }}>
+                  💡 กรุณาเลือกวันที่เริ่มต้น/สิ้นสุดใหม่ที่ไม่ทับซ้อนกับช่วงเวลาดังกล่าว หรือเข้าไปปรับแก้วันที่ในประวัติเดิมก่อน
+                </div>
+              </div>
+            )}
           </div>
 
           {/* หมายเหตุ */}
@@ -425,20 +539,22 @@ export default function OperationModal({
             </button>
             <button
               type="submit"
-              disabled={saving}
+              disabled={saving || dateConflicts.length > 0}
+              title={dateConflicts.length > 0 ? 'กรุณาแก้ไขช่วงเวลาที่ทับซ้อนก่อนบันทึก' : ''}
               style={{
                 padding: '9px 24px',
                 borderRadius: '8px',
                 border: 'none',
-                background: '#2563eb',
+                background: dateConflicts.length > 0 ? '#94a3b8' : (saving ? '#93c5fd' : '#2563eb'),
                 color: '#ffffff',
                 fontSize: '13px',
                 fontWeight: 700,
-                cursor: saving ? 'not-allowed' : 'pointer',
-                boxShadow: '0 2px 6px rgba(37, 99, 235, 0.25)'
+                cursor: (saving || dateConflicts.length > 0) ? 'not-allowed' : 'pointer',
+                boxShadow: dateConflicts.length > 0 ? 'none' : '0 2px 6px rgba(37, 99, 235, 0.25)',
+                transition: 'all 0.15s ease'
               }}
             >
-              {saving ? 'กำลังบันทึก...' : (operation ? 'บันทึกการแก้ไข' : 'บันทึกการดำเนินงาน')}
+              {saving ? 'กำลังบันทึก...' : (dateConflicts.length > 0 ? '⛔ ช่วงเวลาทับซ้อน' : (operation ? 'บันทึกการแก้ไข' : 'บันทึกการดำเนินงาน'))}
             </button>
           </div>
         </form>

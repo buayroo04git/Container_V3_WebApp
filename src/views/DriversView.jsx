@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import * as XLSX from 'xlsx';
+import { supabase } from '../supabaseClient';
 import { useToast } from '../context/ToastContext';
 import { 
   fetchDrivers, 
@@ -9,7 +10,9 @@ import {
   bulkUpsertDrivers,
   fetchTrucks 
 } from '../services/truckDriverService';
+import { createOperation, updateOperation } from '../services/operationsService';
 import DriverModal from '../components/drivers/DriverModal';
+import OperationModal from '../components/operations/OperationModal';
 import AssignmentHistoryModal from '../components/ui/AssignmentHistoryModal';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
 import TableContextMenu from '../components/ui/TableContextMenu';
@@ -66,7 +69,7 @@ const DEFAULT_DRIVER_WIDTHS = {
   driver_name: 150,
   status: 120,
   work_status: 110,
-  assigned_truck_no: 95,
+  assigned_truck_no: 125,
   phone: 125,
   master_containers: 130,
   matched_containers: 130,
@@ -105,6 +108,10 @@ export default function DriversView() {
     isOpen: false,
     driver: null,
     newStatus: ''
+  });
+  const [operationModal, setOperationModal] = useState({
+    isOpen: false,
+    operation: null
   });
 
   // File Upload Ref
@@ -253,6 +260,76 @@ export default function DriversView() {
       if (error) throw new Error(error);
       success(`เพิ่มคนขับ ${formData.driver_name} เรียบร้อยแล้ว`);
     }
+    loadData();
+  };
+
+  // 🚚 เปิด Modal เพิ่มการดำเนินงานรถเมื่อมีการเลือกเบอร์รถ
+  const handleOpenAssignModalForDriver = (driver, truckNo) => {
+    setOperationModal({
+      isOpen: true,
+      operation: {
+        driver_name: driver.driver_name,
+        truck_no: truckNo || '',
+        operation_type: 'primary',
+        start_date: new Date().toISOString().slice(0, 10),
+        isOngoing: true,
+        remark: ''
+      }
+    });
+  };
+
+  // 🚫 ปลดรถประจำออกจากคนขับ (สิ้นสุดงวดการดำเนินงาน)
+  const handleUnassignTruckFromDriver = async (driver) => {
+    if (!driver.assigned_truck_no || driver.assigned_truck_no === '-') return;
+    if (!window.confirm(`คุณต้องการปลดรถ "${driver.assigned_truck_no}" ออกจากคนขับ "${driver.driver_name}" ใช่หรือไม่?\n(ระบบจะสิ้นสุดงวดการดำเนินงานปัจจุบันและบันทึกประวัติให้อัตโนมัติ)`)) {
+      return;
+    }
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('unassign_driver_truck_rpc', {
+        p_truck_no: driver.assigned_truck_no,
+        p_driver_name: driver.driver_name,
+        p_end_date: today,
+        p_reason: `ปลดรถประจำออกจากคนขับ ${driver.driver_name}`,
+        p_created_by: 'Admin'
+      });
+
+      if (rpcErr || !rpcRes?.success) {
+        await supabase
+          .from('truck_operations')
+          .update({ end_date: today, status: 'completed', updated_at: new Date().toISOString() })
+          .eq('driver_name', driver.driver_name)
+          .eq('status', 'active');
+
+        await supabase
+          .from('truck_records')
+          .update({ assigned_driver_name: '-', updated_at: new Date().toISOString() })
+          .eq('truck_no', driver.assigned_truck_no);
+
+        await supabase
+          .from('driver_records')
+          .update({ assigned_truck_no: '-', updated_at: new Date().toISOString() })
+          .eq('driver_name', driver.driver_name);
+      }
+      success(`ปลดรถประจำออกจากคนขับ ${driver.driver_name} เรียบร้อยแล้ว`);
+      loadData();
+    } catch (err) {
+      toastError('เกิดข้อผิดพลาดในการปลดรถ: ' + err.message);
+    }
+  };
+
+  // 💾 บันทึกการดำเนินงานจาก Modal
+  const handleSaveOperationFromDrivers = async (payload, id) => {
+    if (id) {
+      const { error } = await updateOperation(id, payload);
+      if (error) throw new Error(error);
+      success(`อัปเดตข้อมูลการดำเนินงานรถ ${payload.truck_no} เรียบร้อยแล้ว`);
+    } else {
+      const { error } = await createOperation(payload);
+      if (error) throw new Error(error);
+      success(`มอบหมายรถ ${payload.truck_no} ให้คนขับ ${payload.driver_name} เรียบร้อยแล้ว`);
+    }
+    setOperationModal({ isOpen: false, operation: null });
     loadData();
   };
 
@@ -1225,8 +1302,78 @@ export default function DriversView() {
                       if (col === 'assigned_truck_no') {
                         const isAssigned = driver.assigned_truck_no && driver.assigned_truck_no !== '-';
                         return (
-                          <td key={col} style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 800, fontSize: '13.5px', color: isAssigned ? '#1d4ed8' : '#94a3b8', whiteSpace: 'nowrap' }}>
-                            {isAssigned ? driver.assigned_truck_no : '-'}
+                          <td key={col} style={{ padding: '6px 14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {isAssigned ? (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenAssignModalForDriver(driver, driver.assigned_truck_no)}
+                                title="คลิกเพื่อแก้ไขหรือเปลี่ยนเบอร์รถ (จะเปิดฟอร์มการดำเนินงานรถ)"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '5px',
+                                  background: '#eff6ff',
+                                  color: '#1d4ed8',
+                                  border: '1px solid #bfdbfe',
+                                  padding: '4px 10px',
+                                  borderRadius: '7px',
+                                  fontFamily: 'monospace',
+                                  fontSize: '13px',
+                                  fontWeight: 800,
+                                  cursor: 'pointer',
+                                  maxWidth: '100%',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  transition: 'all 0.15s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = '#dbeafe';
+                                  e.currentTarget.style.borderColor = '#93c5fd';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = '#eff6ff';
+                                  e.currentTarget.style.borderColor = '#bfdbfe';
+                                }}
+                              >
+                                <span style={{ fontSize: '11.5px' }}>🚚</span>
+                                <span>{driver.assigned_truck_no}</span>
+                                <span style={{ fontSize: '10px', color: '#3b82f6', opacity: 0.8 }}>✏️</span>
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenAssignModalForDriver(driver, '')}
+                                title="คลิกเพื่อมอบหมายเบอร์รถ (จะเปิดฟอร์มการดำเนินงานรถ)"
+                                style={{
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                  background: '#f8fafc',
+                                  color: '#64748b',
+                                  border: '1px dashed #cbd5e1',
+                                  padding: '4px 10px',
+                                  borderRadius: '7px',
+                                  fontSize: '12px',
+                                  fontWeight: 600,
+                                  cursor: 'pointer',
+                                  transition: 'all 0.15s ease'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = '#eff6ff';
+                                  e.currentTarget.style.color = '#2563eb';
+                                  e.currentTarget.style.borderColor = '#93c5fd';
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = '#f8fafc';
+                                  e.currentTarget.style.color = '#64748b';
+                                  e.currentTarget.style.borderColor = '#cbd5e1';
+                                }}
+                              >
+                                <span>➕</span>
+                                <span>เลือกรถ</span>
+                              </button>
+                            )}
                           </td>
                         );
                       }
@@ -1462,6 +1609,16 @@ export default function DriversView() {
         data={statusConfirmModal.driver}
         newStatus={statusConfirmModal.newStatus}
         onConfirm={handleStatusModalConfirm}
+      />
+
+      {/* Operation Modal for Quick Truck Assignment */}
+      <OperationModal
+        isOpen={operationModal.isOpen}
+        onClose={() => setOperationModal({ isOpen: false, operation: null })}
+        onSave={handleSaveOperationFromDrivers}
+        operation={operationModal.operation}
+        truckList={trucks}
+        driverList={drivers}
       />
 
     </div>

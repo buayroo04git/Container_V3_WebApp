@@ -553,13 +553,14 @@ export async function bulkUpsertTrucks(truckList) {
  */
 export async function fetchDrivers() {
   try {
-    const [driversRes, masterRes, itemsRes, sheetsRes, opsRes, trucksRes] = await Promise.all([
+    const [driversRes, masterRes, itemsRes, sheetsRes, opsRes, trucksRes, leavesRes] = await Promise.all([
       supabase.from('driver_records').select('*').order('driver_name', { ascending: true }),
       supabase.from('container_records').select('id, container_no, truck_no, port, dis_load, date_job, date_job_parsed').limit(10000),
       supabase.from('job_sheet_items').select('id, job_sheet_id, container_no, match_status, ref_master_id, date_job, date_job_parsed').limit(10000),
       supabase.from('job_sheets').select('id, truck_no, status, created_at').neq('status', 'deleted').limit(10000),
       supabase.from('truck_operations').select('id, truck_no, driver_name, start_date, end_date, status').limit(5000),
-      supabase.from('truck_records').select('truck_no, assigned_driver_name').limit(1000)
+      supabase.from('truck_records').select('truck_no, assigned_driver_name').limit(1000),
+      supabase.from('driver_leave_records').select('id, driver_name, start_date, end_date, expected_end_date, is_indefinite, status').limit(5000)
     ]);
 
     if (driversRes.error) throw driversRes.error;
@@ -569,6 +570,7 @@ export async function fetchDrivers() {
     const sheetsData = sheetsRes.data || [];
     const opsData = opsRes?.data || [];
     const trucksData = trucksRes?.data || [];
+    const leavesData = leavesRes?.data || [];
 
     const sheetMap = {};
     sheetsData.forEach(s => { sheetMap[s.id] = s; });
@@ -643,6 +645,8 @@ export async function fetchDrivers() {
     });
 
     const hasOpsTable = !opsRes?.error && Array.isArray(opsRes?.data);
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const staleLeaveDriverNames = [];
 
     const enrichedDrivers = drivers.map(d => {
       const dName = String(d.driver_name || '').trim();
@@ -656,6 +660,28 @@ export async function fetchDrivers() {
         ? (activeOp && activeOp.truck_no && activeOp.truck_no !== '-' ? String(activeOp.truck_no).trim() : '-')
         : (d.assigned_truck_no || '-');
 
+      // 🏖️ ตรวจสอบสถานะการลางานสด (Live Leave Status Check):
+      // คนขับจะอยู่ในสถานะ leave ก็ต่อเมื่อมีใบลาที่ active อยู่ ณ วันนี้จริงๆ
+      const activeLeave = leavesData.find(l => {
+        if (String(l.driver_name || '').trim().toLowerCase() !== dName.toLowerCase()) return false;
+        const isIndef = l.is_indefinite === true;
+        const sDate = l.start_date || '2000-01-01';
+        const eDate = l.end_date || (!isIndef && l.expected_end_date ? l.expected_end_date : null);
+        
+        if (l.status === 'completed') return false;
+        if (eDate && eDate < todayStr) return false;
+        return sDate <= todayStr;
+      });
+
+      let liveStatus = d.status || 'active';
+      if (activeLeave) {
+        liveStatus = 'leave';
+      } else if (d.status === 'leave') {
+        // ถ้าเคยเป็น leave แต่ไม่มี active leave ณ วันนี้แล้ว -> ปรับสถานะกลับเป็น active อัตโนมัติ!
+        liveStatus = 'active';
+        staleLeaveDriverNames.push(dName);
+      }
+
       // 🎯 1:1 Consumption Matching Algorithm (ตู้ที่จับคู่แล้วจะไม่ถูกใช้ซ้ำ)
       const matchedMasterIds = calculateMatchedMasterIds(driverMasterList, driverItems);
       const matchedCount = matchedMasterIds.size;
@@ -664,6 +690,7 @@ export async function fetchDrivers() {
 
       return {
         ...d,
+        status: liveStatus,                  // สะท้อนสถานะการทำงานจริงตามใบลาอัตโนมัติ
         assigned_truck_no: liveTruck,        // สะท้อนรถประจำปัจจุบันจาก truck_operations สด 100%
         master_containers: masterTotal,
         matched_containers: matchedCount,    // จับคู่แล้ว 1:1 ไม่นับเบิ้ล
@@ -672,6 +699,23 @@ export async function fetchDrivers() {
         total_containers: masterTotal
       };
     });
+
+    // 🔄 ซิงค์แก้ไขสถานะใน DB สำหรับคนขับที่สิ้นสุดการลาแล้วแต่สถานะในตารางหลักค้างอยู่
+    if (staleLeaveDriverNames.length > 0) {
+      setTimeout(async () => {
+        for (const name of staleLeaveDriverNames) {
+          try {
+            await supabase
+              .from('driver_records')
+              .update({ status: 'active', updated_at: new Date().toISOString() })
+              .eq('driver_name', name)
+              .eq('status', 'leave');
+          } catch (e) {
+            console.warn('Auto restore driver active status error:', e);
+          }
+        }
+      }, 50);
+    }
 
     return { data: enrichedDrivers, error: null };
   } catch (err) {

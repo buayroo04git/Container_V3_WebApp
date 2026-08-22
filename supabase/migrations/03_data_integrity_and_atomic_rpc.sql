@@ -257,33 +257,42 @@ BEGIN
     -- ปลดคนขับเดิม (ถ้ามี)
     IF v_old_driver_on_truck IS NOT NULL AND v_old_driver_on_truck != '-' AND v_old_driver_on_truck != p_driver_name THEN
         UPDATE public.driver_records SET assigned_truck_no = '-', updated_at = NOW() WHERE driver_name = v_old_driver_on_truck;
-        UPDATE public.truck_operations SET end_date = p_start_date, status = 'completed', updated_at = NOW() WHERE truck_no = p_truck_no AND (end_date IS NULL OR status = 'active');
+        UPDATE public.truck_operations 
+        SET end_date = GREATEST(start_date, (p_start_date - INTERVAL '1 day')::DATE), status = 'completed', updated_at = NOW() 
+        WHERE truck_no = p_truck_no AND (end_date IS NULL OR status = 'active');
         INSERT INTO public.driver_truck_history (
             driver_name, truck_no, action, reason, effective_date, truck_license, created_by, timestamp
         ) VALUES (
-            v_old_driver_on_truck, p_truck_no, 'UNASSIGN', 'ปลดออกเนื่องจากมอบหมายคนขับใหม่ (' || p_driver_name || ')', p_start_date, COALESCE(v_truck_license, '-'), p_created_by, NOW()
+            v_old_driver_on_truck, p_truck_no, 'UNASSIGN', 'ปลดออกเนื่องจากมอบหมายคนขับใหม่ (' || p_driver_name || ')', (p_start_date - INTERVAL '1 day')::DATE, COALESCE(v_truck_license, '-'), p_created_by, NOW()
         );
     END IF;
 
     -- ปลดรถเดิมของคนขับใหม่ (ถ้ามี)
     IF v_old_truck_of_driver IS NOT NULL AND v_old_truck_of_driver != '-' AND v_old_truck_of_driver != p_truck_no THEN
         UPDATE public.truck_records SET assigned_driver_name = '-', updated_at = NOW() WHERE truck_no = v_old_truck_of_driver;
-        UPDATE public.truck_operations SET end_date = p_start_date, status = 'completed', updated_at = NOW() WHERE truck_no = v_old_truck_of_driver AND (end_date IS NULL OR status = 'active');
+        UPDATE public.truck_operations 
+        SET end_date = GREATEST(start_date, (p_start_date - INTERVAL '1 day')::DATE), status = 'completed', updated_at = NOW() 
+        WHERE truck_no = v_old_truck_of_driver AND (end_date IS NULL OR status = 'active');
         INSERT INTO public.driver_truck_history (
             driver_name, truck_no, action, reason, previous_truck, effective_date, truck_license, created_by, timestamp
         ) VALUES (
-            p_driver_name, v_old_truck_of_driver, 'TRANSFER', 'ย้ายจากรถ ' || v_old_truck_of_driver || ' ไปรถ ' || p_truck_no, v_old_truck_of_driver, p_start_date, COALESCE(v_truck_license, '-'), p_created_by, NOW()
+            p_driver_name, v_old_truck_of_driver, 'TRANSFER', 'ย้ายจากรถ ' || v_old_truck_of_driver || ' ไปรถ ' || p_truck_no, v_old_truck_of_driver, (p_start_date - INTERVAL '1 day')::DATE, COALESCE(v_truck_license, '-'), p_created_by, NOW()
         );
     END IF;
 
     -- 🛡️ ปิด active operations เดิมทั้งหมดของรถคันนี้และคนขับคนนี้ (Source of Truth)
     UPDATE public.truck_operations 
-    SET end_date = p_start_date, status = 'completed', updated_at = NOW() 
+    SET end_date = GREATEST(start_date, (p_start_date - INTERVAL '1 day')::DATE), status = 'completed', updated_at = NOW() 
     WHERE truck_no = p_truck_no AND (end_date IS NULL OR status = 'active');
 
     UPDATE public.truck_operations 
-    SET end_date = p_start_date, status = 'completed', updated_at = NOW() 
+    SET end_date = GREATEST(start_date, (p_start_date - INTERVAL '1 day')::DATE), status = 'completed', updated_at = NOW() 
     WHERE driver_name = p_driver_name AND (end_date IS NULL OR status = 'active');
+
+    -- 🏖️ ปิด active leave ของคนขับคนนี้ให้อัตโนมัติเมื่อเริ่มรับงานใหม่
+    UPDATE public.driver_leave_records 
+    SET end_date = GREATEST(start_date, (p_start_date - INTERVAL '1 day')::DATE), status = 'completed', updated_at = NOW() 
+    WHERE driver_name = p_driver_name AND (end_date IS NULL OR status = 'active_leave');
 
     -- ผูกคนขับใหม่เข้ากับรถใหม่ใน Master Records
     UPDATE public.truck_records SET assigned_driver_name = p_driver_name, updated_at = NOW() WHERE truck_no = p_truck_no;

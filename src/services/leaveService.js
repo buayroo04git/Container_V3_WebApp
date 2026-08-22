@@ -20,6 +20,59 @@ function calculateDuration(startDate, endDate) {
 }
 
 /**
+ * 🧹 ฟังก์ชันตรวจและปรับปรุงสถานะการลางานอัตโนมัติ (Self-Healing Leave Status Sanitizer)
+ * หากมีวันที่สิ้นสุด (end_date หรือ expected_end_date) และวันที่นั้นผ่านมาแล้ว (< วันนี้)
+ * ระบบจะปรับสถานะเป็น 'completed' (🟢 สิ้นสุดแล้ว) พร้อมใส่วันสิ้นสุดจริงให้อัตโนมัติ
+ */
+function sanitizeLeaveRecords(list) {
+  if (!Array.isArray(list) || list.length === 0) return list;
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const idsToFix = [];
+
+  const sanitized = list.map(item => {
+    const isIndefinite = item.is_indefinite === true;
+    const definedEnd = item.end_date || (!isIndefinite && item.expected_end_date ? item.expected_end_date : null);
+
+    // ถ้ามีวันสิ้นสุดที่ระบุไว้ และวันที่นั้นผ่านมาแล้ว (definedEnd < todayStr)
+    if (definedEnd && definedEnd < todayStr && (item.status === 'active_leave' || !item.end_date)) {
+      const fixed = {
+        ...item,
+        end_date: item.end_date || definedEnd,
+        status: 'completed',
+        duration_days: calculateDuration(item.start_date, item.end_date || definedEnd),
+        updated_at: new Date().toISOString()
+      };
+      idsToFix.push(fixed);
+      return fixed;
+    }
+    return item;
+  });
+
+  // อัปเดตซิงค์ลง Supabase แบบเงียบๆ ใน background
+  if (idsToFix.length > 0) {
+    setTimeout(async () => {
+      for (const item of idsToFix) {
+        try {
+          await supabase
+            .from('driver_leave_records')
+            .update({
+              end_date: item.end_date,
+              status: 'completed',
+              duration_days: item.duration_days,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', item.id);
+        } catch (e) {
+          console.warn('Self-healing leave status fix error:', e);
+        }
+      }
+    }, 50);
+  }
+
+  return sanitized;
+}
+
+/**
  * 📥 ดึงรายการประวัติการลางานทั้งหมด
  */
 export async function fetchLeaveRecords() {
@@ -30,8 +83,9 @@ export async function fetchLeaveRecords() {
       .order('start_date', { ascending: false });
 
     if (!error && data) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
-      return { data, error: null };
+      const cleanData = sanitizeLeaveRecords(data);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(cleanData));
+      return { data: cleanData, error: null };
     }
   } catch (e) {
     console.warn('Supabase fetchLeaveRecords warning, using cache:', e);
@@ -40,7 +94,9 @@ export async function fetchLeaveRecords() {
   // Fallback Local Storage
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    return { data: saved ? JSON.parse(saved) : [], error: null };
+    const localList = saved ? JSON.parse(saved) : [];
+    const cleanLocal = sanitizeLeaveRecords(localList);
+    return { data: cleanLocal, error: null };
   } catch (e) {
     return { data: [], error: null };
   }
@@ -52,22 +108,37 @@ export async function fetchLeaveRecords() {
 export async function createLeaveRecord(recordData) {
   try {
     const id = recordData.id || `leave_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const isIndefinite = recordData.is_indefinite !== false;
+    const isIndefinite = recordData.is_indefinite === true;
     const targetEndDate = recordData.end_date || (!isIndefinite && recordData.expected_end_date ? recordData.expected_end_date : null);
     const duration = calculateDuration(recordData.start_date, targetEndDate);
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    // คำนวณสถานะอัตโนมัติ: ถ้ามีวันสิ้นสุดและเป็นวันที่ผ่านมาแล้ว ให้เป็น completed ทันที
+    let computedStatus = recordData.status;
+    let actualEnd = recordData.end_date || null;
+    if (targetEndDate) {
+      if (targetEndDate < todayStr) {
+        computedStatus = 'completed';
+        if (!actualEnd) actualEnd = targetEndDate;
+      } else {
+        computedStatus = 'active_leave';
+      }
+    } else {
+      computedStatus = 'active_leave';
+    }
 
     const cleanRecord = {
       id,
       driver_name: String(recordData.driver_name || '').trim(),
       leave_type: recordData.leave_type || 'personal',
-      start_date: recordData.start_date || new Date().toISOString().slice(0, 10),
-      end_date: recordData.end_date || null,
-      expected_end_date: isIndefinite ? null : (recordData.expected_end_date || null),
+      start_date: recordData.start_date || todayStr,
+      end_date: actualEnd,
+      expected_end_date: isIndefinite ? null : (recordData.expected_end_date || targetEndDate || null),
       is_indefinite: isIndefinite,
       duration_days: duration,
       leave_reason: recordData.leave_reason?.trim() || '-',
       with_pay: recordData.with_pay || 'unpaid',
-      status: recordData.status || (recordData.end_date ? 'completed' : 'active_leave'),
+      status: computedStatus,
       approved_by: recordData.approved_by?.trim() || 'Admin',
       remark: recordData.remark?.trim() || '-',
       created_at: new Date().toISOString(),
@@ -97,22 +168,37 @@ export async function createLeaveRecord(recordData) {
  */
 export async function updateLeaveRecord(id, recordData) {
   try {
-    const isIndefinite = recordData.is_indefinite !== false;
+    const isIndefinite = recordData.is_indefinite === true;
     const targetEndDate = recordData.end_date || (!isIndefinite && recordData.expected_end_date ? recordData.expected_end_date : null);
     const duration = calculateDuration(recordData.start_date, targetEndDate);
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    // คำนวณสถานะอัตโนมัติ
+    let computedStatus = recordData.status;
+    let actualEnd = recordData.end_date || null;
+    if (targetEndDate) {
+      if (targetEndDate < todayStr) {
+        computedStatus = 'completed';
+        if (!actualEnd) actualEnd = targetEndDate;
+      } else {
+        computedStatus = 'active_leave';
+      }
+    } else {
+      computedStatus = 'active_leave';
+    }
 
     const cleanRecord = {
       ...recordData,
       driver_name: String(recordData.driver_name || '').trim(),
       leave_type: recordData.leave_type || 'personal',
-      start_date: recordData.start_date || new Date().toISOString().slice(0, 10),
-      end_date: recordData.end_date || null,
-      expected_end_date: isIndefinite ? null : (recordData.expected_end_date || null),
+      start_date: recordData.start_date || todayStr,
+      end_date: actualEnd,
+      expected_end_date: isIndefinite ? null : (recordData.expected_end_date || targetEndDate || null),
       is_indefinite: isIndefinite,
       duration_days: duration,
       leave_reason: recordData.leave_reason?.trim() || '-',
       with_pay: recordData.with_pay || 'unpaid',
-      status: recordData.status || (recordData.end_date ? 'completed' : 'active_leave'),
+      status: computedStatus,
       approved_by: recordData.approved_by?.trim() || 'Admin',
       remark: recordData.remark?.trim() || '-',
       updated_at: new Date().toISOString()

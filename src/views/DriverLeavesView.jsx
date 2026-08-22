@@ -712,7 +712,7 @@ export default function DriverLeavesView() {
                                 {r.is_indefinite ? '🟡 ลาไม่มีกำหนด' : `🟡 คาดว่าถึง ${formatDateDisplay(r.expected_end_date)}`}
                               </span>
                             ) : (
-                              formatDateDisplay(r.end_date)
+                              formatDateDisplay(r.end_date || r.expected_end_date)
                             )}
                           </td>
                         );
