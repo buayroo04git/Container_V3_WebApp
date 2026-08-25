@@ -5,6 +5,7 @@ import { fetchTrucks } from '../services/truckDriverService.js';
 import PortRatesView from './PortRatesView.jsx';
 import KpiCard from '../components/ui/KpiCard.jsx';
 import MonthPicker from '../components/ui/MonthPicker.jsx';
+import { normalizeExcelDate } from '../utils/matchingLogic.js';
 import * as XLSX from 'xlsx';
 
 export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
@@ -91,8 +92,9 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
       const isVerified = item.match_status === 'matched_green' || item.match_status === 'verified';
       if (!isVerified) return false;
 
-      const date = item.date_job_parsed || item.job_sheets?.date_job_parsed || item.date_job || item.job_sheets?.date_job || '';
-      return date >= startDate && date <= endDate;
+      const rawDate = item.date_job_parsed || item.job_sheets?.date_job_parsed || item.date_job || item.job_sheets?.date_job || '';
+      const isoDate = normalizeExcelDate(rawDate);
+      return isoDate >= startDate && isoDate <= endDate;
     });
 
     // 2. Map รถและคำนวณรายได้แยกตามตู้ 20", 40", 45"
@@ -121,7 +123,8 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
       const tNo = item.job_sheets?.truck_no || 'ไม่ระบุ';
       const dName = item.job_sheets?.driver_name || '-';
       const size = String(item.size || '20').trim();
-      const jobDate = item.date_job_parsed || item.job_sheets?.date_job_parsed || item.date_job || '';
+      const rawDate = item.date_job_parsed || item.job_sheets?.date_job_parsed || item.date_job || item.job_sheets?.date_job || '';
+      const jobDate = normalizeExcelDate(rawDate);
       const unitPrice = portBillingService.calculatePortUnitPrice(size, jobDate, portRates);
       const effectiveRatePeriod = portBillingService.findEffectivePortRate(jobDate, portRates);
 

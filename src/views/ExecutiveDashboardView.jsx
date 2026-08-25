@@ -5,6 +5,7 @@ import { truckExpenseService } from '../services/truckExpenseService.js';
 import { fetchTrucks } from '../services/truckDriverService.js';
 import KpiCard from '../components/ui/KpiCard.jsx';
 import MonthPicker from '../components/ui/MonthPicker.jsx';
+import { normalizeExcelDate } from '../utils/matchingLogic.js';
 
 export default function ExecutiveDashboardView({ setActiveTab }) {
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
@@ -91,10 +92,13 @@ export default function ExecutiveDashboardView({ setActiveTab }) {
     const startOfMonth = `${selectedMonth}-01`;
     const endOfMonth = `${selectedMonth}-31`;
 
+    const safeContainers = Array.isArray(containers) ? containers : [];
+
     // 1. กรองตู้ในงวดเดือน
-    const monthlyContainers = containers.filter(item => {
-      const date = item.date_job_parsed || item.job_sheets?.date_job_parsed || '';
-      return date >= startOfMonth && date <= endOfMonth;
+    const monthlyContainers = safeContainers.filter(item => {
+      const rawDate = item.date_job_parsed || item.job_sheets?.date_job_parsed || item.date_job || item.job_sheets?.date_job || '';
+      const isoDate = normalizeExcelDate(rawDate);
+      return isoDate >= startOfMonth && isoDate <= endOfMonth;
     });
 
     const verifiedContainers = monthlyContainers.filter(item => 
@@ -113,7 +117,8 @@ export default function ExecutiveDashboardView({ setActiveTab }) {
       const truckNo = item.job_sheets?.truck_no || 'ไม่ระบุ';
       const driverName = item.job_sheets?.driver_name || '-';
       const size = item.size || '20';
-      const jobDate = item.date_job_parsed || item.job_sheets?.date_job_parsed || '';
+      const rawDate = item.date_job_parsed || item.job_sheets?.date_job_parsed || item.date_job || item.job_sheets?.date_job || '';
+      const jobDate = normalizeExcelDate(rawDate);
       const unitPrice = portBillingService.calculatePortUnitPrice(size, jobDate, portRates);
 
       totalPortRevenue += unitPrice;
