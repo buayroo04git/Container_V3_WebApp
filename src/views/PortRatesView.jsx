@@ -2,9 +2,17 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { portBillingService, DEFAULT_PORT_RATES } from '../services/portBillingService.js';
 import MonthPicker from '../components/ui/MonthPicker.jsx';
 
-export default function PortRatesView() {
+export default function PortRatesView({
+  selectedMonth: propMonth,
+  setSelectedMonth: propSetMonth,
+  onRatesChanged,
+  isSubTab = false
+}) {
   const [rates, setRates] = useState(DEFAULT_PORT_RATES);
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [internalMonth, setInternalMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const selectedMonth = propMonth || internalMonth;
+  const setSelectedMonth = propSetMonth || setInternalMonth;
+
   const [loading, setLoading] = useState(true);
   const [editingRate, setEditingRate] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -14,6 +22,7 @@ export default function PortRatesView() {
     const { data } = await portBillingService.fetchPortRates();
     if (data) setRates(data);
     setLoading(false);
+    if (onRatesChanged) onRatesChanged(data);
   };
 
   useEffect(() => {
@@ -242,39 +251,40 @@ export default function PortRatesView() {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1280px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
       
-      {/* Header */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexWrap: 'wrap',
-        gap: '12px',
-        background: '#ffffff',
-        padding: '16px 20px',
-        borderRadius: '16px',
-        border: '1px solid #e2e8f0',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
-      }}>
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '22px' }}>💵</span>
-            <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: '#0f172a' }}>
-              เรทรายได้ที่ท่าเรือจ่ายให้เรา (Port Billing Rates Matrix)
-            </h1>
+      {!isSubTab && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px',
+          background: '#ffffff',
+          padding: '16px 20px',
+          borderRadius: '16px',
+          border: '1px solid #e2e8f0',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.03)'
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span style={{ fontSize: '22px' }}>💵</span>
+              <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: '#0f172a' }}>
+                เรทท่าเรือ (Port Billing Rates)
+              </h1>
+            </div>
+            <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: '#64748b' }}>
+              กำหนดราคาค่ารอบที่ท่าเรือจ่ายให้เรา แยกตามรอบครึ่งเดือนแรก (1-15) และครึ่งเดือนหลัง (16-สิ้นเดือน)
+            </p>
           </div>
-          <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: '#64748b' }}>
-            กำหนดราคาค่ารอบที่ท่าเรือจ่ายให้เรา แยกตามรอบครึ่งเดือนแรก (1-15) และครึ่งเดือนหลัง (16-สิ้นเดือน)
-          </p>
-        </div>
 
-        <MonthPicker
-          value={selectedMonth}
-          onChange={setSelectedMonth}
-          label="งวดเดือน:"
-        />
-      </div>
+          <MonthPicker
+            value={selectedMonth}
+            onChange={setSelectedMonth}
+            label="งวดเดือน:"
+          />
+        </div>
+      )}
 
       {loading ? (
         <div style={{ textAlign: 'center', padding: '60px', color: '#64748b', background: '#fff', borderRadius: '16px' }}>

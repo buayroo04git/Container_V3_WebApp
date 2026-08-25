@@ -112,17 +112,10 @@ export const NAVIGATION_SECTIONS = [
     items: [
       {
         id: 'truck-pnl',
-        label: 'กำไร-ขาดทุนรายคัน (P&L)',
+        label: 'ผลประกอบการ & รายได้รถ',
         icon: '📈',
-        description: 'เปรียบเทียบรายรับท่าเรือกับต้นทุน (น้ำมัน/ซ่อม/งวด/คนขับ) รายคันรถ',
+        description: 'สรุปรายได้ที่รถสร้างจากตู้ท่าเรือ ต้นทุนฟลีท และจัดการเรทท่าเรือ',
         component: TruckPnlView,
-      },
-      {
-        id: 'port-rates',
-        label: 'เรทรายได้ที่ท่าเรือจ่ายเรา',
-        icon: '💵',
-        description: 'กำหนดราคาตู้ 20’/40’/45’ ที่ท่าเรือจ่ายให้เราตามเส้นทาง/ช่วงเวลา',
-        component: PortRatesView,
       },
       {
         id: 'truck-expenses',
@@ -158,6 +151,7 @@ export const NAVIGATION_SECTIONS = [
 
 // Legacy / Shortcut navigation aliases
 const NAVIGATION_ALIASES = {
+  'port-rates': { targetId: 'truck-pnl', defaultProps: { defaultSubTab: 'rates' } },
   'fleet-maintenance': { targetId: 'fleet-trucks', defaultProps: { defaultSubTab: 'maintenance' } },
   'fleet-leaves': { targetId: 'fleet-drivers', defaultProps: { defaultSubTab: 'leaves' } },
   'fleet-history': { targetId: 'fleet-operations', defaultProps: { defaultSubTab: 'history' } },
