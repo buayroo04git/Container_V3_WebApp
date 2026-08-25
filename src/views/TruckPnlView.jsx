@@ -24,20 +24,36 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
       const [
         ratesRes,
         trucksRes,
-        itemsRes
+        itemsRes,
+        sheetsRes
       ] = await Promise.all([
         portBillingService.fetchPortRates(),
         fetchTrucks(),
-        supabase.from('job_sheet_items').select('id, container_no, size, port, match_status, date_job_parsed, date_job, job_sheet_id, job_sheets(truck_no, driver_name, date_job_parsed, date_job)')
+        supabase.from('job_sheet_items').select('id, container_no, size, port, match_status, date_job_parsed, date_job, job_sheet_id').limit(10000),
+        supabase.from('job_sheets').select('id, truck_no, driver_name, date_job_parsed, date_job, status').neq('status', 'deleted').limit(10000)
       ]);
 
       const ratesList = Array.isArray(ratesRes) ? ratesRes : (ratesRes?.data || []);
       const trucksList = Array.isArray(trucksRes) ? trucksRes : (trucksRes?.data || []);
-      const itemsList = Array.isArray(itemsRes) ? itemsRes : (itemsRes?.data || []);
+      const rawItems = Array.isArray(itemsRes) ? itemsRes : (itemsRes?.data || []);
+      const rawSheets = Array.isArray(sheetsRes) ? sheetsRes : (sheetsRes?.data || []);
+
+      const sheetMap = {};
+      rawSheets.forEach(s => {
+        if (s && s.id) sheetMap[s.id] = s;
+      });
+
+      const joinedItems = rawItems.map(item => {
+        const sheet = sheetMap[item.job_sheet_id] || {};
+        return {
+          ...item,
+          job_sheets: sheet
+        };
+      });
 
       setPortRates(ratesList);
       setTrucks(trucksList);
-      setContainers(itemsList);
+      setContainers(joinedItems);
     } catch (err) {
       console.error('load revenue data error:', err);
     } finally {
