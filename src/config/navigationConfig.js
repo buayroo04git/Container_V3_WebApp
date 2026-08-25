@@ -1,3 +1,4 @@
+import ExecutiveDashboardView from '../views/ExecutiveDashboardView';
 import ScannerView from '../views/ScannerView';
 import BatchManagerView from '../views/BatchManagerView';
 import OcrContainerHistoryView from '../views/OcrContainerHistoryView';
@@ -7,102 +8,84 @@ import FleetDriversHubView from '../views/FleetDriversHubView';
 import FleetOperationsHubView from '../views/FleetOperationsHubView';
 import DriverPayrollView from '../views/DriverPayrollView';
 import TruckExpensesView from '../views/TruckExpensesView';
+import TruckPnlView from '../views/TruckPnlView';
+import PortRatesView from '../views/PortRatesView';
 import SettingsView from '../views/SettingsView';
 
 /**
  * 🗺️ Navigation Registry (Master Menu Configuration)
  * 
  * ทุกเมนูในระบบจะถูกลงทะเบียนไว้ที่นี่ที่เดียว
- * หากต้องการเพิ่มเมนูใหม่ในอนาคต:
- * 1. สร้าง Component View ใน src/views/...
- * 2. นำมาเพิ่ม 1 Object ในหมวดหมู่ที่ต้องการด้านล่างนี้
- * 3. ระบบ Sidebar และ Route ใน App.jsx จะทำงานทันทีอัตโนมัติ 100%
+ * จัดหมวดหมู่ 3 เสาหลัก + แดชบอร์ดภาพรวมผู้บริหาร
  */
 export const NAVIGATION_SECTIONS = [
   {
-    id: 'jobsheets',
-    title: 'ใบงาน',
-    icon: '📄',
+    id: 'executive',
+    title: 'ภาพรวมบริหาร',
+    icon: '📊',
+    items: [
+      {
+        id: 'executive-dashboard',
+        label: 'แดชบอร์ดภาพรวม',
+        icon: '📊',
+        description: 'ศูนย์รวมรายรับท่าเรือ ต้นทุนฟลีท และสรุปกำไรสุทธิแบบ Real-time',
+        component: ExecutiveDashboardView,
+      }
+    ]
+  },
+  {
+    id: 'operations',
+    title: '1. ปฏิบัติการ & สแกน',
+    icon: '📦',
     items: [
       {
         id: 'jobsheet-pending',
-        label: 'Pending',
+        label: 'คิวสแกนใบงาน OCR',
         icon: '⏳',
-        description: 'รอสแกน / ตรวจสอบ / Draft',
+        description: 'รอสแกน / ตรวจสอบ / บันทึก',
         component: ScannerView,
       },
       {
         id: 'jobsheet-completed',
-        label: 'Completed',
+        label: 'จัดการรอบงาน (Batch)',
         icon: '✅',
         description: 'ประวัติใบงานที่บันทึกแล้ว',
         component: BatchManagerView,
       },
       {
+        id: 'containers-all',
+        label: 'ฐานข้อมูลใบวางบิล',
+        icon: '🗄️',
+        description: 'เลขตู้ทั้งหมดจากไฟล์วางบิล Master DB',
+        component: DatabaseView,
+        defaultProps: { activeFilter: 'all' }
+      },
+      {
         id: 'jobsheet-history',
-        label: 'OCR Container History',
-        icon: '📊',
+        label: 'ประวัติตู้ทั้งหมด',
+        icon: '📋',
         description: 'ประวัติตู้ทั้งหมดจากใบงาน (Completed & Pending)',
         component: OcrContainerHistoryView,
       }
     ]
   },
   {
-    id: 'containers',
-    title: 'Containers',
-    icon: '📦',
+    id: 'payroll',
+    title: '2. คนขับ & เงินเดือน',
+    icon: '👨‍✈️',
     items: [
       {
-        id: 'containers-all',
-        label: 'All Containers',
-        icon: '📋',
-        description: 'เลขตู้ทั้งหมดจากไฟล์',
-        component: DatabaseView,
-        defaultProps: { activeFilter: 'all' }
-      },
-      {
-        id: 'containers-matched',
-        label: 'Matched',
-        icon: '🟢',
-        description: 'สแกนแล้ว & พบในไฟล์',
-        component: DatabaseView,
-        defaultProps: { activeFilter: 'matched' }
-      },
-      {
-        id: 'containers-unmatched',
-        label: 'Unmatched',
-        icon: '🔴',
-        description: 'สแกนแล้ว แต่ไม่พบในไฟล์',
-        component: DatabaseView,
-        defaultProps: { activeFilter: 'unmatched' }
-      },
-      {
-        id: 'containers-missing',
-        label: 'Missing',
-        icon: '⚠️',
-        description: 'อยู่ในไฟล์ แต่ยังไม่สแกน',
-        component: DatabaseView,
-        defaultProps: { activeFilter: 'missing' }
-      }
-    ]
-  },
-  {
-    id: 'fleet',
-    title: 'รถและคนขับ',
-    icon: '🚚',
-    items: [
-      {
-        id: 'fleet-trucks',
-        label: 'ข้อมูลรถและการซ่อม',
-        icon: '🚛',
-        description: 'จัดการทะเบียนรถ คนขับประจำ และประวัติการซ่อมบำรุง',
-        component: FleetTrucksHubView,
+        id: 'driver-payroll',
+        label: 'สรุปผลงาน & ค่ารอบ',
+        icon: '📦',
+        description: 'สรุปผลงานตู้ที่ตรวจผ่าน ค่ารอบ เงินพิเศษ บัญชีเบิก และทะเบียนคนขับ',
+        component: DriverPayrollView,
       },
       {
         id: 'fleet-drivers',
-        label: 'ข้อมูลคนขับและการลา',
+        label: 'ทะเบียนคนขับ & ฐานเงินเดือน',
         icon: '👤',
-        description: 'ทะเบียนคนขับ ใบอนุญาต และประวัติการลางาน',
+        description: 'ทะเบียนคนขับ ใบอนุญาต ฐานเงินเดือน และประวัติการลางาน',
         component: FleetDriversHubView,
       },
       {
@@ -115,16 +98,23 @@ export const NAVIGATION_SECTIONS = [
     ]
   },
   {
-    id: 'payroll',
-    title: 'ค่ารอบ & การเงิน',
-    icon: '💰',
+    id: 'fleet',
+    title: '3. รถ & ผลประกอบการ',
+    icon: '🚛',
     items: [
       {
-        id: 'driver-payroll',
-        label: 'สรุปรายได้คนขับ',
+        id: 'truck-pnl',
+        label: 'กำไร-ขาดทุนรายคัน (P&L)',
+        icon: '📈',
+        description: 'เปรียบเทียบรายรับท่าเรือกับต้นทุน (น้ำมัน/ซ่อม/งวด/คนขับ) รายคันรถ',
+        component: TruckPnlView,
+      },
+      {
+        id: 'port-rates',
+        label: 'เรทรายได้ที่ท่าเรือจ่ายเรา',
         icon: '💵',
-        description: 'ศูนย์รวมสรุปรายได้ ค่ารอบตู้ เงินพิเศษ ฐานเงินเดือน ประกันสังคม และเบิกล่วงหน้า',
-        component: DriverPayrollView,
+        description: 'กำหนดราคาตู้ 20’/40’/45’ ที่ท่าเรือจ่ายให้เราตามเส้นทาง/ช่วงเวลา',
+        component: PortRatesView,
       },
       {
         id: 'truck-expenses',
@@ -132,6 +122,13 @@ export const NAVIGATION_SECTIONS = [
         icon: '⛽',
         description: 'บันทึกค่าใช้จ่ายรถ ค่าน้ำมัน ค่าซ่อมบำรุง และค่างวดรถแบบเบ็ดเสร็จ',
         component: TruckExpensesView,
+      },
+      {
+        id: 'fleet-trucks',
+        label: 'ทะเบียนรถ & ซ่อมบำรุง',
+        icon: '🚚',
+        description: 'จัดการทะเบียนรถ คนขับประจำ และประวัติการซ่อมบำรุง',
+        component: FleetTrucksHubView,
       }
     ]
   },
@@ -156,7 +153,10 @@ const NAVIGATION_ALIASES = {
   'fleet-maintenance': { targetId: 'fleet-trucks', defaultProps: { defaultSubTab: 'maintenance' } },
   'fleet-leaves': { targetId: 'fleet-drivers', defaultProps: { defaultSubTab: 'leaves' } },
   'fleet-history': { targetId: 'fleet-operations', defaultProps: { defaultSubTab: 'history' } },
-  'driver-rates': { targetId: 'driver-payroll', defaultProps: { defaultSubTab: 'rates' } }
+  'driver-rates': { targetId: 'driver-payroll', defaultProps: { defaultSubTab: 'rates' } },
+  'containers-matched': { targetId: 'containers-all', defaultProps: { activeFilter: 'matched' } },
+  'containers-unmatched': { targetId: 'containers-all', defaultProps: { activeFilter: 'unmatched' } },
+  'containers-missing': { targetId: 'containers-all', defaultProps: { activeFilter: 'missing' } }
 };
 
 /**
