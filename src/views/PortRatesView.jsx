@@ -47,16 +47,27 @@ export default function PortRatesView() {
     const isH1 = cycleHalf === 'H1';
     const existingList = isH1 ? h1Rates : h2Rates;
     const nextPeriodNum = existingList.length + 1;
-    const defaultStartDay = isH1 ? '01' : '16';
-    const defaultEndDay = isH1 ? '15' : '31';
+    const [yStr, mStr] = (selectedMonth || new Date().toISOString().slice(0, 7)).split('-');
+    const year = Number(yStr) || new Date().getFullYear();
+    const month = Number(mStr) || (new Date().getMonth() + 1);
+    const lastDayNum = new Date(year, month, 0).getDate(); // 28, 29, 30, or 31
+
+    let startDay = isH1 ? '01' : '16';
+    if (existingList.length > 0) {
+      const lastP = existingList[existingList.length - 1];
+      const prevEnd = Number((lastP.end_date || '').slice(8, 10)) || (isH1 ? 1 : 16);
+      const nextStart = Math.min(prevEnd + 1, isH1 ? 15 : lastDayNum);
+      startDay = String(nextStart).padStart(2, '0');
+    }
+    const endDay = isH1 ? '15' : String(lastDayNum).padStart(2, '0');
 
     setEditingRate({
       id: `port_rate_${selectedMonth}_${cycleHalf.toLowerCase()}_p${nextPeriodNum}_${Date.now()}`,
       month_period: selectedMonth,
       cycle_half: cycleHalf,
       period_name: `ช่วงที่ ${nextPeriodNum}`,
-      start_date: `${selectedMonth}-${defaultStartDay}`,
-      end_date: `${selectedMonth}-${defaultEndDay}`,
+      start_date: `${selectedMonth}-${startDay}`,
+      end_date: `${selectedMonth}-${endDay}`,
       rate_20: 721,
       rate_40: 771,
       rate_45: 771,
@@ -322,7 +333,18 @@ export default function PortRatesView() {
                   <label style={{ fontSize: '12.5px', fontWeight: 700, color: '#475569' }}>รอบครึ่งเดือน:</label>
                   <select
                     value={editingRate.cycle_half || 'H1'}
-                    onChange={e => setEditingRate({ ...editingRate, cycle_half: e.target.value })}
+                    onChange={e => {
+                      const newCycle = e.target.value;
+                      const isH1 = newCycle === 'H1';
+                      const [yStr, mStr] = (selectedMonth || new Date().toISOString().slice(0, 7)).split('-');
+                      const lastDay = new Date(Number(yStr), Number(mStr), 0).getDate();
+                      setEditingRate({
+                        ...editingRate,
+                        cycle_half: newCycle,
+                        start_date: `${selectedMonth}-${isH1 ? '01' : '16'}`,
+                        end_date: `${selectedMonth}-${isH1 ? '15' : String(lastDay).padStart(2, '0')}`
+                      });
+                    }}
                     style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '13px', fontWeight: 700 }}
                   >
                     <option value="H1">🌓 ครึ่งเดือนแรก (1-15)</option>
