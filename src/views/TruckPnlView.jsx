@@ -25,36 +25,20 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
       const [
         ratesRes,
         trucksRes,
-        itemsRes,
-        sheetsRes
+        masterRes
       ] = await Promise.all([
         portBillingService.fetchPortRates(),
         fetchTrucks(),
-        supabase.from('job_sheet_items').select('id, container_no, size, port, match_status, date_job_parsed, date_job, job_sheet_id').limit(10000),
-        supabase.from('job_sheets').select('id, truck_no, driver_name, date_job_parsed, date_job, status').neq('status', 'deleted').limit(10000)
+        supabase.from('container_records').select('id, container_no, truck_no, port, size, date_job, date_job_parsed, batch_name').limit(20000)
       ]);
 
       const ratesList = Array.isArray(ratesRes) ? ratesRes : (ratesRes?.data || []);
       const trucksList = Array.isArray(trucksRes) ? trucksRes : (trucksRes?.data || []);
-      const rawItems = Array.isArray(itemsRes) ? itemsRes : (itemsRes?.data || []);
-      const rawSheets = Array.isArray(sheetsRes) ? sheetsRes : (sheetsRes?.data || []);
-
-      const sheetMap = {};
-      rawSheets.forEach(s => {
-        if (s && s.id) sheetMap[s.id] = s;
-      });
-
-      const joinedItems = rawItems.map(item => {
-        const sheet = sheetMap[item.job_sheet_id] || {};
-        return {
-          ...item,
-          job_sheets: sheet
-        };
-      });
+      const masterList = Array.isArray(masterRes?.data) ? masterRes.data : (Array.isArray(masterRes) ? masterRes : []);
 
       setPortRates(ratesList);
       setTrucks(trucksList);
-      setContainers(joinedItems);
+      setContainers(masterList);
     } catch (err) {
       console.error('load revenue data error:', err);
     } finally {
@@ -66,7 +50,7 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
     loadData();
   }, [loadData]);
 
-  // คำนวณรายได้รถเพียวๆ ตามรอบงวดและเรทท่าเรือ
+  // คำนวณรายได้รถเพียวๆ จากใบวางบิล Master DB (container_records)
   const revenueData = useMemo(() => {
     const [yStr, mStr] = (selectedMonth || new Date().toISOString().slice(0, 7)).split('-');
     const year = Number(yStr) || new Date().getFullYear();
@@ -87,12 +71,17 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
     const safeContainers = Array.isArray(containers) ? containers : [];
     const safeTrucks = Array.isArray(trucks) ? trucks : [];
 
-    // 1. กรองตู้ที่ตรวจผ่านในงวดที่เลือก
-    const verifiedContainers = safeContainers.filter(item => {
-      const isVerified = item.match_status === 'matched_green' || item.match_status === 'verified';
-      if (!isVerified) return false;
+    // Map คนขับประจำรถ
+    const truckDriverMap = {};
+    safeTrucks.forEach(tr => {
+      if (tr && tr.truck_no) {
+        truckDriverMap[String(tr.truck_no).trim()] = tr.assigned_driver_name || '-';
+      }
+    });
 
-      const rawDate = item.date_job_parsed || item.job_sheets?.date_job_parsed || item.date_job || item.job_sheets?.date_job || '';
+    // 1. กรองตู้จากใบวางบิล Master DB ในงวดที่เลือก
+    const monthlyContainers = safeContainers.filter(item => {
+      const rawDate = item.date_job_parsed || item.date_job || '';
       const isoDate = normalizeExcelDate(rawDate);
       return isoDate >= startDate && isoDate <= endDate;
     });
@@ -102,7 +91,8 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
 
     // เริ่มต้นจากทะเบียนรถทั้งหมดในระบบ
     safeTrucks.forEach(tr => {
-      const tNo = tr.truck_no;
+      const tNo = String(tr.truck_no || '').trim();
+      if (!tNo) return;
       truckMap[tNo] = {
         truck_no: tNo,
         driver_name: tr.assigned_driver_name || '-',
@@ -118,15 +108,15 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
       };
     });
 
-    // รวมตู้รายคันรถ
-    verifiedContainers.forEach(item => {
-      const tNo = item.job_sheets?.truck_no || 'ไม่ระบุ';
-      const dName = item.job_sheets?.driver_name || '-';
+    // รวมตู้รายคันรถจากใบวางบิล Master DB
+    monthlyContainers.forEach(item => {
+      const tNo = String(item.truck_no || '').trim() || 'ไม่ระบุ';
       const size = String(item.size || '20').trim();
-      const rawDate = item.date_job_parsed || item.job_sheets?.date_job_parsed || item.date_job || item.job_sheets?.date_job || '';
+      const rawDate = item.date_job_parsed || item.date_job || '';
       const jobDate = normalizeExcelDate(rawDate);
       const unitPrice = portBillingService.calculatePortUnitPrice(size, jobDate, portRates);
       const effectiveRatePeriod = portBillingService.findEffectivePortRate(jobDate, portRates);
+      const dName = truckDriverMap[tNo] || '-';
 
       if (!truckMap[tNo]) {
         truckMap[tNo] = {
@@ -142,10 +132,6 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
           total_port_revenue: 0,
           items: []
         };
-      }
-
-      if (dName !== '-' && truckMap[tNo].driver_name === '-') {
-        truckMap[tNo].driver_name = dName;
       }
 
       truckMap[tNo].total_containers += 1;
@@ -166,7 +152,8 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
         id: item.id,
         container_no: item.container_no,
         size,
-        date_job: jobDate,
+        date_job: jobDate || rawDate,
+        raw_date: rawDate,
         unit_price: unitPrice,
         period_name: effectiveRatePeriod?.period_name || '-'
       });
