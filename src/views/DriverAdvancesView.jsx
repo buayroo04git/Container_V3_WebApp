@@ -21,14 +21,16 @@ export default function DriverAdvancesView() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [advancesData, driversData] = await Promise.all([
+      const [advancesRes, driversData] = await Promise.all([
         driverAdvanceService.fetchAdvances(),
         fetchDrivers()
       ]);
-      setAdvances(advancesData || []);
+      const list = Array.isArray(advancesRes) ? advancesRes : (advancesRes?.data || []);
+      setAdvances(list);
       setDrivers(driversData || []);
     } catch (err) {
       console.error('load advances error:', err);
+      setAdvances([]);
     } finally {
       setLoading(false);
     }
@@ -40,7 +42,8 @@ export default function DriverAdvancesView() {
 
   // กรองข้อมูล
   const filteredAdvances = useMemo(() => {
-    return advances.filter(item => {
+    const list = Array.isArray(advances) ? advances : [];
+    return list.filter(item => {
       // 1. หมวดหมู่
       if (categoryFilter !== 'all') {
         const cat = item.category || 'single_advance';
@@ -75,7 +78,8 @@ export default function DriverAdvancesView() {
     let totalSingleAdvances = 0;
     let totalInstallmentLoans = 0;
 
-    advances.forEach(adv => {
+    const list = Array.isArray(advances) ? advances : [];
+    list.forEach(adv => {
       const amt = Number(adv.amount) || 0;
       const cat = adv.category || 'single_advance';
       const remaining = Number(adv.remaining_amount) || 0;
