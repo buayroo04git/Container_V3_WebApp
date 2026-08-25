@@ -7,6 +7,7 @@ import FleetTrucksHubView from '../views/FleetTrucksHubView';
 import FleetDriversHubView from '../views/FleetDriversHubView';
 import FleetOperationsHubView from '../views/FleetOperationsHubView';
 import DriverPayrollView from '../views/DriverPayrollView';
+import DriverAdvancesView from '../views/DriverAdvancesView';
 import TruckExpensesView from '../views/TruckExpensesView';
 import TruckPnlView from '../views/TruckPnlView';
 import PortRatesView from '../views/PortRatesView';
@@ -78,14 +79,21 @@ export const NAVIGATION_SECTIONS = [
         id: 'driver-payroll',
         label: 'สรุปผลงาน & ค่ารอบ',
         icon: '📦',
-        description: 'สรุปผลงานตู้ที่ตรวจผ่าน ค่ารอบ เงินพิเศษ บัญชีเบิก และทะเบียนคนขับ',
+        description: 'สรุปผลงานตู้ที่ตรวจผ่าน ค่ารอบ และเงินพิเศษขั้นบันได',
         component: DriverPayrollView,
       },
       {
+        id: 'driver-advances',
+        label: 'บัญชีเบิกล่วงหน้า & กู้ยืม',
+        icon: '💸',
+        description: 'บันทึกการเบิกค่าเที่ยว เบิกเงินล่วงหน้า และสัญญาเงินยืมก้อนผ่อนชำระ',
+        component: DriverAdvancesView,
+      },
+      {
         id: 'fleet-drivers',
-        label: 'ทะเบียนคนขับ & ประวัติการลา',
+        label: 'ทะเบียนคนขับ & ฐานเงินเดือน',
         icon: '👤',
-        description: 'ทะเบียนคนขับ ใบอนุญาต ท.4 เบอร์ติดต่อ และประวัติการลางาน',
+        description: 'ทะเบียนคนขับ ฐานเงินเดือน ประกันสังคม และประวัติการลางาน',
         component: FleetDriversHubView,
       },
       {
