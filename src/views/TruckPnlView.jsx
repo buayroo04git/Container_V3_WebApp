@@ -235,12 +235,12 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '22px' }}>📈</span>
             <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: '#0f172a' }}>
-              {activeSubTab === 'revenue' ? 'บัญชีสรุปรายได้รถ (Truck Port Revenue Ledger)' : 'เรทท่าเรือ (Port Billing Rates)'}
+              {activeSubTab === 'revenue' ? 'รายได้รถ (Truck Revenue)' : 'เรทท่าเรือ (Port Billing Rates)'}
             </h1>
           </div>
           <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: '#64748b' }}>
             {activeSubTab === 'revenue'
-              ? 'สรุปรายได้ที่รถแต่ละคันสร้างจากตู้ท่าเรือ คำนวณตามขนาดตู้ 20"/40" และเรทช่วงเวลาจริง'
+              ? 'สรุปรายได้ที่รถแต่ละคันสร้างจากตู้ท่าเรือในใบวางบิล คำนวณตามขนาดตู้ 20"/40" และเรทช่วงเวลาจริง'
               : 'กำหนดราคาตู้ 20" และ 40" ที่ท่าเรือจ่ายให้เรา แยกตามรอบครึ่งเดือนแรก (1-15) และครึ่งเดือนหลัง (16-สิ้นเดือน)'}
           </p>
         </div>
@@ -279,8 +279,8 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
       {/* 🧭 Subtabs Navigation */}
       <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid #e2e8f0', paddingBottom: '4px' }}>
         {[
-          { id: 'revenue', label: '📈 บัญชีรายได้รถ (Truck Revenue)', desc: 'สรุปรายได้ตู้ท่าเรือรายคัน' },
-          { id: 'rates', label: '💵 เรทท่าเรือ (Port Rates)', desc: 'ตั้งค่าราคาตู้ 20"/40" ตามช่วงเวลา' }
+          { id: 'revenue', label: '📈 รายได้รถ', desc: 'สรุปรายได้ตู้ท่าเรือรายคัน' },
+          { id: 'rates', label: '💵 เรทท่าเรือ', desc: 'ตั้งค่าราคาตู้ 20"/40" ตามช่วงเวลา' }
         ].map(tab => {
           const isActive = activeSubTab === tab.id;
           return (

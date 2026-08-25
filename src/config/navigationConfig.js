@@ -41,7 +41,7 @@ export const NAVIGATION_SECTIONS = [
     items: [
       {
         id: 'jobsheet-pending',
-        label: 'คิวสแกนใบงาน OCR',
+        label: 'Pending',
         icon: '⏳',
         description: 'รอสแกน / ตรวจสอบ / บันทึก',
         component: ScannerView,
@@ -55,7 +55,7 @@ export const NAVIGATION_SECTIONS = [
       },
       {
         id: 'containers-all',
-        label: 'ฐานข้อมูลใบวางบิล',
+        label: 'Containers DB',
         icon: '🗄️',
         description: 'เลขตู้ทั้งหมดจากไฟล์วางบิล Master DB',
         component: DatabaseView,
@@ -72,14 +72,14 @@ export const NAVIGATION_SECTIONS = [
   },
   {
     id: 'payroll',
-    title: '2. คนขับ & เงินเดือน',
+    title: '2. คนขับ & ผลงานวิ่งตู้',
     icon: '👨‍✈️',
     items: [
       {
         id: 'driver-payroll',
-        label: 'สรุปผลงาน & ค่ารอบ',
+        label: 'ผลงานคนขับ & ค่าเที่ยว',
         icon: '📦',
-        description: 'สรุปผลงานตู้ที่ตรวจผ่าน ค่ารอบ และเงินพิเศษขั้นบันได',
+        description: 'สรุปผลงานตู้ที่ตรวจผ่าน ค่าเที่ยว และเงินพิเศษขั้นบันได',
         component: DriverPayrollView,
       },
       {
@@ -112,7 +112,7 @@ export const NAVIGATION_SECTIONS = [
     items: [
       {
         id: 'truck-pnl',
-        label: 'ผลประกอบการ & รายได้รถ',
+        label: 'รายได้รถ',
         icon: '📈',
         description: 'สรุปรายได้ที่รถสร้างจากตู้ท่าเรือ ต้นทุนฟลีท และจัดการเรทท่าเรือ',
         component: TruckPnlView,
