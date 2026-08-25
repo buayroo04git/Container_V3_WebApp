@@ -1,11 +1,14 @@
 import { supabase } from '../supabaseClient.js';
 import { normalizeExcelDate } from '../utils/matchingLogic.js';
 
-const LOCAL_STORAGE_PORT_RATES_KEY = 'port_billing_rates_cache_v2';
+const LOCAL_STORAGE_PORT_RATES_KEY = 'port_billing_rates_cache_v3';
 
 export const DEFAULT_PORT_RATES = [
+  // 🌓 ครึ่งเดือนแรก (01/05/2026 - 15/05/2026)
   {
-    id: 'port_rate_2026_05_p1',
+    id: 'port_rate_2026_05_h1_p1',
+    month_period: '2026-05',
+    cycle_half: 'H1',
     period_name: 'ช่วงที่ 1',
     start_date: '2026-05-01',
     end_date: '2026-05-02',
@@ -15,10 +18,12 @@ export const DEFAULT_PORT_RATES = [
     rate_default: 734,
     port_name: 'ท่าเรือทั่วไป',
     is_active: true,
-    remark: 'เรทท่าเรือ 01/May/2026 - 02/May/2026'
+    remark: 'ครึ่งแรก ช่วงที่ 1 (01-02 พ.ค.)'
   },
   {
-    id: 'port_rate_2026_05_p2',
+    id: 'port_rate_2026_05_h1_p2',
+    month_period: '2026-05',
+    cycle_half: 'H1',
     period_name: 'ช่วงที่ 2',
     start_date: '2026-05-03',
     end_date: '2026-05-09',
@@ -28,10 +33,12 @@ export const DEFAULT_PORT_RATES = [
     rate_default: 721,
     port_name: 'ท่าเรือทั่วไป',
     is_active: true,
-    remark: 'เรทท่าเรือ 03/May/2026 - 09/May/2026'
+    remark: 'ครึ่งแรก ช่วงที่ 2 (03-09 พ.ค.)'
   },
   {
-    id: 'port_rate_2026_05_p3',
+    id: 'port_rate_2026_05_h1_p3',
+    month_period: '2026-05',
+    cycle_half: 'H1',
     period_name: 'ช่วงที่ 3',
     start_date: '2026-05-10',
     end_date: '2026-05-15',
@@ -41,7 +48,38 @@ export const DEFAULT_PORT_RATES = [
     rate_default: 721,
     port_name: 'ท่าเรือทั่วไป',
     is_active: true,
-    remark: 'เรทท่าเรือ 10/May/2026 - 15/May/2026'
+    remark: 'ครึ่งแรก ช่วงที่ 3 (10-15 พ.ค.)'
+  },
+  // 🌕 ครึ่งเดือนหลัง (16/05/2026 - 31/05/2026)
+  {
+    id: 'port_rate_2026_05_h2_p1',
+    month_period: '2026-05',
+    cycle_half: 'H2',
+    period_name: 'ช่วงที่ 1',
+    start_date: '2026-05-16',
+    end_date: '2026-05-23',
+    rate_20: 721,
+    rate_40: 771,
+    rate_45: 771,
+    rate_default: 721,
+    port_name: 'ท่าเรือทั่วไป',
+    is_active: true,
+    remark: 'ครึ่งหลัง ช่วงที่ 1 (16-23 พ.ค.)'
+  },
+  {
+    id: 'port_rate_2026_05_h2_p2',
+    month_period: '2026-05',
+    cycle_half: 'H2',
+    period_name: 'ช่วงที่ 2',
+    start_date: '2026-05-24',
+    end_date: '2026-05-31',
+    rate_20: 734,
+    rate_40: 784,
+    rate_45: 784,
+    rate_default: 734,
+    port_name: 'ท่าเรือทั่วไป',
+    is_active: true,
+    remark: 'ครึ่งหลัง ช่วงที่ 2 (24-31 พ.ค.)'
   }
 ];
 
@@ -100,11 +138,18 @@ export const portBillingService = {
       const { data: currentRates } = await this.fetchPortRates();
       const updatedList = [...(currentRates || [])];
 
+      const startDate = rateRecord.start_date || new Date().toISOString().slice(0, 10);
+      const monthPeriod = rateRecord.month_period || startDate.slice(0, 7);
+      const dayNum = Number(startDate.slice(8, 10)) || 1;
+      const cycleHalf = rateRecord.cycle_half || (dayNum <= 15 ? 'H1' : 'H2');
+
       const recordToSave = {
         id: rateRecord.id || `port_rate_${Date.now()}`,
-        period_name: rateRecord.period_name || `ช่วงที่ ${updatedList.length + 1}`,
+        month_period: monthPeriod,
+        cycle_half: cycleHalf,
+        period_name: rateRecord.period_name || 'ช่วงที่ 1',
         port_name: rateRecord.port_name || 'ท่าเรือทั่วไป',
-        start_date: rateRecord.start_date || new Date().toISOString().slice(0, 10),
+        start_date: startDate,
         end_date: rateRecord.end_date || null,
         rate_20: Number(rateRecord.rate_20) || 721,
         rate_40: Number(rateRecord.rate_40) || 771,
@@ -122,7 +167,6 @@ export const portBillingService = {
         updatedList.push(recordToSave);
       }
 
-      // Sort by start_date ascending
       updatedList.sort((a, b) => (a.start_date || '').localeCompare(b.start_date || ''));
       safeSetStorage(LOCAL_STORAGE_PORT_RATES_KEY, JSON.stringify(updatedList));
 
