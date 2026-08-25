@@ -83,9 +83,9 @@ export const NAVIGATION_SECTIONS = [
       },
       {
         id: 'fleet-drivers',
-        label: 'ทะเบียนคนขับ & ฐานเงินเดือน',
+        label: 'ทะเบียนคนขับ & ประวัติการลา',
         icon: '👤',
-        description: 'ทะเบียนคนขับ ใบอนุญาต ฐานเงินเดือน และประวัติการลางาน',
+        description: 'ทะเบียนคนขับ ใบอนุญาต ท.4 เบอร์ติดต่อ และประวัติการลางาน',
         component: FleetDriversHubView,
       },
       {
