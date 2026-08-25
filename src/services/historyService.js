@@ -1,4 +1,4 @@
-import { supabase } from '../supabaseClient';
+import { supabase } from '../supabaseClient.js';
 
 const STORAGE_KEY = 'fleet_driver_truck_history';
 
@@ -31,6 +31,68 @@ export async function fetchAssignmentHistory() {
   }
 
   return getAllAssignmentHistory();
+}
+
+/**
+  * 📥 ดึงรายการประวัติแบบแบ่งหน้า (Server-Side Pagination & Filter)
+  */
+export async function fetchAssignmentHistoryPaginated(params = {}) {
+  const {
+    page = 1,
+    pageSize = 50,
+    searchTerm = '',
+    action = 'ALL',
+    truckNo = 'ALL',
+    driverName = 'ALL',
+    dateFrom = null,
+    dateTo = null
+  } = params;
+
+  try {
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    let query = supabase
+      .from('driver_truck_history')
+      .select('*', { count: 'exact' });
+
+    if (searchTerm && searchTerm.trim()) {
+      const cleanTerm = searchTerm.trim();
+      query = query.or(`driver_name.ilike.%${cleanTerm}%,truck_no.ilike.%${cleanTerm}%,reason.ilike.%${cleanTerm}%`);
+    }
+    if (action && action !== 'ALL') {
+      query = query.eq('action', action);
+    }
+    if (truckNo && truckNo !== 'ALL') {
+      query = query.eq('truck_no', truckNo);
+    }
+    if (driverName && driverName !== 'ALL') {
+      query = query.eq('driver_name', driverName);
+    }
+    if (dateFrom) {
+      query = query.gte('effective_date', dateFrom);
+    }
+    if (dateTo) {
+      query = query.lte('effective_date', dateTo);
+    }
+
+    query = query.order('timestamp', { ascending: false }).range(from, to);
+
+    const { data, count, error } = await query;
+    if (error) throw error;
+
+    return {
+      data: data || [],
+      total: count || 0,
+      page,
+      pageSize,
+      totalPages: Math.ceil((count || 0) / pageSize),
+      error: null
+    };
+  } catch (e) {
+    console.error('fetchAssignmentHistoryPaginated error:', e);
+    return { data: [], total: 0, page: 1, pageSize, totalPages: 0, error: e };
+  }
 }
 
 /**

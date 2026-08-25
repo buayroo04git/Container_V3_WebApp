@@ -5,11 +5,11 @@ import { jobSheetService } from '../services/jobSheetService';
 import { containerService } from '../services/containerService';
 import { normalizeExcelDate } from '../utils/matchingLogic';
 import Badge from '../components/ui/Badge';
-import TableContextMenu from '../components/ui/TableContextMenu';
 import ContainerImageModal from '../components/containers/ContainerImageModal';
-import RenameColumnModal from '../components/ui/RenameColumnModal';
 import EditOcrContainerModal from '../components/ui/EditOcrContainerModal';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
+import UniversalTableContainer from '../components/ui/UniversalTableContainer';
+import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 function getPageNumbers(current, total) {
@@ -35,6 +35,7 @@ const OCR_RAW_COLUMNS = [
   'port',
   'date_job',
   'truck_no',
+  'driver_name',
   'batch_name',
   'created_at',
   'image_url',
@@ -51,6 +52,7 @@ const OCR_DEFAULT_NAMES = {
   port: 'ท่าเรือ',
   date_job: 'วันทำงาน (Date Job)',
   truck_no: 'เบอร์รถ',
+  driver_name: 'คนขับ',
   batch_name: 'รอบงาน',
   created_at: 'วันที่บันทึก',
   image_url: 'ดูใบงาน',
@@ -58,19 +60,37 @@ const OCR_DEFAULT_NAMES = {
 };
 
 const OCR_DEFAULT_WIDTHS = {
-  index: 50,
-  container_no: 190,
-  workflow_status: 135,
-  match_status: 135,
-  job_type: 95,
-  size: 75,
-  port: 80,
-  date_job: 120,
-  truck_no: 110,
-  batch_name: 150,
-  created_at: 140,
-  image_url: 85,
+  index: 45,
+  container_no: 150,
+  workflow_status: 120,
+  match_status: 120,
+  job_type: 90,
+  size: 70,
+  port: 75,
+  date_job: 110,
+  truck_no: 95,
+  driver_name: 130,
+  batch_name: 130,
+  created_at: 125,
+  image_url: 80,
   actions: 90
+};
+
+const OCR_ALIGN_MAP = {
+  index: 'center',
+  container_no: 'left',
+  workflow_status: 'center',
+  match_status: 'center',
+  job_type: 'center',
+  size: 'center',
+  port: 'center',
+  date_job: 'center',
+  truck_no: 'center',
+  driver_name: 'left',
+  batch_name: 'left',
+  created_at: 'center',
+  image_url: 'center',
+  actions: 'center'
 };
 
 export default function OcrContainerHistoryView({ setActiveTab }) {
@@ -94,8 +114,6 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(50); // 25, 50, 100, 200, 'ALL'
   const [sortConfig, setSortConfig] = useState({ key: 'created_at', direction: 'desc' });
-
-  const menuRef = useRef(null);
 
   // 1. โหลดข้อมูล Metadata (KPIs, Batches, Trucks, Master DB) ตอนเปิดหน้าจอ
   useEffect(() => {
@@ -223,41 +241,18 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
   const endIndex = rowsPerPage === 'ALL' ? totalRows : Math.min(startIndex + containers.length, totalRows);
 
   // Hook สำหรับจัดการคอลัมน์ (Visibility, Reorder, Resize, Auto-fit, Context Menu)
-  const {
-    renamingColumn,
-    setRenamingColumn,
-    visibleColumns,
-    showColumnMenu,
-    setShowColumnMenu,
-    draggedCol,
-    setDraggedCol,
-    dragOverCol,
-    setDragOverCol,
-    contextMenu,
-    setContextMenu,
-    allColumns,
-    activeColumns,
-    getColDisplayName,
-    getDefaultColWidth,
-    handleColumnReorder,
-    handleResetColumnOrder,
-    handleResizeMouseDown,
-    handleAutoFitColumn,
-    handleToggleColumnHide,
-    handleShowAllColumns,
-    handleResetColumnWidth,
-    handleHeaderContextMenu,
-    handleStartRename,
-    handleSaveAlias,
-    handleResetAlias,
-    handleResetAllAliases
-  } = useColumnPreferences({
+  const ocrPrefs = useColumnPreferences({
     storageKeyPrefix: 'ocr_history',
     rawColumns: OCR_RAW_COLUMNS,
     defaultNames: OCR_DEFAULT_NAMES,
     defaultWidths: OCR_DEFAULT_WIDTHS,
     sampleRecords: sortedContainers,
+    onSortChange: (newSort) => {
+      setSortConfig(newSort);
+    },
     formatCellValue: (col, val) => {
+      if (col === 'image_url') return val ? '🖼️ รูป' : '-';
+      if (col === 'actions') return '✏️ จัดการ';
       if (col === 'date_job') {
         const iso = normalizeExcelDate(val);
         if (iso && /^\d{4}-\d{2}-\d{2}$/.test(iso)) {
@@ -271,17 +266,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
     }
   });
 
-  // ปิดเมนูเมื่อคลิกนอก
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setShowColumnMenu(false);
-      }
-      setContextMenu(null);
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  const { activeColumns } = ocrPrefs;
 
   // ส่งออกข้อมูลเป็นไฟล์ Excel
   const handleExportExcel = () => {
@@ -674,14 +659,16 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
 
             {/* Search Box */}
             <div style={{ position: 'relative', width: '220px' }}>
+              <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '13px', pointerEvents: 'none' }}>🔍</span>
               <input 
                 type="text" 
-                placeholder="🔍 ค้นหาเลขตู้, เบอร์รถ..."
+                placeholder="ค้นหาเลขตู้, เบอร์รถ..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 style={{ 
                   height: '35px',
-                  padding: '0 12px 0 30px', 
+                  paddingLeft: '32px',
+                  paddingRight: searchTerm ? '28px' : '10px',
                   width: '100%', 
                   borderRadius: '7px', 
                   background: '#ffffff', 
@@ -692,152 +679,48 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
                   boxSizing: 'border-box'
                 }}
               />
-              <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '13px' }}>🔍</span>
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: '#94a3b8',
+                    cursor: 'pointer',
+                    padding: 0,
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="ล้างคำค้นหา"
+                >
+                  ✕
+                </button>
+              )}
             </div>
 
             {/* Column Visibility Menu */}
-            <ColumnVisibilityDropdown
-              showColumnMenu={showColumnMenu}
-              setShowColumnMenu={setShowColumnMenu}
-              menuRef={menuRef}
-              allColumns={allColumns}
-              activeColumns={activeColumns}
-              visibleColumns={visibleColumns}
-              onToggleColumnVisibility={handleToggleColumnHide}
-              getColDisplayName={getColDisplayName}
-              onStartEditAlias={(col) => handleStartRename(col)}
-              onShowAllColumns={handleShowAllColumns}
-              onResetAllAliases={handleResetAllAliases}
-            />
+            <ColumnVisibilityDropdown preferences={ocrPrefs} />
 
           </div>
         </div>
 
         {/* 4. Table */}
-        <div style={{ overflow: 'auto', flex: 1, minHeight: 0, borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-          <table style={{
-            width: '100%',
-            tableLayout: 'fixed',
-            borderCollapse: 'collapse',
-            textAlign: 'left',
-            fontSize: '13px'
-          }}>
-            <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-              <tr>
-                {activeColumns.map(col => {
-                  const colWidth = getDefaultColWidth(col);
-                  const isSorted = sortConfig.key === col;
-                  const isAsc = isSorted && sortConfig.direction === 'asc';
-                  const isDesc = isSorted && sortConfig.direction === 'desc';
-                  const isDragging = draggedCol === col;
-                  const isDragOver = dragOverCol === col;
-
-                  return (
-                    <th
-                      key={col}
-                      draggable
-                      onDragStart={(e) => {
-                        setDraggedCol(col);
-                        e.dataTransfer.setData('text/plain', col);
-                      }}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = 'move';
-                        if (draggedCol && draggedCol !== col && dragOverCol !== col) {
-                          setDragOverCol(col);
-                        }
-                      }}
-                      onDragLeave={() => {
-                        if (dragOverCol === col) setDragOverCol(null);
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        if (draggedCol && draggedCol !== col) {
-                          handleColumnReorder(draggedCol, col);
-                        }
-                        setDraggedCol(null);
-                        setDragOverCol(null);
-                      }}
-                      onDragEnd={() => {
-                        setDraggedCol(null);
-                        setDragOverCol(null);
-                      }}
-                      onClick={() => handleSort(col)}
-                      onContextMenu={(e) => handleHeaderContextMenu(e, col)}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        handleAutoFitColumn(col, sortedContainers);
-                      }}
-                      style={{ 
-                        width: `${colWidth}px`,
-                        minWidth: `${colWidth}px`,
-                        maxWidth: `${colWidth}px`,
-                        position: 'relative',
-                        padding: '10px 12px', 
-                        textAlign: 'center',
-                        color: isSorted ? '#2563eb' : (isDragOver ? '#1d4ed8' : '#475569'), 
-                        fontWeight: 700, 
-                        whiteSpace: 'nowrap', 
-                        cursor: isDragging ? 'grabbing' : 'grab',
-                        userSelect: 'none',
-                        borderBottom: isSorted ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                        background: isDragOver ? '#eff6ff' : (isSorted ? '#eff6ff' : (isDragging ? '#f1f5f9' : '#f8fafc')),
-                        borderLeft: isDragOver ? '3px solid #2563eb' : undefined,
-                        opacity: isDragging ? 0.4 : 1,
-                        transform: isDragging ? 'scale(0.97)' : (isDragOver ? 'translateX(2px)' : 'none'),
-                        transition: 'background 0.18s cubic-bezier(0.4, 0, 0.2, 1), transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, border-left 0.15s ease',
-                        boxSizing: 'border-box'
-                      }}
-                      title="คลิกเพื่อจัดเรียง / ลากเพื่อสลับคอลัมน์ / ดับเบิ้ลคลิกปรับขนาดพอดี / คลิกขวาจัดการ"
-                    >
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '4px' }}>
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getColDisplayName(col)}</span>
-                        <span style={{ fontSize: '11px', color: isSorted ? '#2563eb' : '#94a3b8', flexShrink: 0 }}>
-                          {isAsc ? '▲' : isDesc ? '▼' : '↕'}
-                        </span>
-                      </div>
-
-                      {/* Resize Handle with Subtle Divider Line */}
-                      <div
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => handleResizeMouseDown(e, col)}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          handleAutoFitColumn(col, sortedContainers);
-                        }}
-                        style={{
-                          position: 'absolute',
-                          right: 0,
-                          top: 0,
-                          bottom: 0,
-                          width: '8px',
-                          cursor: 'col-resize',
-                          userSelect: 'none',
-                          zIndex: 5,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          background: 'transparent'
-                        }}
-                        title="คลิกแล้วลากเพื่อปรับขนาด / ดับเบิ้ลคลิกเพื่อปรับพอดีข้อความ"
-                      >
-                        <div 
-                          style={{
-                            width: '1px',
-                            height: '16px',
-                            background: '#cbd5e1',
-                            transition: 'all 0.15s ease'
-                          }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = '#2563eb'; e.currentTarget.style.width = '2px'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = '#cbd5e1'; e.currentTarget.style.width = '1px'; }}
-                        />
-                      </div>
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
+        <UniversalTableContainer
+          preferences={ocrPrefs}
+        >
+          <UniversalTableHeader
+            preferences={ocrPrefs}
+            data={sortedContainers}
+            alignMap={OCR_ALIGN_MAP}
+          />
+          <tbody>
               {isLoading ? (
                 <tr>
                   <td colSpan={Math.max(activeColumns.length, 1)} style={{ padding: '56px 20px', textAlign: 'center', color: '#64748b' }}>
@@ -888,9 +771,18 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
                       onMouseLeave={(e) => { e.currentTarget.style.background = index % 2 === 0 ? '#ffffff' : '#fcfdfd'; }}
                     >
                       {activeColumns.map(col => {
+                        const align = OCR_ALIGN_MAP[col] || 'left';
+                        const cellStyle = {
+                          padding: '8px 10px',
+                          textAlign: align,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        };
+
                         if (col === 'index') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', textAlign: 'center', color: '#64748b', fontSize: '12.5px', fontWeight: 700 }}>
+                            <td key={col} style={{ ...cellStyle, color: '#64748b', fontSize: '12.5px', fontWeight: 700 }}>
                               {displayIndex}
                             </td>
                           );
@@ -898,7 +790,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
 
                         if (col === 'container_no') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px' }}>
+                            <td key={col} style={cellStyle}>
                               <div style={{ display: 'flex', flexDirection: 'column' }}>
                                 <span style={{
                                   fontFamily: "'SF Mono', Consolas, Monaco, monospace",
@@ -922,7 +814,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
 
                         if (col === 'workflow_status') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px' }}>
+                            <td key={col} style={cellStyle}>
                               {isCompleted ? (
                                 <Badge variant="success" size="sm" icon="✅">Completed</Badge>
                               ) : (
@@ -934,7 +826,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
 
                         if (col === 'match_status') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px' }}>
+                            <td key={col} style={cellStyle}>
                               {isCancelled ? (
                                 <Badge variant="neutral" size="sm" icon="🚫">ขีดฆ่า</Badge>
                               ) : isRed ? (
@@ -950,7 +842,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
 
                         if (col === 'job_type') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', textAlign: 'center' }}>
+                            <td key={col} style={cellStyle}>
                               {cleanJobType !== '-' ? (
                                 cleanJobType === 'DIS' ? (
                                   <Badge variant="info" size="sm" style={{ minWidth: '52px', justifyContent: 'center', fontWeight: 800, letterSpacing: '0.5px' }}>DIS</Badge>
@@ -966,7 +858,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
 
                         if (col === 'size') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', textAlign: 'center' }}>
+                            <td key={col} style={cellStyle}>
                               <span style={{ fontSize: '13px', fontWeight: 700, color: cleanSize !== '-' ? '#0f172a' : '#94a3b8' }}>
                                 {cleanSize}
                               </span>
@@ -976,7 +868,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
 
                         if (col === 'port') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', textAlign: 'center' }}>
+                            <td key={col} style={cellStyle}>
                               <span style={{ fontSize: '13px', fontWeight: 700, color: cleanPort !== '-' ? '#0f172a' : '#94a3b8' }}>
                                 {cleanPort}
                               </span>
@@ -996,7 +888,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
                             }
                           }
                           return (
-                            <td key={col} style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                            <td key={col} style={cellStyle}>
                               <span style={{ fontWeight: 600, color: formattedDate !== '-' ? '#0f172a' : '#94a3b8', fontSize: '12.5px' }}>
                                 {formattedDate}
                               </span>
@@ -1006,7 +898,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
 
                         if (col === 'truck_no') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px' }}>
+                            <td key={col} style={cellStyle}>
                               <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '13px' }}>
                                 {item.truck_no || '-'}
                               </span>
@@ -1014,9 +906,19 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
                           );
                         }
 
+                        if (col === 'driver_name') {
+                          return (
+                            <td key={col} style={cellStyle}>
+                              <span style={{ fontWeight: 600, color: item.driver_name && item.driver_name !== '-' ? '#1e293b' : '#94a3b8', fontSize: '13px' }}>
+                                {item.driver_name || '-'}
+                              </span>
+                            </td>
+                          );
+                        }
+
                         if (col === 'batch_name') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px' }}>
+                            <td key={col} style={cellStyle}>
                               <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '13px' }}>
                                 {item.batch_name || '-'}
                               </span>
@@ -1026,8 +928,8 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
 
                         if (col === 'created_at') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                              <span style={{ fontWeight: 600, color: '#475569', fontSize: '12.5px' }}>
+                            <td key={col} style={{ ...cellStyle, color: '#475569', fontSize: '12.5px' }}>
+                              <span style={{ fontWeight: 600 }}>
                                 {item.created_at ? new Date(item.created_at).toLocaleString('th-TH', {
                                   year: '2-digit', month: 'short', day: 'numeric',
                                   hour: '2-digit', minute: '2-digit'
@@ -1039,7 +941,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
 
                         if (col === 'image_url') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            <td key={col} style={cellStyle}>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
                                 {item.image_url ? (
                                   <button
@@ -1093,7 +995,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
 
                         if (col === 'actions') {
                           return (
-                            <td key={col} style={{ padding: '8px 10px', textAlign: 'center' }}>
+                            <td key={col} style={cellStyle}>
                               <button
                                 onClick={() => setEditingContainer({ ...item, rowIndex: displayIndex })}
                                 title="คลิกเพื่อแก้ไขข้อมูลตู้นี้ (เลขตู้, DIS/LOAD, ท่าเรือ, ขนาด)"
@@ -1122,7 +1024,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
                         }
 
                         return (
-                          <td key={col} style={{ padding: '10px 14px' }}>
+                          <td key={col} style={cellStyle}>
                             {String(item[col] || '-')}
                           </td>
                         );
@@ -1132,8 +1034,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
                 })
               )}
             </tbody>
-          </table>
-        </div>
+        </UniversalTableContainer>
 
         {/* 5. Pagination Footer */}
         <div style={{
@@ -1238,13 +1139,13 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
                     style={{
                       height: '30px',
                       minWidth: '30px',
-                      padding: '0 6px',
+                      padding: '0 8px',
                       borderRadius: '6px',
-                      border: currentPage === p ? '1px solid #2563eb' : '1px solid #e2e8f0',
-                      background: currentPage === p ? '#2563eb' : '#ffffff',
-                      color: currentPage === p ? '#ffffff' : '#334155',
+                      border: p === currentPage ? '1px solid #2563eb' : '1px solid #e2e8f0',
+                      background: p === currentPage ? '#2563eb' : '#ffffff',
+                      color: p === currentPage ? '#ffffff' : '#334155',
                       cursor: 'pointer',
-                      fontWeight: currentPage === p ? 800 : 500,
+                      fontWeight: p === currentPage ? 700 : 500,
                       fontSize: '12px'
                     }}
                   >
@@ -1296,27 +1197,6 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
           )}
         </div>
       </div>
-
-      {/* Header Context Menu */}
-      <TableContextMenu
-        contextMenu={contextMenu}
-        onClose={() => setContextMenu(null)}
-        onStartEditAlias={(col) => handleStartRename(col)}
-        onAutoFitColumn={(col) => handleAutoFitColumn(col, sortedContainers)}
-        onToggleColumnHide={handleToggleColumnHide}
-        onShowAllColumns={handleShowAllColumns}
-        onResetColumnWidth={handleResetColumnWidth}
-        onResetColumnOrder={handleResetColumnOrder}
-        getColDisplayName={getColDisplayName}
-      />
-
-      {/* Rename Column Modal */}
-      <RenameColumnModal
-        renamingColumn={renamingColumn}
-        onClose={() => setRenamingColumn(null)}
-        onSaveAlias={handleSaveAlias}
-        onResetAlias={handleResetAlias}
-      />
 
       {/* Image Preview Modal */}
       <ContainerImageModal

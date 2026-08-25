@@ -394,13 +394,7 @@ export default function InspectorTable({
                               แถวนี้ถูกขีดฆ่าทิ้ง (ไม่นำไปนับในยอดรวม)
                             </span>
                           </div>
-                        ) : isEmpty ? (
-                          <div style={{ height: '32px', display: 'flex', alignItems: 'center' }}>
-                            <span style={{ fontSize: '11px', color: '#94a3b8' }}>
-                              คลิกช่องพิมพ์เพื่อเพิ่มตู้ในบรรทัดนี้
-                            </span>
-                          </div>
-                        ) : row.candidates && Array.isArray(row.candidates) && row.candidates.length > 0 ? (
+                        ) : isEmpty ? null : row.candidates && Array.isArray(row.candidates) && row.candidates.length > 0 ? (
                           (isGreen && !isDupRow ? row.candidates.slice(0, 1) : row.candidates).flatMap((cand, cIdx) => {
                             if (!cand) return [];
                             const siblingList = (cand.siblings && cand.siblings.length > 0) ? cand.siblings : [cand.record || cand];

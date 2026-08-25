@@ -32,8 +32,8 @@ SELECT
     s.drive_file_id,
     COALESCE(i.created_at, s.created_at) AS created_at
 FROM job_sheet_items i
-JOIN job_sheets s ON i.job_sheet_id = s.id
-WHERE s.status != 'deleted'
+LEFT JOIN job_sheets s ON i.job_sheet_id = s.id
+WHERE (s.status IS NULL OR s.status != 'deleted')
 
 UNION ALL
 
@@ -76,7 +76,7 @@ WHERE c.model_used NOT IN ('completed', 'deleted')
 
 UNION ALL
 
--- 3. Legacy ocr_records (where job_sheet_id is null)
+-- 3. Legacy ocr_records (where not recorded in job_sheet_items)
 SELECT 
     ('legacy_ocr_' || r.id::text) AS id,
     r.id AS db_id,
@@ -101,4 +101,5 @@ SELECT
     r.drive_file_id,
     r.created_at
 FROM ocr_records r
-WHERE r.match_status != 'deleted' AND r.job_sheet_id IS NULL;
+WHERE r.match_status != 'deleted'
+  AND NOT EXISTS (SELECT 1 FROM job_sheet_items jsi WHERE jsi.container_no = r.container_no);

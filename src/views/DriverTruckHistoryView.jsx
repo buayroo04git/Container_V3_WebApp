@@ -4,9 +4,9 @@ import { useToast } from '../context/ToastContext';
 import { fetchAssignmentHistory, clearAssignmentHistory } from '../services/historyService';
 import { fetchTrucks, fetchDrivers } from '../services/truckDriverService';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
-import TableContextMenu from '../components/ui/TableContextMenu';
-import RenameColumnModal from '../components/ui/RenameColumnModal';
 import KpiCard from '../components/ui/KpiCard';
+import UniversalTableContainer from '../components/ui/UniversalTableContainer';
+import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 const DEFAULT_HISTORY_COLUMNS = [
@@ -36,16 +36,29 @@ const DEFAULT_COLUMN_NAMES = {
 };
 
 const DEFAULT_HISTORY_WIDTHS = {
-  id: 55,
-  effective_date: 115,
-  action: 160,
-  truck_no: 100,
-  truck_license: 120,
-  driver_name: 160,
-  previous_assignment: 150,
-  reason: 220,
+  id: 45,
+  effective_date: 110,
+  action: 150,
+  truck_no: 95,
+  truck_license: 115,
+  driver_name: 150,
+  previous_assignment: 140,
+  reason: 180,
   created_by: 100,
-  timestamp: 160
+  timestamp: 150
+};
+
+const HISTORY_ALIGN_MAP = {
+  id: 'center',
+  effective_date: 'center',
+  action: 'center',
+  truck_no: 'center',
+  truck_license: 'center',
+  driver_name: 'left',
+  previous_assignment: 'left',
+  reason: 'left',
+  created_by: 'center',
+  timestamp: 'center'
 };
 
 const ACTION_MAP = {
@@ -72,8 +85,6 @@ export default function DriverTruckHistoryView() {
   const [actionFilter, setActionFilter] = useState('ALL');
   const [truckFilter, setTruckFilter] = useState('ALL');
   const [driverFilter, setDriverFilter] = useState('ALL');
-
-  const menuRef = useRef(null);
 
   // Load Data
   const loadData = async () => {
@@ -128,38 +139,7 @@ export default function DriverTruckHistoryView() {
   };
 
   // Column Preferences Hook
-  const {
-    allColumns,
-    activeColumns,
-    visibleColumns,
-    columnWidths,
-    draggedCol,
-    setDraggedCol,
-    dragOverCol,
-    setDragOverCol,
-    getColDisplayName,
-    handleToggleColumnHide,
-    handleShowAllColumns,
-    handleResizeMouseDown,
-    handleAutoFitColumn,
-    handleColumnReorder,
-    handleResetColumnOrder,
-    handleResetColumnWidth,
-    handleHeaderContextMenu,
-    handleStartRename,
-    handleSaveAlias,
-    handleResetAlias,
-    handleResetAllAliases,
-    contextMenu,
-    setContextMenu,
-    renamingColumn,
-    setRenamingColumn,
-    showColumnMenu,
-    setShowColumnMenu,
-    sortConfig,
-    handleSort,
-    sortRecords
-  } = useColumnPreferences({
+  const histPrefs = useColumnPreferences({
     storageKeyPrefix: 'driver_truck_history',
     rawColumns: DEFAULT_HISTORY_COLUMNS,
     defaultNames: DEFAULT_COLUMN_NAMES,
@@ -178,16 +158,7 @@ export default function DriverTruckHistoryView() {
     }
   });
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setShowColumnMenu(false);
-      }
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
+  const { activeColumns, sortRecords, sortConfig } = histPrefs;
 
   // Filtered List
   const filteredList = useMemo(() => {
@@ -268,7 +239,7 @@ export default function DriverTruckHistoryView() {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      padding: '24px 28px',
+      padding: '4px 28px 20px 28px',
       boxSizing: 'border-box',
       background: '#f8fafc',
       overflow: 'hidden'
@@ -395,39 +366,6 @@ export default function DriverTruckHistoryView() {
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: '12px',
-        marginBottom: '16px',
-        flexShrink: 0
-      }}>
-        <KpiCard
-          title="📜 บันทึกประวัติทั้งหมด"
-          value={kpis.total}
-          unit="รายการ"
-          theme="blue"
-        />
-        <KpiCard
-          title="🟢 การเริ่มปฏิบัติงาน / สลับรถ"
-          value={kpis.assigns}
-          unit="ครั้ง"
-          theme="emerald"
-        />
-        <KpiCard
-          title="🔴 สิ้นสุดการปฏิบัติงาน"
-          value={kpis.unassigns}
-          unit="ครั้ง"
-          theme="amber"
-        />
-        <KpiCard
-          title="🔧 ประวัติเข้าซ่อม & ลางาน"
-          value={kpis.maintAndLeaves}
-          unit="รายการ"
-          theme="purple"
-        />
-      </div>
 
       {/* Filters Toolbar */}
       <div style={{
@@ -443,21 +381,51 @@ export default function DriverTruckHistoryView() {
         gap: '12px',
         flexWrap: 'wrap'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '240px' }}>
-          <span style={{ color: '#94a3b8' }}>🔍</span>
+        {/* ช่องค้นหา */}
+        <div style={{ position: 'relative', width: '260px' }}>
+          <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
           <input
             type="text"
-            placeholder="ค้นหาเบอร์รถ, คนขับ, เหตุผล, ทะเบียน..."
+            placeholder="ค้นหาเบอร์รถ, คนขับ, เหตุผล..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             style={{
-              border: 'none',
-              outline: 'none',
               width: '100%',
-              fontSize: '13px',
-              background: 'transparent'
+              height: '36px',
+              paddingLeft: '32px',
+              paddingRight: searchTerm ? '28px' : '10px',
+              borderRadius: '7px',
+              border: '1px solid #cbd5e1',
+              fontSize: '12.5px',
+              color: '#0f172a',
+              outline: 'none',
+              boxSizing: 'border-box'
             }}
           />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                padding: 0,
+                fontSize: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              title="ล้างคำค้นหา"
+            >
+              ✕
+            </button>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -518,19 +486,7 @@ export default function DriverTruckHistoryView() {
           {/* Column Visibility Dropdown (เมื่ออยู่ในโหมด Table) */}
           {viewMode === 'table' && (
             <div style={{ marginLeft: '6px' }}>
-              <ColumnVisibilityDropdown
-                showColumnMenu={showColumnMenu}
-                setShowColumnMenu={setShowColumnMenu}
-                menuRef={menuRef}
-                allColumns={allColumns}
-                activeColumns={activeColumns}
-                visibleColumns={visibleColumns}
-                onToggleColumnVisibility={handleToggleColumnHide}
-                getColDisplayName={getColDisplayName}
-                onStartEditAlias={(col) => handleStartRename(col)}
-                onShowAllColumns={handleShowAllColumns}
-                onResetAllAliases={handleResetAllAliases}
-              />
+              <ColumnVisibilityDropdown preferences={histPrefs} />
             </div>
           )}
         </div>
@@ -558,142 +514,14 @@ export default function DriverTruckHistoryView() {
           /* ========================================== */
           /* 📊 FULL DATA TABLE VIEW                    */
           /* ========================================== */
-          <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-            <colgroup>
-              {activeColumns.map(col => (
-                <col key={col} style={{ width: `${columnWidths[col] || DEFAULT_HISTORY_WIDTHS[col] || 120}px` }} />
-              ))}
-            </colgroup>
-            <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700, position: 'sticky', top: 0, zIndex: 10 }}>
-                {activeColumns.map((col) => {
-                  const isDraggable = true;
-                  const displayName = getColDisplayName(col);
-                  const colWidth = columnWidths[col] || DEFAULT_HISTORY_WIDTHS[col] || 100;
-                  const isDragging = draggedCol === col;
-                  const isDragOver = dragOverCol === col;
-                  const isSorted = sortConfig.key === col;
-                  const isAsc = isSorted && sortConfig.direction === 'asc';
-                  const isDesc = isSorted && sortConfig.direction === 'desc';
-
-                  return (
-                    <th
-                      key={col}
-                      draggable={isDraggable}
-                      onDragStart={(e) => {
-                        setDraggedCol(col);
-                        e.dataTransfer.setData('text/plain', col);
-                        e.dataTransfer.effectAllowed = 'move';
-                      }}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = 'move';
-                        if (draggedCol && draggedCol !== col && dragOverCol !== col) {
-                          setDragOverCol(col);
-                        }
-                      }}
-                      onDragLeave={() => {
-                        if (dragOverCol === col) setDragOverCol(null);
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        if (draggedCol && draggedCol !== col) {
-                          handleColumnReorder(draggedCol, col);
-                        }
-                        setDraggedCol(null);
-                        setDragOverCol(null);
-                      }}
-                      onDragEnd={() => {
-                        setDraggedCol(null);
-                        setDragOverCol(null);
-                      }}
-                      onContextMenu={(e) => handleHeaderContextMenu(e, col)}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        handleAutoFitColumn(col, filteredList);
-                      }}
-                      style={{
-                        padding: '10px 14px',
-                        fontSize: '12.5px',
-                        fontWeight: 700,
-                        color: isSorted ? '#2563eb' : (isDragOver ? '#1d4ed8' : '#475569'),
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        userSelect: 'none',
-                        position: 'relative',
-                        textAlign: col === 'id' || col === 'effective_date' ? 'center' : 'left',
-                        cursor: isDragging ? 'grabbing' : 'grab',
-                        background: isDragOver ? '#eff6ff' : (isSorted ? '#eff6ff' : (isDragging ? '#f1f5f9' : '#f8fafc')),
-                        borderLeft: isDragOver ? '3px solid #2563eb' : 'none',
-                        borderBottom: isSorted ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                        opacity: isDragging ? 0.4 : 1,
-                        transform: isDragging ? 'scale(0.97)' : (isDragOver ? 'translateX(2px)' : 'none'),
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <div
-                        onClick={() => handleSort(col)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: col === 'id' || col === 'effective_date' ? 'center' : 'flex-start',
-                          gap: '5px',
-                          cursor: 'pointer',
-                          userSelect: 'none'
-                        }}
-                      >
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
-                        <span style={{ fontSize: '11px', color: isSorted ? '#2563eb' : '#94a3b8', flexShrink: 0, opacity: isSorted ? 1 : 0.4 }}>
-                          {isAsc ? '▲' : isDesc ? '▼' : '↕'}
-                        </span>
-                      </div>
-
-                      {/* Resize Handle */}
-                      <div
-                        draggable={false}
-                        onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleResizeMouseDown(e, col);
-                        }}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          handleAutoFitColumn(col, filteredList);
-                        }}
-                        style={{
-                          position: 'absolute',
-                          right: 0,
-                          top: 0,
-                          bottom: 0,
-                          width: '8px',
-                          cursor: 'col-resize',
-                          zIndex: 5,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          background: 'transparent'
-                        }}
-                        title="ลากปรับขนาด / ดับเบิ้ลคลิกปรับพอดีข้อความ"
-                      >
-                        <div 
-                          style={{
-                            width: '1px',
-                            height: '16px',
-                            background: '#cbd5e1',
-                            transition: 'all 0.15s ease'
-                          }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = '#2563eb'; e.currentTarget.style.width = '2px'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = '#cbd5e1'; e.currentTarget.style.width = '1px'; }}
-                        />
-                      </div>
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
+          <UniversalTableContainer
+            preferences={histPrefs}
+          >
+            <UniversalTableHeader
+              preferences={histPrefs}
+              data={filteredList}
+              alignMap={HISTORY_ALIGN_MAP}
+            />
             <tbody>
               {displayedHistory.map((item, idx) => {
                 const actionBadge = ACTION_MAP[item.action] || { label: item.action, color: '#475569', bg: '#f1f5f9', border: '#cbd5e1' };
@@ -710,19 +538,28 @@ export default function DriverTruckHistoryView() {
                     onMouseLeave={e => e.currentTarget.style.background = '#ffffff'}
                   >
                     {activeColumns.map(col => {
+                      const align = HISTORY_ALIGN_MAP[col] || 'left';
+                      const cellStyle = {
+                        padding: '8px 10px',
+                        textAlign: align,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      };
+
                       if (col === 'id') {
-                        return <td key={col} style={{ padding: '10px 14px', textAlign: 'center', color: '#94a3b8' }}>{idx + 1}</td>;
+                        return <td key={col} style={{ ...cellStyle, color: '#94a3b8' }}>{idx + 1}</td>;
                       }
                       if (col === 'effective_date') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 600, color: '#334155' }}>
+                          <td key={col} style={{ ...cellStyle, fontWeight: 600, color: '#334155' }}>
                             {formatDateOnly(item.effective_date)}
                           </td>
                         );
                       }
                       if (col === 'action') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px' }}>
+                          <td key={col} style={cellStyle}>
                             <span style={{
                               padding: '3px 8px',
                               borderRadius: '6px',
@@ -739,28 +576,28 @@ export default function DriverTruckHistoryView() {
                       }
                       if (col === 'truck_no') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', fontWeight: 800, color: '#0f172a' }}>
+                          <td key={col} style={{ ...cellStyle, fontWeight: 800, color: '#0f172a' }}>
                             {item.truck_no && item.truck_no !== '-' ? `🚛 ${item.truck_no}` : '-'}
                           </td>
                         );
                       }
                       if (col === 'truck_license') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', color: '#475569' }}>
+                          <td key={col} style={{ ...cellStyle, color: '#475569' }}>
                             {item.truck_license || '-'}
                           </td>
                         );
                       }
                       if (col === 'driver_name') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', fontWeight: 700, color: '#1e293b' }}>
+                          <td key={col} style={{ ...cellStyle, fontWeight: 700, color: '#1e293b' }}>
                             {item.driver_name && item.driver_name !== '-' ? `👤 ${item.driver_name}` : '-'}
                           </td>
                         );
                       }
                       if (col === 'previous_assignment') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', color: '#64748b', fontSize: '12px' }}>
+                          <td key={col} style={{ ...cellStyle, color: '#64748b', fontSize: '12px' }}>
                             {item.previous_truck && item.previous_truck !== '-' ? (
                               <span>รถเดิม: <strong>{item.previous_truck}</strong></span>
                             ) : item.previous_driver && item.previous_driver !== '-' ? (
@@ -771,32 +608,32 @@ export default function DriverTruckHistoryView() {
                       }
                       if (col === 'reason') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', color: '#334155' }}>
+                          <td key={col} style={{ ...cellStyle, color: '#334155' }}>
                             {item.reason || '-'}
                           </td>
                         );
                       }
                       if (col === 'created_by') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', color: '#64748b', fontSize: '12px' }}>
+                          <td key={col} style={{ ...cellStyle, color: '#64748b', fontSize: '12px' }}>
                             {item.created_by || 'Admin'}
                           </td>
                         );
                       }
                       if (col === 'timestamp') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', color: '#64748b', fontSize: '12px' }}>
+                          <td key={col} style={{ ...cellStyle, color: '#64748b', fontSize: '12px' }}>
                             {formatDateTimeDisplay(item.timestamp || item.created_at)}
                           </td>
                         );
                       }
-                      return <td key={col} style={{ padding: '10px 14px' }}>{item[col] || '-'}</td>;
+                      return <td key={col} style={{ ...cellStyle, color: '#334155' }}>{item[col] || '-'}</td>;
                     })}
                   </tr>
                 );
               })}
             </tbody>
-          </table>
+          </UniversalTableContainer>
         ) : (
           /* ========================================== */
           /* 📜 TIMELINE VIEW                           */
@@ -902,27 +739,6 @@ export default function DriverTruckHistoryView() {
           </div>
         )}
       </div>
-
-      {/* Table Context Menu */}
-      <TableContextMenu
-        contextMenu={contextMenu}
-        onClose={() => setContextMenu(null)}
-        onStartEditAlias={handleStartRename}
-        onAutoFitColumn={(col) => handleAutoFitColumn(col, filteredList)}
-        onToggleColumnHide={handleToggleColumnHide}
-        onShowAllColumns={handleShowAllColumns}
-        onResetColumnWidth={handleResetColumnWidth}
-        onResetColumnOrder={handleResetColumnOrder}
-        getColDisplayName={getColDisplayName}
-      />
-
-      {/* Rename Column Modal */}
-      <RenameColumnModal
-        renamingColumn={renamingColumn}
-        onClose={() => setRenamingColumn(null)}
-        onSaveAlias={handleSaveAlias}
-        onResetAlias={handleResetAlias}
-      />
 
     </div>
   );

@@ -14,7 +14,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
       borderRight: '1px solid #f1f5f9', 
       display: 'flex', 
       flexDirection: 'column', 
-      padding: '20px 14px',
+      padding: '16px 12px',
       userSelect: 'none'
     }}>
       {/* Brand Header */}
@@ -22,13 +22,13 @@ export default function Sidebar({ activeTab, setActiveTab }) {
         display: 'flex',
         alignItems: 'center',
         gap: '10px',
-        padding: '0 6px 18px 6px',
+        padding: '0 4px 14px 4px',
         borderBottom: '1px solid #f1f5f9',
-        marginBottom: '18px'
+        marginBottom: '14px'
       }}>
         <div style={{
-          width: '30px',
-          height: '30px',
+          width: '28px',
+          height: '28px',
           borderRadius: '7px',
           background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
           display: 'flex',
@@ -36,7 +36,7 @@ export default function Sidebar({ activeTab, setActiveTab }) {
           justifyContent: 'center',
           color: '#ffffff',
           fontWeight: 800,
-          fontSize: '14px',
+          fontSize: '13.5px',
           boxShadow: '0 2px 5px rgba(37, 99, 235, 0.25)'
         }}>
           J
@@ -44,67 +44,68 @@ export default function Sidebar({ activeTab, setActiveTab }) {
         <div>
           <h2 style={{ 
             margin: 0, 
-            fontSize: '14.5px', 
+            fontSize: '14px', 
             fontWeight: 800,
             color: '#0f172a',
             letterSpacing: '-0.2px',
-            lineHeight: 1.2
+            lineHeight: 1.15
           }}>
             JWD Transport
           </h2>
-          <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8', fontWeight: 500 }}>
+          <p style={{ margin: 0, fontSize: '10.5px', color: '#94a3b8', fontWeight: 500 }}>
             Container V3 WebApp
           </p>
         </div>
       </div>
 
       {/* Navigation Groups (Rendered dynamically from NAVIGATION_SECTIONS) */}
-      <nav style={{ display: 'flex', flexDirection: 'column', gap: '22px', flex: 1, overflowY: 'auto' }}>
+      <nav style={{ display: 'flex', flexDirection: 'column', gap: '12px', flex: 1, overflowY: 'auto' }}>
         {NAVIGATION_SECTIONS.map((section) => (
-          <div key={section.id || section.title} style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+          <div key={section.id || section.title} style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
             
             {/* Main Section Header */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              padding: '0 6px 4px 6px',
-              fontSize: '12.5px',
+              gap: '6px',
+              padding: '0 4px 2px 4px',
+              fontSize: '11.5px',
               fontWeight: 700,
-              color: '#1e293b',
-              letterSpacing: '0.1px'
+              color: '#334155',
+              letterSpacing: '0.2px'
             }}>
-              <span style={{ fontSize: '15px' }}>{section.icon}</span>
+              <span style={{ fontSize: '13px' }}>{section.icon}</span>
               <span>{section.title}</span>
             </div>
 
             {/* Sub-menu Items */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', paddingLeft: '8px', marginLeft: '6px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5px', paddingLeft: '4px', marginLeft: '4px' }}>
               {section.items.map(item => {
                 const isActive = activeTab === item.id;
                 return (
                   <button
                     key={item.id}
-                    title={item.description}
+                    title={item.description || item.label}
                     onClick={() => setActiveTab(item.id)}
                     style={{
                       display: 'flex',
                       alignItems: 'flex-start',
-                      gap: '9px',
-                      padding: '8px 10px',
+                      gap: '8px',
+                      padding: '5px 8px',
                       borderRadius: '6px',
                       border: 'none',
                       outline: 'none',
                       background: isActive ? '#eff6ff' : 'transparent',
                       color: isActive ? '#2563eb' : '#64748b',
                       cursor: 'pointer',
-                      fontSize: '13px',
+                      fontSize: '12.5px',
                       fontWeight: isActive ? 700 : 500,
                       textAlign: 'left',
-                      transition: 'all 0.15s ease',
+                      transition: 'all 0.12s ease',
                       width: '100%',
-                      lineHeight: 1.35,
-                      boxSizing: 'border-box'
+                      lineHeight: 1.25,
+                      boxSizing: 'border-box',
+                      minHeight: '28px'
                     }}
                     onMouseOver={(e) => {
                       if (!isActive) {
@@ -119,25 +120,25 @@ export default function Sidebar({ activeTab, setActiveTab }) {
                       }
                     }}
                   >
-                    <span style={{ fontSize: '13px', lineHeight: 1.35, marginTop: '1px', flexShrink: 0 }}>{item.icon}</span>
+                    <span style={{ fontSize: '13px', lineHeight: 1.25, flexShrink: 0, marginTop: '1px' }}>{item.icon}</span>
                     <span style={{
                       flex: 1,
                       whiteSpace: 'normal',
                       wordBreak: 'break-word',
-                      lineHeight: 1.35
+                      lineHeight: 1.25
                     }}>
                       {item.label}
                     </span>
                     {item.badge && (
                       <span style={{
-                        fontSize: '10px',
+                        fontSize: '9.5px',
                         padding: '1px 5px',
                         borderRadius: '999px',
                         background: isActive ? '#2563eb' : '#e2e8f0',
                         color: isActive ? '#ffffff' : '#475569',
                         fontWeight: 700,
                         flexShrink: 0,
-                        marginTop: '2px'
+                        marginTop: '1px'
                       }}>
                         {item.badge}
                       </span>

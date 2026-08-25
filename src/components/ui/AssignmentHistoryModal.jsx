@@ -157,7 +157,7 @@ export default function AssignmentHistoryModal({
           background: '#ffffff'
         }}>
           <div style={{ position: 'relative', flex: 1 }}>
-            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#94a3b8' }}>🔍</span>
+            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
             <input
               type="text"
               placeholder="ค้นหาชื่อคนขับ, เบอร์รถ, เหตุผล..."
@@ -167,13 +167,37 @@ export default function AssignmentHistoryModal({
                 width: '100%',
                 height: '34px',
                 paddingLeft: '30px',
-                paddingRight: '10px',
+                paddingRight: filterText ? '26px' : '10px',
                 borderRadius: '7px',
                 border: '1px solid #cbd5e1',
                 fontSize: '12.5px',
                 boxSizing: 'border-box'
               }}
             />
+            {filterText && (
+              <button
+                type="button"
+                onClick={() => setFilterText('')}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="ล้างคำค้นหา"
+              >
+                ✕
+              </button>
+            )}
           </div>
           <span style={{ fontSize: '12px', color: '#64748b', fontWeight: 600, flexShrink: 0 }}>
             {filteredList.length} รายการ

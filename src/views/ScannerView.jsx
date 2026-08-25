@@ -79,6 +79,7 @@ function ScannerViewContent({ setActiveTab, editingSheet, setEditingSheet }) {
         truckNo: initialReinspect.truck_no,
         truckGuess: initialReinspect.truck_no,
         batchGuess: initialReinspect.batch_name,
+        driver_name: initialReinspect.driver_name || null,
         isCompletedEdit: true,
         hasOcr: true
       };
@@ -160,8 +161,33 @@ function ScannerViewContent({ setActiveTab, editingSheet, setEditingSheet }) {
   const [lastFolderHandle, setLastFolderHandle] = useState(null);
   const [googleAccessToken, setGoogleAccessToken] = useState(() => localStorage.getItem('gdrive_access_token') || null);
 
+  const [operationsData, setOperationsData] = useState([]);
+  const [truckRecordsData, setTruckRecordsData] = useState([]);
+  const [availableDrivers, setAvailableDrivers] = useState([]);
+  const [customDriverNames, setCustomDriverNames] = useState({});
+
   useEffect(() => {
     try { sessionStorage.removeItem('reinspect_sheet'); } catch(e) {}
+    async function loadDriverMetadata() {
+      try {
+        const [opsRes, trucksRes, driversRes] = await Promise.all([
+          supabase.from('truck_operations').select('truck_no, driver_name, start_date, end_date, status').limit(2000),
+          supabase.from('truck_records').select('truck_no, assigned_driver_name').limit(500),
+          supabase.from('driver_records').select('driver_name').order('driver_name', { ascending: true })
+        ]);
+        if (opsRes?.data) setOperationsData(opsRes.data);
+        if (trucksRes?.data) setTruckRecordsData(trucksRes.data);
+
+        const dSet = new Set();
+        (driversRes?.data || []).forEach(d => { if (d.driver_name && d.driver_name !== '-') dSet.add(d.driver_name.trim()); });
+        (opsRes?.data || []).forEach(o => { if (o.driver_name && o.driver_name !== '-') dSet.add(o.driver_name.trim()); });
+        (trucksRes?.data || []).forEach(t => { if (t.assigned_driver_name && t.assigned_driver_name !== '-') dSet.add(t.assigned_driver_name.trim()); });
+        setAvailableDrivers(Array.from(dSet).sort((a, b) => a.localeCompare(b, 'th')));
+      } catch (e) {
+        console.warn('loadDriverMetadata error in ScannerView:', e);
+      }
+    }
+    loadDriverMetadata();
   }, []);
 
   const [customTruckNumbers, setCustomTruckNumbers] = useState(() => {
@@ -194,6 +220,7 @@ function ScannerViewContent({ setActiveTab, editingSheet, setEditingSheet }) {
         truckNo: editingSheet.truck_no,
         truckGuess: editingSheet.truck_no,
         batchGuess: editingSheet.batch_name,
+        driver_name: editingSheet.driver_name || null,
         isCompletedEdit: true,
         hasOcr: true
       };
@@ -561,6 +588,80 @@ function ScannerViewContent({ setActiveTab, editingSheet, setEditingSheet }) {
     selectedImage.truckGuess || 
     ''
   ) : '';
+
+  const handleDriverNameChange = (newVal) => {
+    if (!selectedImage) return;
+    const key = selectedImage.file_hash || selectedImage.id;
+    setCustomDriverNames(prev => ({
+      ...prev,
+      [key]: newVal
+    }));
+  };
+
+  const currentDriverName = useMemo(() => {
+    const key = selectedImage ? (selectedImage.file_hash || selectedImage.id) : null;
+    if (key && customDriverNames[key] !== undefined) {
+      return customDriverNames[key];
+    }
+    if (selectedImage?.driver_name && selectedImage.driver_name !== '-') {
+      return selectedImage.driver_name;
+    }
+    if (!currentTruckNo || currentTruckNo === '-') return '-';
+
+    const cleanTruck = String(currentTruckNo).trim().replace(/^รถ\s*/, '').toLowerCase();
+    const isTruckMatch = (t) => {
+      if (!t) return false;
+      const s = String(t).trim().replace(/^รถ\s*/, '').toLowerCase();
+      return s === cleanTruck || s.includes(cleanTruck) || cleanTruck.includes(s);
+    };
+
+    // 1. ลองหาวันที่จากแถวตู้หรือ Master DB Candidate
+    let effectiveDate = null;
+    if (editableRows && Array.isArray(editableRows)) {
+      for (const row of editableRows) {
+        if (row.date_job && row.date_job !== '-' && row.date_job !== 'null') {
+          const norm = normalizeExcelDate(row.date_job);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(norm)) {
+            effectiveDate = norm;
+            break;
+          }
+        }
+        if (row.candidates && Array.isArray(row.candidates)) {
+          for (const cand of row.candidates) {
+            const cDate = cand.record?.date_job || cand.date_job;
+            if (cDate && cDate !== '-' && cDate !== 'null') {
+              const norm = normalizeExcelDate(cDate);
+              if (/^\d{4}-\d{2}-\d{2}$/.test(norm)) {
+                effectiveDate = norm;
+                break;
+              }
+            }
+          }
+          if (effectiveDate) break;
+        }
+      }
+    }
+
+    if (effectiveDate && operationsData.length > 0) {
+      const op = operationsData.find(o => {
+        if (!isTruckMatch(o.truck_no)) return false;
+        const sDate = o.start_date ? String(o.start_date).slice(0, 10) : null;
+        const eDate = o.end_date ? String(o.end_date).slice(0, 10) : null;
+        if (sDate && effectiveDate < sDate) return false;
+        if (eDate && effectiveDate > eDate) return false;
+        return true;
+      });
+      if (op?.driver_name && op.driver_name !== '-') return op.driver_name;
+    }
+
+    const activeOp = operationsData.find(o => isTruckMatch(o.truck_no) && (o.status === 'active' || !o.end_date));
+    if (activeOp?.driver_name && activeOp.driver_name !== '-') return activeOp.driver_name;
+
+    const truck = truckRecordsData.find(t => isTruckMatch(t.truck_no));
+    if (truck?.assigned_driver_name && truck.assigned_driver_name !== '-') return truck.assigned_driver_name;
+
+    return '-';
+  }, [selectedImage, customDriverNames, currentTruckNo, editableRows, operationsData, truckRecordsData]);
 
   const handleTruckNoChange = (newVal) => {
     if (!selectedImage) return;
@@ -1475,6 +1576,7 @@ function ScannerViewContent({ setActiveTab, editingSheet, setEditingSheet }) {
         fileHash: selectedImage.file_hash,
         batchName: finalBatchName,
         truckNo: truckNo,
+        driverName: currentDriverName !== '-' ? currentDriverName : null,
         imageUrl: imageUrl,
         imageName: selectedImage.name || selectedImage.image_name || null,
         driveFileId: selectedImage.drive_file_id || null,
@@ -1823,6 +1925,9 @@ function ScannerViewContent({ setActiveTab, editingSheet, setEditingSheet }) {
             <InspectorTopBar
               selectedImage={selectedImage}
               ocrResult={ocrResult}
+              currentDriverName={currentDriverName}
+              availableDrivers={availableDrivers}
+              onDriverNameChange={handleDriverNameChange}
               isScanning={isScanning}
               scanStatusDetail={scanStatusDetail}
               isSaving={isSaving}

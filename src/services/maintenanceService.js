@@ -1,5 +1,5 @@
-import { supabase } from '../supabaseClient';
-import { recordAssignmentHistory } from './historyService';
+import { supabase } from '../supabaseClient.js';
+import { recordAssignmentHistory } from './historyService.js';
 
 const STORAGE_KEY = 'fleet_truck_maintenance_records';
 

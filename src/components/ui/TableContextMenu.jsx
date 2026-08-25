@@ -8,9 +8,11 @@ export default function TableContextMenu({
   onClose,
   onStartEditAlias,
   onAutoFitColumn,
+  onAutoFitAllColumns,
   onToggleColumnHide,
   onShowAllColumns,
   onResetColumnWidth,
+  onResetAllWidths,
   onResetColumnOrder,
   getColDisplayName
 }) {
@@ -100,6 +102,34 @@ export default function TableContextMenu({
         </button>
       )}
 
+      {onAutoFitAllColumns && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onAutoFitAllColumns();
+            onClose();
+          }}
+          style={{
+            width: '100%',
+            padding: '8px 14px',
+            textAlign: 'left',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '12.5px',
+            color: '#0284c7',
+            fontWeight: 600
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = '#f0f9ff'}
+          onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+        >
+          ⚡ ปรับขนาดพอดีทุกคอลัมน์ (Auto-fit All)
+        </button>
+      )}
+
       {onToggleColumnHide && (
         <button
           onClick={(e) => {
@@ -179,7 +209,34 @@ export default function TableContextMenu({
           onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
           onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
         >
-          🔄 คืนค่าความกว้างเดิม
+          🔄 คืนค่าความกว้างเดิม (คอลัมน์นี้)
+        </button>
+      )}
+
+      {onResetAllWidths && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onResetAllWidths();
+            onClose();
+          }}
+          style={{
+            width: '100%',
+            padding: '8px 14px',
+            textAlign: 'left',
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '12px',
+            color: '#64748b'
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.background = '#f1f5f9'}
+          onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+        >
+          🔄 รีเซ็ตความกว้างทุกคอลัมน์
         </button>
       )}
 

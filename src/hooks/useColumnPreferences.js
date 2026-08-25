@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
 
 /**
@@ -7,9 +7,10 @@ import { supabase } from '../supabaseClient';
  * 1. Column Visibility (Show / Hide)
  * 2. Drag & Drop Reordering
  * 3. Border Resize Handles
- * 4. Double-click Auto-fit
- * 5. Right-click Context Menu
- * 6. Column Aliases (Rename Modal + LocalStorage + Supabase sync)
+ * 4. Double-click Auto-fit (Single Column & All Columns)
+ * 5. Automatic Snug Auto-fit on Initial Load
+ * 6. Right-click Context Menu
+ * 7. Column Aliases (Rename Modal + LocalStorage + Supabase sync)
  */
 export function useColumnPreferences({
   storageKeyPrefix = 'table',
@@ -18,7 +19,9 @@ export function useColumnPreferences({
   defaultNames = {},
   initialAliases = {},
   sampleRecords = [],
-  formatCellValue = (col, val) => String(val || '')
+  formatCellValue = (col, val) => String(val || ''),
+  autoFitOnMount = false,
+  onSortChange = null
 }) {
   // Centralized Aliases (Load from app_column_aliases or localStorage fallback or initialAliases)
   const [aliases, setAliases] = useState(() => {
@@ -45,6 +48,22 @@ export function useColumnPreferences({
     }
   });
   const [showColumnMenu, setShowColumnMenu] = useState(false);
+  const menuRef = useRef(null);
+
+  // Close dropdown menu when clicking outside
+  useEffect(() => {
+    const handleOutsideClick = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) {
+        setShowColumnMenu(false);
+      }
+    };
+    if (showColumnMenu) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [showColumnMenu]);
 
   // Column Widths
   const [columnWidths, setColumnWidths] = useState(() => {
@@ -194,8 +213,14 @@ export function useColumnPreferences({
     const startX = e.clientX;
     const startWidth = getDefaultColWidth(col);
 
+    if (typeof document !== 'undefined') {
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    }
+
     const onMouseMove = (moveEvent) => {
-      const currentWidth = Math.max(startWidth + (moveEvent.clientX - startX), 50);
+      moveEvent.preventDefault();
+      const currentWidth = Math.max(startWidth + (moveEvent.clientX - startX), 30);
       setColumnWidths(prev => ({
         ...prev,
         [col]: currentWidth
@@ -203,6 +228,10 @@ export function useColumnPreferences({
     };
 
     const onMouseUp = () => {
+      if (typeof document !== 'undefined') {
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       setColumnWidths(latest => {
@@ -222,13 +251,19 @@ export function useColumnPreferences({
 
   // Handle Sort Toggle
   const handleSort = (col) => {
-    if (!col || col === 'actions' || col === 'id') return;
+    if (!col || col === 'actions') return;
     setSortConfig(prev => {
+      let next;
       if (prev.key === col) {
-        if (prev.direction === 'asc') return { key: col, direction: 'desc' };
-        return { key: null, direction: 'asc' };
+        if (prev.direction === 'asc') next = { key: col, direction: 'desc' };
+        else next = { key: null, direction: 'asc' };
+      } else {
+        next = { key: col, direction: 'asc' };
       }
-      return { key: col, direction: 'asc' };
+      if (typeof onSortChange === 'function') {
+        onSortChange(next);
+      }
+      return next;
     });
   };
 
@@ -340,9 +375,9 @@ export function useColumnPreferences({
         }
       }
 
-      // Check for numeric values (strip commas, %, บาท, วัน, prefix 'รถ ')
-      const strA = String(vA).replace(/🟢|🟡|⚪|🔴|🔵|🟣|🔧|⚠️/g, '').replace(/,/g, '').replace(/%/g, '').replace(/บาท/g, '').replace(/วัน/g, '').replace(/^รถ\s*/, '').trim();
-      const strB = String(vB).replace(/🟢|🟡|⚪|🔴|🔵|🟣|🔧|⚠️/g, '').replace(/,/g, '').replace(/%/g, '').replace(/บาท/g, '').replace(/วัน/g, '').replace(/^รถ\s*/, '').trim();
+      // Check for numeric values (strip commas, %, ฿, บาท, วัน, prefix 'รถ ')
+      const strA = String(vA).replace(/🟢|🟡|⚪|🔴|🔵|🟣|🔧|⚠️|฿/g, '').replace(/,/g, '').replace(/%/g, '').replace(/บาท/g, '').replace(/วัน/g, '').replace(/^รถ\s*/, '').trim();
+      const strB = String(vB).replace(/🟢|🟡|⚪|🔴|🔵|🟣|🔧|⚠️|฿/g, '').replace(/,/g, '').replace(/%/g, '').replace(/บาท/g, '').replace(/วัน/g, '').replace(/^รถ\s*/, '').trim();
 
       const numA = Number(strA);
       const numB = Number(strB);
@@ -389,121 +424,222 @@ export function useColumnPreferences({
     }
   };
 
-  // Precision Text Width Measurement using HTML5 Canvas
-  const measureTextPx = (text, isBold = false, isMonospace = false) => {
+  // Precision Text Width Measurement with Thai font metric compatibility
+  const measureTextPx = (text, isBold = false, isMonospace = false, fontSize = '13px') => {
     if (!text && text !== 0) return 0;
     const str = String(text).trim();
     if (!str) return 0;
-    
-    // Extra allowance for emoji render width (~14px per emoji)
-    const emojiMatches = str.match(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu);
-    const emojiExtra = emojiMatches ? emojiMatches.length * 12 : 0;
 
+    let measuredWidth = 0;
     try {
       if (typeof document !== 'undefined') {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         if (isMonospace) {
-          ctx.font = isBold ? '700 13.5px monospace, ui-monospace, Courier, sans-serif' : '500 13px monospace, ui-monospace, Courier, sans-serif';
+          ctx.font = isBold 
+            ? `700 ${fontSize} "SF Mono", Monaco, Consolas, "Courier New", monospace` 
+            : `500 ${fontSize} "SF Mono", Monaco, Consolas, "Courier New", monospace`;
         } else {
-          ctx.font = isBold ? '700 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' : '500 13px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+          ctx.font = isBold 
+            ? `700 ${fontSize} -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Leelawadee UI", "Noto Sans Thai", sans-serif` 
+            : `500 ${fontSize} -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Leelawadee UI", "Noto Sans Thai", sans-serif`;
         }
-        return Math.ceil(ctx.measureText(str).width) + emojiExtra;
+        measuredWidth = Math.ceil(ctx.measureText(str).width);
       }
     } catch (e) {}
-    
-    // Fallback: Strip Thai tone/vowel marks that don't add horizontal width
-    const visualLen = str.replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '').length;
-    const charWidth = isMonospace ? 8.5 : (isBold ? 8.2 : 7.6);
-    return Math.ceil(visualLen * charWidth) + emojiExtra;
-  };
 
-  // Auto-fit Column (Pixel Precision - Snug fit for text, headers & badge elements)
-  const handleAutoFitColumn = (col, customRecords = null) => {
-    const isMonospaceCol = ['truck_no', 'container_no', 'booking_bl', 'seal_no', 'license_plate'].includes(col);
-    const headerText = aliases[col] || defaultNames[col] || col;
-    
-    // Header width: Header Text + Sort Icon (▲/▼/↕) + Header Padding (14px + 14px) + Icon Gap (5px) + Buffer
-    const headerW = measureTextPx(headerText, true, false) + 48;
-    let maxCellW = 0;
-
-    const recordsToSample = (customRecords && customRecords.length > 0) ? customRecords : sampleRecords;
-    (recordsToSample || []).slice(0, 500).forEach(r => {
-      const rawVal = r[col];
-      let valStr = '';
-      if (formatCellValue) {
-        valStr = formatCellValue(col, rawVal, r);
-      } else {
-        // Smart Built-in Fallbacks for Badges & Formatted Fields across all views
-        if (col === 'end_date') {
-          if (!rawVal || r?.status === 'active') {
-            valStr = '🟢 ปัจจุบัน (Ongoing)';
-          } else {
-            valStr = formatDateHelper(rawVal);
-          }
-        } else if (col === 'start_date' || col === 'date_job' || col === 'date_eta' || col === 'employment_date' || col === 'act_expire_date' || col === 'tax_expire_date' || col === 'insurance_expire_date') {
-          valStr = formatDateHelper(rawVal);
-        } else if (col === 'status') {
-          if (rawVal === 'active') valStr = '🟢 ปกติ (Active)';
-          else if (rawVal === 'leave') valStr = '🟡 ลางาน';
-          else if (rawVal === 'inactive') valStr = '⚪ พักงาน/ออก';
-          else if (rawVal === 'completed') valStr = '⚪ สิ้นสุดแล้ว';
-          else if (rawVal === 'maintenance') valStr = '🔧 ซ่อมบำรุง';
-          else valStr = String(rawVal || '');
-        } else if (col === 'work_status') {
-          if (r?.driver_type === 'substitute' || r?.operation_type === 'substitute') valStr = '🟡 ขับแทน';
-          else if (r?.status === 'leave') valStr = '🟡 ลางาน';
-          else if (r?.status === 'inactive') valStr = '⚪ พ้นสภาพ';
-          else if (r?.assigned_truck_no && r?.assigned_truck_no !== '-') valStr = '🟢 ขับประจำ';
-          else valStr = '⚪ ว่าง';
-        } else if (col === 'assigned_truck_no') {
-          valStr = (rawVal && rawVal !== '-') ? String(rawVal).trim() : '-';
-        } else if (col === 'operation_type') {
-          valStr = rawVal === 'primary' ? '🟢 คนขับประจำ' : (rawVal === 'substitute' ? '🟡 ขับแทน' : (rawVal === 'contract' ? '🟣 จ๊อบพิเศษ' : String(rawVal || '')));
-        } else if (col === 'duration_days') {
-          valStr = `${rawVal || 0} วัน`;
-        } else if (col === 'trip_rate') {
-          valStr = rawVal ? `${Number(rawVal).toLocaleString()} บาท` : '-';
-        } else if (col === 'match_status' || col === 'ocr_status') {
-          valStr = rawVal === 'green' ? '🟢 ตรง 100%' : (rawVal === 'blue' ? '🔵 ใกล้เคียง' : (rawVal === 'yellow' ? '🟡 ตู้ซ้ำ' : (rawVal === 'red' ? '🔴 ไม่พบในใบวางบิล' : String(rawVal || ''))));
-        } else if (col === 'workflow_status') {
-          valStr = rawVal === 'completed' ? '🟢 ตรวจแล้ว' : '🟡 รอตรวจ';
-        } else if (col === 'item_count') {
-          valStr = `${rawVal || 0} ตู้`;
-        } else {
-          valStr = String(rawVal || '');
-        }
-      }
-
-      if (valStr && valStr !== '-') {
-        const hasBadge = valStr.includes('🟢') || valStr.includes('🟡') || valStr.includes('⚪') || valStr.includes('🔴') || valStr.includes('🔵') || valStr.includes('🟣') || valStr.includes('🔧') || valStr.includes('⚠️');
-        
-        // Extra allowance based on cell type:
-        // - Badge: inner padding (16px) + cell padding (28px) + icon gap (4px) = 48px
-        // - Plain text: cell padding (28px) + safety buffer (8px) = 36px
-        const paddingExtra = hasBadge ? 48 : 36;
-        const isBoldCell = col === 'truck_no' || col === 'driver_name' || col === 'assigned_driver_name' || col === 'assigned_truck_no';
-        const w = measureTextPx(valStr, isBoldCell, isMonospaceCol) + paddingExtra;
-        if (w > maxCellW) maxCellW = w;
-      }
-    });
-
-    // Special minimum baseline for formatted status badges
-    if (col === 'work_status') {
-      maxCellW = Math.max(maxCellW, 110);
+    if (measuredWidth <= 0) {
+      // Fallback calculation for Thai characters & emojis
+      const visualLen = str.replace(/[\u0E31\u0E34-\u0E3A\u0E47-\u0E4E]/g, '').length;
+      const charWidth = isMonospace ? 8.8 : (isBold ? 8.5 : 7.8);
+      measuredWidth = Math.ceil(visualLen * charWidth);
     }
 
-    // Snug Auto Width: exactly fit content or header, never clipped
-    const autoWidth = Math.min(Math.max(headerW, maxCellW, 75), 600);
+    return measuredWidth;
+  };
+
+  // Calculate Single Column Auto-Fit Width (Snug Pixel-Precision)
+  const calculateColAutoFitWidth = (col, customRecords = null, tableElement = null) => {
+    // Fixed compact width for index / # / id column
+    if (col === 'index' || col === '#' || col === 'id') {
+      return defaultWidths[col] || 45;
+    }
+    if (col === 'actions') {
+      return defaultWidths['actions'] || 105;
+    }
+
+    const isMonospaceCol = ['truck_no', 'container_no', 'booking_bl', 'seal_no', 'license_plate', 'batch_no'].includes(col);
+    const headerText = aliases[col] || defaultNames[col] || col;
+    const isSortable = col !== 'actions' && col !== 'id';
+
+    // 1. Initial estimated Header width (Text + Sort Icon + Cell Padding 20px + Buffer 12px)
+    const headerTextWidth = measureTextPx(headerText, true, false, '12.5px');
+    let headerW = headerTextWidth + (isSortable ? 16 : 0) + 32;
+
+    let maxContentW = 0;
+
+    // 2. Real-world DOM Measurement if rendered table is available
+    try {
+      if (typeof document !== 'undefined') {
+        const targetTable = tableElement || document.querySelector(`th[data-col="${col}"]`)?.closest('table') || document.querySelector('table.universal-data-table') || document.querySelector('table');
+
+        if (targetTable) {
+          const measurer = document.createElement('div');
+          measurer.style.cssText = 'position:absolute;visibility:hidden;top:-9999px;left:-9999px;white-space:nowrap;display:inline-block;width:auto;height:auto;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Leelawadee UI","Noto Sans Thai",sans-serif;font-size:13px;font-weight:700;';
+          document.body.appendChild(measurer);
+
+          // 2.1 Measure actual DOM <th> element width
+          const th = targetTable.querySelector(`th[data-col="${col}"]`);
+          if (th) {
+            const innerDiv = th.querySelector('div') || th;
+            measurer.innerHTML = innerDiv.innerHTML;
+            const naturalThW = measurer.getBoundingClientRect().width + 28;
+            if (naturalThW > headerW) {
+              headerW = naturalThW;
+            }
+          }
+
+          // 2.2 Measure body cells <td>
+          let colIdx = -1;
+          const headerCells = Array.from(targetTable.querySelectorAll('thead th'));
+          if (headerCells.length > 0) {
+            colIdx = headerCells.findIndex(h => 
+              h.getAttribute('data-col') === col || 
+              h.innerText.includes(headerText)
+            );
+          }
+
+          if (colIdx >= 0) {
+            const rows = targetTable.querySelectorAll('tbody tr');
+            measurer.style.fontSize = '13px';
+            measurer.style.fontWeight = isMonospaceCol ? '700' : 'normal';
+
+            const sampleRows = Array.from(rows).slice(0, 100);
+            sampleRows.forEach(tr => {
+              const td = tr.children[colIdx];
+              if (td && td.innerText.trim() !== '') {
+                measurer.innerHTML = td.innerHTML;
+                const naturalW = measurer.getBoundingClientRect().width;
+                if (naturalW > maxContentW) maxContentW = naturalW;
+              }
+            });
+          }
+
+          document.body.removeChild(measurer);
+        }
+      }
+    } catch (err) {}
+
+    // 3. Synthetic Data Measurement (fallback if DOM is empty)
+    const recordsToSample = (customRecords && customRecords.length > 0) ? customRecords : sampleRecords;
+    if (recordsToSample && recordsToSample.length > 0) {
+      recordsToSample.slice(0, 200).forEach(r => {
+        const rawVal = r[col];
+        let valStr = '';
+        if (formatCellValue) {
+          valStr = formatCellValue(col, rawVal, r);
+        } else {
+          if (col === 'end_date') {
+            valStr = (!rawVal || r?.status === 'active') ? '🟢 ปัจจุบัน' : formatDateHelper(rawVal);
+          } else if (col.includes('date')) {
+            valStr = formatDateHelper(rawVal);
+          } else if (col === 'status') {
+            if (rawVal === 'active') valStr = '🟢 ปกติ';
+            else if (rawVal === 'leave') valStr = '🟡 ลางาน';
+            else if (rawVal === 'inactive') valStr = '⚪ พักงาน/ออก';
+            else if (rawVal === 'completed') valStr = '⚪ สิ้นสุดแล้ว';
+            else if (rawVal === 'maintenance') valStr = '🔧 ซ่อมบำรุง';
+            else valStr = String(rawVal || '');
+          } else if (col === 'work_status') {
+            if (r?.driver_type === 'substitute' || r?.operation_type === 'substitute') valStr = '🟡 ขับแทน';
+            else if (r?.status === 'leave') valStr = '🟡 ลางาน';
+            else if (r?.status === 'inactive') valStr = '⚪ พ้นสภาพ';
+            else if (r?.assigned_truck_no && r?.assigned_truck_no !== '-') valStr = '🟢 ขับประจำ';
+            else valStr = '⚪ ว่าง';
+          } else if (col === 'operation_type') {
+            valStr = rawVal === 'primary' ? '🟢 คนขับประจำ' : (rawVal === 'substitute' ? '🟡 ขับแทน' : (rawVal === 'contract' ? '🟣 จ๊อบพิเศษ' : String(rawVal || '')));
+          } else if (typeof rawVal === 'number') {
+            if (col.includes('earnings') || col.includes('price') || col.includes('amount') || col.includes('salary')) {
+              valStr = `฿${rawVal.toLocaleString()}`;
+            } else if (col.includes('count') || col.includes('containers')) {
+              valStr = `${rawVal.toLocaleString()} ตู้`;
+            } else {
+              valStr = rawVal.toLocaleString();
+            }
+          }
+        }
+
+        if (col === 'image_url' || col === 'sheet_url' || col === 'photo_url' || (typeof valStr === 'string' && (valStr.startsWith('http://') || valStr.startsWith('https://') || valStr.startsWith('data:')))) {
+          valStr = '🖼️ รูปภาพ';
+        }
+
+        if (valStr && valStr !== '-') {
+          const isBoldCell = col === 'truck_no' || col === 'driver_name' || col === 'assigned_truck_no' || col === 'total_earnings';
+          const w = measureTextPx(valStr, isBoldCell, isMonospaceCol, '13px');
+          if (w > maxContentW) maxContentW = w;
+        }
+      });
+    }
+
+    // 4. Calculate Final Usable Cell Width:
+    const cellRequiredW = maxContentW > 0 ? maxContentW + 24 : 0;
+
+    // Minimum boundary per column type:
+    let minW = 40;
+    if (col === 'index' || col === '#') minW = 36;
+    else if (col === 'actions') minW = 85;
+    else if (col === 'size' || col === 'port') minW = 50;
+    else if (col === 'driver_name' || col === 'assigned_driver_name') minW = 130;
+
+    const calculatedWidth = Math.max(headerW, cellRequiredW, minW);
+    return Math.min(Math.ceil(calculatedWidth), 550);
+  };
+
+  // Auto-fit Single Column
+  const handleAutoFitColumn = (col, customRecords = null, event = null) => {
+    const targetTable = event?.currentTarget?.closest('table') || null;
+    const finalWidth = calculateColAutoFitWidth(col, customRecords, targetTable);
 
     setColumnWidths(prev => {
-      const updated = { ...prev, [col]: autoWidth };
+      const updated = { ...prev, [col]: finalWidth };
       try {
         localStorage.setItem(`${storageKeyPrefix}_column_widths`, JSON.stringify(updated));
       } catch (e) {}
       return updated;
     });
   };
+
+  // Auto-fit All Visible Columns
+  const handleAutoFitAllColumns = (customRecords = null, targetTable = null) => {
+    const records = (customRecords && customRecords.length > 0) ? customRecords : sampleRecords;
+    const newWidths = {};
+    activeColumns.forEach(col => {
+      newWidths[col] = calculateColAutoFitWidth(col, records, targetTable);
+    });
+
+    setColumnWidths(prev => {
+      const updated = { ...prev, ...newWidths };
+      try {
+        localStorage.setItem(`${storageKeyPrefix}_column_widths`, JSON.stringify(updated));
+      } catch (e) {}
+      return updated;
+    });
+    return newWidths;
+  };
+
+  // Automatically Auto-Fit All Columns on Initial Mount / First Data Load
+  const hasAutoFittedRef = useRef(false);
+  useEffect(() => {
+    if (!autoFitOnMount || hasAutoFittedRef.current) return;
+    const records = (sampleRecords && sampleRecords.length > 0) ? sampleRecords : null;
+    if (records && records.length > 0) {
+      const timer = setTimeout(() => {
+        handleAutoFitAllColumns(records);
+        hasAutoFittedRef.current = true;
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [sampleRecords, autoFitOnMount, activeColumns]);
 
   // Toggle Visibility
   const handleToggleColumnHide = (col) => {
@@ -528,7 +664,7 @@ export function useColumnPreferences({
     } catch (e) {}
   };
 
-  // Reset Width
+  // Reset Width of Single Column
   const handleResetColumnWidth = (col) => {
     setColumnWidths(prev => {
       const next = { ...prev };
@@ -538,6 +674,14 @@ export function useColumnPreferences({
       } catch (e) {}
       return next;
     });
+  };
+
+  // Reset All Column Widths back to default
+  const handleResetAllColumnWidths = () => {
+    setColumnWidths({});
+    try {
+      localStorage.removeItem(`${storageKeyPrefix}_column_widths`);
+    } catch (e) {}
   };
 
   // Global click listener to close context menu
@@ -651,6 +795,7 @@ export function useColumnPreferences({
     setVisibleColumns,
     showColumnMenu,
     setShowColumnMenu,
+    menuRef,
     columnWidths,
     setColumnWidths,
     columnOrder,
@@ -669,9 +814,11 @@ export function useColumnPreferences({
     handleResetColumnOrder,
     handleResizeMouseDown,
     handleAutoFitColumn,
+    handleAutoFitAllColumns,
     handleToggleColumnHide,
     handleShowAllColumns,
     handleResetColumnWidth,
+    handleResetAllColumnWidths,
     handleHeaderContextMenu,
     handleStartRename,
     handleSaveAlias,

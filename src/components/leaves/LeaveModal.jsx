@@ -70,10 +70,15 @@ export default function LeaveModal({
       return;
     }
 
+    const isIndefinite = formData.is_indefinite === true;
+    const targetEndDate = formData.end_date || (!isIndefinite && formData.expected_end_date ? formData.expected_end_date : null);
+    if (targetEndDate && targetEndDate < formData.start_date) {
+      alert('⚠️ วันที่สิ้นสุดการลาต้องไม่มาก่อนวันที่เริ่มลา');
+      return;
+    }
+
     setSaving(true);
     try {
-      const isIndefinite = formData.is_indefinite === true;
-      const targetEndDate = formData.end_date || (!isIndefinite && formData.expected_end_date ? formData.expected_end_date : null);
       const todayStr = new Date().toISOString().slice(0, 10);
       let computedStatus = formData.status;
       let actualEnd = formData.end_date || null;

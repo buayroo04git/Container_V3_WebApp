@@ -3,9 +3,9 @@ import { supabase } from '../supabaseClient';
 import { jobSheetService } from '../services/jobSheetService';
 import { containerService } from '../services/containerService';
 import { findTopContainerMatches, normalizeExcelDate } from '../utils/matchingLogic';
-import TableContextMenu from '../components/ui/TableContextMenu';
-import RenameColumnModal from '../components/ui/RenameColumnModal';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
+import UniversalTableContainer from '../components/ui/UniversalTableContainer';
+import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 function getPageNumbers(current, total) {
@@ -27,6 +27,7 @@ const BATCH_RAW_COLUMNS = [
   'image_name',
   'batch_name',
   'truck_no',
+  'driver_name',
   'total',
   'match_summary',
   'status',
@@ -40,6 +41,7 @@ const BATCH_DEFAULT_NAMES = {
   image_name: 'ชื่อรูปภาพ',
   batch_name: 'รอบงาน (Batch)',
   truck_no: 'เบอร์รถ',
+  driver_name: 'คนขับ',
   total: 'จำนวนตู้',
   match_summary: 'ผลจับคู่',
   status: 'สถานะ',
@@ -48,16 +50,31 @@ const BATCH_DEFAULT_NAMES = {
 };
 
 const BATCH_DEFAULT_WIDTHS = {
-  index: 50,
-  thumbnail: 80,
-  image_name: 180,
-  batch_name: 160,
-  truck_no: 110,
-  total: 90,
-  match_summary: 180,
-  status: 140,
-  saved_at: 150,
-  actions: 170
+  index: 45,
+  thumbnail: 75,
+  image_name: 150,
+  batch_name: 140,
+  truck_no: 95,
+  driver_name: 130,
+  total: 85,
+  match_summary: 150,
+  status: 120,
+  saved_at: 130,
+  actions: 150
+};
+
+const BATCH_ALIGN_MAP = {
+  index: 'center',
+  thumbnail: 'center',
+  image_name: 'left',
+  batch_name: 'left',
+  truck_no: 'center',
+  driver_name: 'left',
+  total: 'right',
+  match_summary: 'center',
+  status: 'center',
+  saved_at: 'center',
+  actions: 'center'
 };
 
 export default function BatchManagerView() {
@@ -85,15 +102,16 @@ export default function BatchManagerView() {
   const [rowsPerPage, setRowsPerPage] = useState(50); // 25, 50, 100, 200, 'ALL'
   const [sortConfig, setSortConfig] = useState({ key: 'saved_at', direction: 'desc' });
 
-  const menuRef = useRef(null);
+  const [availableDrivers, setAvailableDrivers] = useState([]);
 
   // 1. โหลด Metadata ตอนเปิดหน้าจอ
   useEffect(() => {
     const fetchMetadata = async () => {
       try {
-        const [batchesRes, trucksRes, masterRes] = await Promise.all([
+        const [batchesRes, trucksRes, driversRes, masterRes] = await Promise.all([
           supabase.from('job_sheets').select('batch_name').neq('status', 'deleted').limit(150),
           supabase.from('truck_records').select('truck_no').order('truck_no'),
+          supabase.from('driver_records').select('driver_name').order('driver_name', { ascending: true }),
           containerService.fetchMasterContainers()
         ]);
         if (batchesRes?.data) {
@@ -104,6 +122,10 @@ export default function BatchManagerView() {
           const tSet = new Set(trucksRes.data.map(t => t.truck_no).filter(Boolean));
           setAvailableTrucks(Array.from(tSet).sort());
         }
+        if (driversRes?.data) {
+          const dSet = new Set(driversRes.data.map(d => d.driver_name).filter(Boolean));
+          setAvailableDrivers(Array.from(dSet).sort((a, b) => a.localeCompare(b, 'th')));
+        }
         if (masterRes?.data) {
           setMasterDb(masterRes.data);
         }
@@ -113,6 +135,21 @@ export default function BatchManagerView() {
     };
     fetchMetadata();
   }, []);
+
+  const handleUpdateDriver = async (sheetId, newDriver) => {
+    try {
+      const res = await jobSheetService.updateJobSheetDriver(sheetId, newDriver);
+      if (!res.success) throw res.error;
+      
+      const cleanVal = newDriver === '-' ? null : newDriver;
+      setJobSheetsList(prev => prev.map(s => s.id === sheetId ? { ...s, driver_name: cleanVal } : s));
+      if (activeDetailSheet?.id === sheetId) {
+        setActiveDetailSheet(prev => ({ ...prev, driver_name: cleanVal }));
+      }
+    } catch (e) {
+      alert('ไม่สามารถอัปเดตคนขับได้: ' + (e.message || e));
+    }
+  };
 
   // 2. Debounce Search (300ms)
   useEffect(() => {
@@ -237,57 +274,22 @@ export default function BatchManagerView() {
   }, [jobSheetsList]);
 
   // Hook สำหรับจัดการคอลัมน์
-  const {
-    renamingColumn,
-    setRenamingColumn,
-    visibleColumns,
-    showColumnMenu,
-    setShowColumnMenu,
-    draggedCol,
-    setDraggedCol,
-    dragOverCol,
-    setDragOverCol,
-    contextMenu,
-    setContextMenu,
-    allColumns,
-    activeColumns,
-    getColDisplayName,
-    getDefaultColWidth,
-    handleColumnReorder,
-    handleResetColumnOrder,
-    handleResizeMouseDown,
-    handleAutoFitColumn,
-    handleToggleColumnHide,
-    handleShowAllColumns,
-    handleResetColumnWidth,
-    handleHeaderContextMenu,
-    handleStartRename,
-    handleSaveAlias,
-    handleResetAlias,
-    handleResetAllAliases
-  } = useColumnPreferences({
+  const batchPrefs = useColumnPreferences({
     storageKeyPrefix: 'completed_jobs',
     rawColumns: BATCH_RAW_COLUMNS,
     defaultNames: BATCH_DEFAULT_NAMES,
     defaultWidths: BATCH_DEFAULT_WIDTHS,
     sampleRecords: sortedSheets,
+    onSortChange: (newSort) => {
+      setSortConfig(newSort);
+    },
     formatCellValue: (col, val) => {
       if (col === 'saved_at') return val ? new Date(val).toLocaleString('th-TH') : '-';
       return String(val || '');
     }
   });
 
-  // ปิดเมนูเมื่อคลิกนอก
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setShowColumnMenu(false);
-      }
-      setContextMenu(null);
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [setShowColumnMenu, setContextMenu]);
+  const { activeColumns } = batchPrefs;
 
   // เปิดหน้าต่างแก้ไขเฉพาะตู้ที่ยังไม่พบใน DB (Red Containers Editor)
   const openRedEditor = (sheet) => {
@@ -444,36 +446,68 @@ export default function BatchManagerView() {
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
             
             {/* Month Filter */}
-            <input
-              type="month"
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              style={{
-                height: '35px',
-                padding: '0 8px',
-                borderRadius: '7px',
-                border: '1px solid #cbd5e1',
-                background: '#ffffff',
-                color: '#334155',
-                fontSize: '13px',
-                fontWeight: 600,
-                outline: 'none',
-                cursor: 'pointer'
-              }}
-              title="เลือกเดือนที่ต้องการแสดงข้อมูล"
-            />
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+              <span style={{ position: 'absolute', left: '8px', pointerEvents: 'none', fontSize: '13px' }}>📅</span>
+              <input
+                type="month"
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                style={{
+                  height: '35px',
+                  paddingLeft: '28px',
+                  paddingRight: selectedMonth ? '26px' : '8px',
+                  borderRadius: '7px',
+                  border: selectedMonth ? '1px solid #93c5fd' : '1px solid #cbd5e1',
+                  background: selectedMonth ? '#eff6ff' : '#ffffff',
+                  color: selectedMonth ? '#1d4ed8' : '#334155',
+                  fontSize: '12.5px',
+                  fontWeight: selectedMonth ? 700 : 500,
+                  outline: 'none',
+                  cursor: 'pointer',
+                  boxSizing: 'border-box'
+                }}
+                title="เลือกเดือนที่ต้องการแสดงข้อมูล"
+              />
+              {selectedMonth && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMonth('')}
+                  style={{
+                    position: 'absolute',
+                    right: '6px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: '#64748b',
+                    cursor: 'pointer',
+                    padding: 0,
+                    fontSize: '11px',
+                    fontWeight: 'bold',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="ล้างตัวกรองเดือน"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
 
             {/* Search Box */}
             <div style={{ position: 'relative', width: '220px' }}>
+              <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '13px', pointerEvents: 'none' }}>🔍</span>
               <input
                 type="text"
-                placeholder="🔍 ค้นหาเบอร์รถ, เลขตู้..."
+                placeholder="ค้นหาเบอร์รถ, เลขตู้..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 style={{
                   width: '100%',
                   height: '35px',
-                  padding: '0 12px 0 30px',
+                  paddingLeft: '32px',
+                  paddingRight: searchTerm ? '28px' : '10px',
                   borderRadius: '7px',
                   border: '1px solid #cbd5e1',
                   fontSize: '12.5px',
@@ -482,7 +516,30 @@ export default function BatchManagerView() {
                   boxSizing: 'border-box'
                 }}
               />
-              <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '13px' }}>🔍</span>
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  style={{
+                    position: 'absolute',
+                    right: '8px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: '#94a3b8',
+                    cursor: 'pointer',
+                    padding: 0,
+                    fontSize: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="ล้างคำค้นหา"
+                >
+                  ✕
+                </button>
+              )}
             </div>
 
             {/* Truck Filter */}
@@ -532,11 +589,12 @@ export default function BatchManagerView() {
             </select>
 
             {/* Clear Filters */}
-            {(selectedTruckFilter !== 'ALL' || selectedBatchFilter !== 'ALL' || searchTerm.trim() !== '') && (
+            {(selectedTruckFilter !== 'ALL' || selectedBatchFilter !== 'ALL' || searchTerm.trim() !== '' || selectedMonth !== '') && (
               <button
                 onClick={() => {
                   setSelectedTruckFilter('ALL');
                   setSelectedBatchFilter('ALL');
+                  setSelectedMonth('');
                   setSearchTerm('');
                 }}
                 style={{
@@ -561,19 +619,7 @@ export default function BatchManagerView() {
             )}
 
             {/* Column Visibility Menu */}
-            <ColumnVisibilityDropdown
-              showColumnMenu={showColumnMenu}
-              setShowColumnMenu={setShowColumnMenu}
-              menuRef={menuRef}
-              allColumns={allColumns}
-              activeColumns={activeColumns}
-              visibleColumns={visibleColumns}
-              onToggleColumnVisibility={handleToggleColumnHide}
-              getColDisplayName={getColDisplayName}
-              onStartEditAlias={(col) => handleStartRename(col)}
-              onShowAllColumns={handleShowAllColumns}
-              onResetAllAliases={handleResetAllAliases}
-            />
+            <ColumnVisibilityDropdown preferences={batchPrefs} />
 
           </div>
         </div>
@@ -590,124 +636,15 @@ export default function BatchManagerView() {
             {searchTerm || selectedBatchFilter !== 'ALL' ? 'ไม่พบใบงานที่ตรงตามเงื่อนไขการค้นหา' : 'ยังไม่มีประวัติใบงานที่บันทึก'}
           </div>
         ) : (
-          <div style={{ overflow: 'auto', flex: 1, minHeight: 0, borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-            <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
-              <thead style={{ position: 'sticky', top: 0, zIndex: 10, background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
-                <tr>
-                  {activeColumns.map(col => {
-                    const colWidth = getDefaultColWidth(col);
-                    const isSorted = sortConfig.key === col;
-                    const isAsc = isSorted && sortConfig.direction === 'asc';
-                    const isDesc = isSorted && sortConfig.direction === 'desc';
-                    const isDragging = draggedCol === col;
-                    const isDragOver = dragOverCol === col;
-
-                    return (
-                      <th
-                        key={col}
-                        draggable
-                        onDragStart={(e) => {
-                          setDraggedCol(col);
-                          e.dataTransfer.setData('text/plain', col);
-                        }}
-                        onDragOver={(e) => {
-                          e.preventDefault();
-                          e.dataTransfer.dropEffect = 'move';
-                          if (draggedCol && draggedCol !== col && dragOverCol !== col) {
-                            setDragOverCol(col);
-                          }
-                        }}
-                        onDragLeave={() => {
-                          if (dragOverCol === col) setDragOverCol(null);
-                        }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          if (draggedCol && draggedCol !== col) {
-                            handleColumnReorder(draggedCol, col);
-                          }
-                          setDraggedCol(null);
-                          setDragOverCol(null);
-                        }}
-                        onDragEnd={() => {
-                          setDraggedCol(null);
-                          setDragOverCol(null);
-                        }}
-                        onClick={() => handleSort(col)}
-                        onContextMenu={(e) => handleHeaderContextMenu(e, col)}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          handleAutoFitColumn(col, sortedSheets);
-                        }}
-                        style={{ 
-                          width: `${colWidth}px`,
-                          minWidth: `${colWidth}px`,
-                          maxWidth: `${colWidth}px`,
-                          position: 'relative',
-                          padding: '10px 12px', 
-                          textAlign: 'center',
-                          color: isSorted ? '#2563eb' : (isDragOver ? '#1d4ed8' : '#475569'), 
-                          fontWeight: 700, 
-                          whiteSpace: 'nowrap', 
-                          cursor: isDragging ? 'grabbing' : 'grab',
-                          userSelect: 'none',
-                          borderBottom: isSorted ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                          background: isDragOver ? '#eff6ff' : (isSorted ? '#eff6ff' : (isDragging ? '#f1f5f9' : '#f8fafc')),
-                          borderLeft: isDragOver ? '3px solid #2563eb' : undefined,
-                          opacity: isDragging ? 0.4 : 1,
-                          transform: isDragging ? 'scale(0.97)' : (isDragOver ? 'translateX(2px)' : 'none'),
-                          transition: 'background 0.18s cubic-bezier(0.4, 0, 0.2, 1), transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, border-left 0.15s ease',
-                          boxSizing: 'border-box'
-                        }}
-                        title="คลิกเพื่อจัดเรียง / ลากเพื่อสลับคอลัมน์ / ดับเบิ้ลคลิกปรับขนาดพอดี / คลิกขวาจัดการ"
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', paddingRight: '4px' }}>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{getColDisplayName(col)}</span>
-                          <span style={{ fontSize: '11px', color: isSorted ? '#2563eb' : '#94a3b8', flexShrink: 0 }}>
-                            {isAsc ? '▲' : isDesc ? '▼' : '↕'}
-                          </span>
-                        </div>
-
-                        {/* Resize Handle with Subtle Divider Line */}
-                        <div
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseDown={(e) => handleResizeMouseDown(e, col)}
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            handleAutoFitColumn(col, sortedSheets);
-                          }}
-                          style={{
-                            position: 'absolute',
-                            right: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: '8px',
-                            cursor: 'col-resize',
-                            userSelect: 'none',
-                            zIndex: 5,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: 'transparent'
-                          }}
-                          title="คลิกแล้วลากเพื่อปรับขนาด / ดับเบิ้ลคลิกเพื่อปรับพอดีข้อความ"
-                        >
-                          <div 
-                            style={{
-                              width: '1px',
-                              height: '16px',
-                              background: '#cbd5e1',
-                              transition: 'all 0.15s ease'
-                            }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = '#2563eb'; e.currentTarget.style.width = '2px'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = '#cbd5e1'; e.currentTarget.style.width = '1px'; }}
-                          />
-                        </div>
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
+          <UniversalTableContainer
+            preferences={batchPrefs}
+          >
+            <UniversalTableHeader
+              preferences={batchPrefs}
+              data={sortedSheets}
+              alignMap={BATCH_ALIGN_MAP}
+            />
+            <tbody>
                 {sortedSheets.map((sheet, index) => {
                   const isPerfect = sheet.red === 0;
                   const total = sheet.containers ? sheet.containers.length : 0;
@@ -731,9 +668,18 @@ export default function BatchManagerView() {
                       onMouseLeave={(e) => { e.currentTarget.style.background = index % 2 === 0 ? '#ffffff' : '#fcfdfd'; }}
                     >
                       {activeColumns.map(col => {
+                        const align = BATCH_ALIGN_MAP[col] || 'left';
+                        const cellStyle = {
+                          padding: '8px 10px',
+                          textAlign: align,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        };
+
                         if (col === 'index') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', textAlign: 'center', color: '#64748b', fontWeight: 600, fontSize: '13px' }}>
+                            <td key={col} style={{ ...cellStyle, color: '#64748b', fontWeight: 600, fontSize: '13px' }}>
                               {index + 1}
                             </td>
                           );
@@ -741,13 +687,13 @@ export default function BatchManagerView() {
 
                         if (col === 'thumbnail') {
                           return (
-                            <td key={col} style={{ padding: '8px 14px', textAlign: 'center' }}>
+                            <td key={col} style={{ ...cellStyle, padding: '4px 8px' }}>
                               {sheet.image_url ? (
                                 <div 
                                   onClick={() => handleDownloadImage(sheet.image_url, sheet.truck_no, sheet.batch_name)}
                                   style={{
-                                    width: '40px',
-                                    height: '40px',
+                                    width: '36px',
+                                    height: '36px',
                                     borderRadius: '6px',
                                     overflow: 'hidden',
                                     cursor: 'pointer',
@@ -779,7 +725,7 @@ export default function BatchManagerView() {
 
                         if (col === 'image_name') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px' }}>
+                            <td key={col} style={cellStyle}>
                               <div style={{
                                 fontWeight: 600,
                                 color: '#0369a1',
@@ -803,7 +749,7 @@ export default function BatchManagerView() {
 
                         if (col === 'batch_name') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px' }}>
+                            <td key={col} style={cellStyle}>
                               <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '13px' }}>
                                 {sheet.batch_name}
                               </span>
@@ -813,7 +759,7 @@ export default function BatchManagerView() {
 
                         if (col === 'truck_no') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px' }}>
+                            <td key={col} style={cellStyle}>
                               <span style={{ fontWeight: 700, fontSize: '13px', color: '#0f172a' }}>
                                 {sheet.truck_no}
                               </span>
@@ -821,9 +767,19 @@ export default function BatchManagerView() {
                           );
                         }
 
+                        if (col === 'driver_name') {
+                          return (
+                            <td key={col} style={cellStyle}>
+                              <span style={{ fontWeight: 600, color: sheet.driver_name && sheet.driver_name !== '-' ? '#1e293b' : '#94a3b8', fontSize: '13px' }}>
+                                {sheet.driver_name || '-'}
+                              </span>
+                            </td>
+                          );
+                        }
+
                         if (col === 'total') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', textAlign: 'center' }}>
+                            <td key={col} style={cellStyle}>
                               <span style={{ fontWeight: 700, fontSize: '13px', color: '#334155' }}>
                                 {total} ตู้
                               </span>
@@ -833,8 +789,8 @@ export default function BatchManagerView() {
 
                         if (col === 'match_summary') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px' }}>
-                              <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            <td key={col} style={cellStyle}>
+                              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', justifyContent: 'center' }}>
                                 <span style={{ color: '#15803d', fontWeight: 700, fontSize: '13px' }}>
                                   🟢 {sheet.green}
                                 </span>
@@ -850,7 +806,7 @@ export default function BatchManagerView() {
 
                         if (col === 'status') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px' }}>
+                            <td key={col} style={cellStyle}>
                               {isPerfect ? (
                                 <span style={{ color: '#15803d', fontWeight: 700, fontSize: '12.5px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
                                   ✓ ปิดจบงานแล้ว
@@ -866,7 +822,7 @@ export default function BatchManagerView() {
 
                         if (col === 'saved_at') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', color: '#475569', fontSize: '12.5px', fontWeight: 600 }}>
+                            <td key={col} style={{ ...cellStyle, color: '#475569', fontSize: '12.5px', fontWeight: 600 }}>
                               {dateStr}
                             </td>
                           );
@@ -874,8 +830,8 @@ export default function BatchManagerView() {
 
                         if (col === 'actions') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', textAlign: 'center' }}>
-                              <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <td key={col} style={cellStyle}>
+                              <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', alignItems: 'center', flexWrap: 'wrap' }}>
                                 <button
                                   onClick={() => setActiveDetailSheet(sheet)}
                                   style={{
@@ -920,7 +876,7 @@ export default function BatchManagerView() {
                         }
 
                         return (
-                          <td key={col} style={{ padding: '10px 14px' }}>
+                          <td key={col} style={cellStyle}>
                             {String(sheet[col] || '-')}
                           </td>
                         );
@@ -929,31 +885,9 @@ export default function BatchManagerView() {
                   );
                 })}
               </tbody>
-            </table>
-          </div>
+          </UniversalTableContainer>
         )}
       </div>
-
-      {/* Header Context Menu */}
-      <TableContextMenu
-        contextMenu={contextMenu}
-        onClose={() => setContextMenu(null)}
-        onStartEditAlias={(col) => handleStartRename(col)}
-        onAutoFitColumn={(col) => handleAutoFitColumn(col, sortedSheets)}
-        onToggleColumnHide={handleToggleColumnHide}
-        onShowAllColumns={handleShowAllColumns}
-        onResetColumnWidth={handleResetColumnWidth}
-        onResetColumnOrder={handleResetColumnOrder}
-        getColDisplayName={getColDisplayName}
-      />
-
-      {/* Rename Column Modal */}
-      <RenameColumnModal
-        renamingColumn={renamingColumn}
-        onClose={() => setRenamingColumn(null)}
-        onSaveAlias={handleSaveAlias}
-        onResetAlias={handleResetAlias}
-      />
 
       {/* Modal: ดูรายละเอียดตู้ทั้งหมด */}
       {activeDetailSheet && (
@@ -992,10 +926,44 @@ export default function BatchManagerView() {
               background: '#f8fafc'
             }}>
               <div>
-                <h3 style={{ margin: '0 0 2px 0', fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>
-                  📦 รายการตู้ในใบงาน: เบอร์รถ {activeDetailSheet.truck_no}
-                </h3>
-                <div style={{ fontSize: '12px', color: '#64748b' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>
+                    📦 รายการตู้ในใบงาน: เบอร์รถ {activeDetailSheet.truck_no}
+                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px' }}>
+                    <span style={{ color: '#64748b', fontWeight: 600 }}>👤 คนขับ:</span>
+                    {availableDrivers && availableDrivers.length > 0 ? (
+                      <select
+                        value={activeDetailSheet.driver_name || '-'}
+                        onChange={(e) => handleUpdateDriver(activeDetailSheet.id, e.target.value)}
+                        style={{
+                          fontSize: '12.5px',
+                          fontWeight: 700,
+                          color: activeDetailSheet.driver_name && activeDetailSheet.driver_name !== '-' ? '#0f172a' : '#64748b',
+                          background: '#ffffff',
+                          border: '1px solid #cbd5e1',
+                          borderRadius: '6px',
+                          padding: '2px 8px',
+                          cursor: 'pointer',
+                          outline: 'none'
+                        }}
+                      >
+                        <option value="-">- ไม่ระบุคนขับ -</option>
+                        {activeDetailSheet.driver_name && activeDetailSheet.driver_name !== '-' && !availableDrivers.includes(activeDetailSheet.driver_name) && (
+                          <option value={activeDetailSheet.driver_name}>{activeDetailSheet.driver_name}</option>
+                        )}
+                        {availableDrivers.map(d => (
+                          <option key={d} value={d}>{d}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span style={{ fontWeight: 700, color: '#334155' }}>
+                        {activeDetailSheet.driver_name || '-'}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '4px' }}>
                   รอบงาน: <b>{activeDetailSheet.batch_name}</b> | ทั้งหมด {activeDetailSheet.containers.length} ตู้ (🟢 สมบูรณ์: {activeDetailSheet.green}, 🔴 ไม่พบ DB: {activeDetailSheet.red})
                 </div>
               </div>
@@ -1190,7 +1158,7 @@ export default function BatchManagerView() {
                 <h3 style={{ margin: '0 0 4px 0', fontSize: '17px', fontWeight: 800, color: '#9a3412', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span>✏️ แก้ไขเฉพาะตู้ที่ยังไม่พบในใบวางบิล</span>
                   <span style={{ fontSize: '13px', color: '#c2410c', background: '#ffedd5', padding: '2px 8px', borderRadius: '6px' }}>
-                    เบอร์รถ: {editingRedSheet.truck_no}
+                    เบอร์รถ: {editingRedSheet.truck_no} {editingRedSheet.driver_name && editingRedSheet.driver_name !== '-' ? `| คนขับ: ${editingRedSheet.driver_name}` : ''}
                   </span>
                 </h3>
                 <div style={{ fontSize: '12.5px', color: '#7c2d12' }}>

@@ -10,9 +10,9 @@ import {
 import { fetchDrivers } from '../services/truckDriverService';
 import LeaveModal from '../components/leaves/LeaveModal';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
-import TableContextMenu from '../components/ui/TableContextMenu';
-import RenameColumnModal from '../components/ui/RenameColumnModal';
 import KpiCard from '../components/ui/KpiCard';
+import UniversalTableContainer from '../components/ui/UniversalTableContainer';
+import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 const DEFAULT_LEAVE_COLUMNS = [
@@ -46,18 +46,33 @@ const DEFAULT_COLUMN_NAMES = {
 };
 
 const DEFAULT_LEAVE_WIDTHS = {
-  id: 55,
-  driver_name: 160,
-  leave_type: 150,
-  start_date: 115,
-  end_date: 140,
-  duration_days: 100,
-  with_pay: 110,
-  status: 120,
-  leave_reason: 180,
-  approved_by: 120,
-  remark: 160,
+  id: 45,
+  driver_name: 150,
+  leave_type: 130,
+  start_date: 110,
+  end_date: 130,
+  duration_days: 95,
+  with_pay: 105,
+  status: 115,
+  leave_reason: 150,
+  approved_by: 115,
+  remark: 140,
   actions: 100
+};
+
+const LEAVE_ALIGN_MAP = {
+  id: 'center',
+  driver_name: 'left',
+  leave_type: 'center',
+  start_date: 'center',
+  end_date: 'center',
+  duration_days: 'right',
+  with_pay: 'center',
+  status: 'center',
+  leave_reason: 'left',
+  approved_by: 'left',
+  remark: 'left',
+  actions: 'center'
 };
 
 const LEAVE_TYPE_MAP = {
@@ -86,8 +101,6 @@ export default function DriverLeavesView() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingRecord, setEditingRecord] = useState(null);
 
-  const menuRef = useRef(null);
-
   // Format Date
   const formatDateDisplay = (dateStr) => {
     if (!dateStr || dateStr === '-') return '-';
@@ -101,38 +114,7 @@ export default function DriverLeavesView() {
   };
 
   // Column Preferences Hook
-  const {
-    allColumns,
-    activeColumns,
-    visibleColumns,
-    columnWidths,
-    draggedCol,
-    setDraggedCol,
-    dragOverCol,
-    setDragOverCol,
-    getColDisplayName,
-    handleToggleColumnHide,
-    handleShowAllColumns,
-    handleResizeMouseDown,
-    handleAutoFitColumn,
-    handleColumnReorder,
-    handleResetColumnOrder,
-    handleResetColumnWidth,
-    handleHeaderContextMenu,
-    handleStartRename,
-    handleSaveAlias,
-    handleResetAlias,
-    handleResetAllAliases,
-    contextMenu,
-    setContextMenu,
-    renamingColumn,
-    setRenamingColumn,
-    showColumnMenu,
-    setShowColumnMenu,
-    sortConfig,
-    handleSort,
-    sortRecords
-  } = useColumnPreferences({
+  const leavesPrefs = useColumnPreferences({
     storageKeyPrefix: 'driver_leaves',
     rawColumns: DEFAULT_LEAVE_COLUMNS,
     defaultNames: DEFAULT_COLUMN_NAMES,
@@ -148,6 +130,8 @@ export default function DriverLeavesView() {
       return String(val || '');
     }
   });
+
+  const { activeColumns, sortRecords, sortConfig } = leavesPrefs;
 
   // Load Data
   const loadData = async () => {
@@ -169,17 +153,6 @@ export default function DriverLeavesView() {
 
   useEffect(() => {
     loadData();
-  }, []);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setShowColumnMenu(false);
-      }
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
   // Filtered List
@@ -278,7 +251,7 @@ export default function DriverLeavesView() {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      padding: '24px 28px',
+      padding: '4px 28px 20px 28px',
       boxSizing: 'border-box',
       background: '#f8fafc',
       overflow: 'hidden'
@@ -348,39 +321,6 @@ export default function DriverLeavesView() {
         </div>
       </div>
 
-      {/* KPI Cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-        gap: '12px',
-        marginBottom: '16px',
-        flexShrink: 0
-      }}>
-        <KpiCard
-          title="🟡 กำลังลางาน (On Leave)"
-          value={kpis.activeLeave}
-          unit="คน"
-          theme="amber"
-        />
-        <KpiCard
-          title="🏖️ จำนวนวันลารวมทั้งหมด"
-          value={kpis.totalDays.toLocaleString()}
-          unit="วัน"
-          theme="blue"
-        />
-        <KpiCard
-          title="✅ สิ้นสุดการลาแล้ว"
-          value={kpis.completed}
-          unit="รายการ"
-          theme="emerald"
-        />
-        <KpiCard
-          title="👤 คนขับที่มีประวัติลา"
-          value={kpis.uniqueDrivers}
-          unit="คน"
-          theme="purple"
-        />
-      </div>
 
       {/* Filters Toolbar */}
       <div style={{
@@ -396,21 +336,51 @@ export default function DriverLeavesView() {
         gap: '12px',
         flexWrap: 'wrap'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: '240px' }}>
-          <span style={{ color: '#94a3b8' }}>🔍</span>
+        {/* ช่องค้นหา */}
+        <div style={{ position: 'relative', width: '260px' }}>
+          <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
           <input
             type="text"
-            placeholder="ค้นหาชื่อคนขับ, เหตุผล, ผู้อนุมัติ, หมายเหตุ..."
+            placeholder="ค้นหาชื่อคนขับ, เหตุผล, หมายเหตุ..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             style={{
-              border: 'none',
-              outline: 'none',
               width: '100%',
-              fontSize: '13px',
-              background: 'transparent'
+              height: '36px',
+              paddingLeft: '32px',
+              paddingRight: searchTerm ? '28px' : '10px',
+              borderRadius: '7px',
+              border: '1px solid #cbd5e1',
+              fontSize: '12.5px',
+              color: '#0f172a',
+              outline: 'none',
+              boxSizing: 'border-box'
             }}
           />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                padding: 0,
+                fontSize: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              title="ล้างคำค้นหา"
+            >
+              ✕
+            </button>
+          )}
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
@@ -469,177 +439,21 @@ export default function DriverLeavesView() {
 
           {/* Column Visibility Dropdown */}
           <div style={{ marginLeft: '6px' }}>
-            <ColumnVisibilityDropdown
-              showColumnMenu={showColumnMenu}
-              setShowColumnMenu={setShowColumnMenu}
-              menuRef={menuRef}
-              allColumns={allColumns}
-              activeColumns={activeColumns}
-              visibleColumns={visibleColumns}
-              onToggleColumnVisibility={handleToggleColumnHide}
-              getColDisplayName={getColDisplayName}
-              onStartEditAlias={(col) => handleStartRename(col)}
-              onShowAllColumns={handleShowAllColumns}
-              onResetAllAliases={handleResetAllAliases}
-            />
+            <ColumnVisibilityDropdown preferences={leavesPrefs} />
           </div>
         </div>
       </div>
 
-      {/* Table Container */}
-      <div style={{
-        flex: 1,
-        background: '#ffffff',
-        borderRadius: '12px',
-        border: '1px solid #e2e8f0',
-        overflow: 'auto',
-        display: 'flex',
-        flexDirection: 'column'
-      }}>
-        <table style={{ width: '100%', tableLayout: 'fixed', borderCollapse: 'collapse', fontSize: '13px', textAlign: 'left' }}>
-          <colgroup>
-            {activeColumns.map(col => (
-              <col key={col} style={{ width: `${columnWidths[col] || DEFAULT_LEAVE_WIDTHS[col] || 120}px` }} />
-            ))}
-          </colgroup>
-          <thead>
-            <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 700, position: 'sticky', top: 0, zIndex: 10 }}>
-              {activeColumns.map((col) => {
-                const isDraggable = col !== 'actions';
-                const displayName = getColDisplayName(col);
-                const colWidth = columnWidths[col] || DEFAULT_LEAVE_WIDTHS[col] || 100;
-                const isDragging = draggedCol === col;
-                const isDragOver = dragOverCol === col;
-                const isSorted = sortConfig.key === col;
-                const isAsc = isSorted && sortConfig.direction === 'asc';
-                const isDesc = isSorted && sortConfig.direction === 'desc';
-
-                return (
-                  <th
-                    key={col}
-                    draggable={isDraggable}
-                    onDragStart={(e) => {
-                      if (!isDraggable) return;
-                      setDraggedCol(col);
-                      e.dataTransfer.setData('text/plain', col);
-                      e.dataTransfer.effectAllowed = 'move';
-                    }}
-                    onDragOver={(e) => {
-                      if (!isDraggable) return;
-                      e.preventDefault();
-                      e.dataTransfer.dropEffect = 'move';
-                      if (draggedCol && draggedCol !== col && dragOverCol !== col) {
-                        setDragOverCol(col);
-                      }
-                    }}
-                    onDragLeave={() => {
-                      if (dragOverCol === col) setDragOverCol(null);
-                    }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      if (draggedCol && draggedCol !== col) {
-                        handleColumnReorder(draggedCol, col);
-                      }
-                      setDraggedCol(null);
-                      setDragOverCol(null);
-                    }}
-                    onDragEnd={() => {
-                      setDraggedCol(null);
-                      setDragOverCol(null);
-                    }}
-                    onContextMenu={(e) => handleHeaderContextMenu(e, col)}
-                    onDoubleClick={(e) => {
-                      e.stopPropagation();
-                      handleAutoFitColumn(col, filteredRecords);
-                    }}
-                    style={{
-                      padding: '10px 14px',
-                      fontSize: '12.5px',
-                      fontWeight: 700,
-                      color: isSorted ? '#2563eb' : (isDragOver ? '#1d4ed8' : '#475569'),
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      userSelect: 'none',
-                      position: 'relative',
-                      textAlign: col === 'id' || col === 'actions' || col === 'duration_days' || col === 'status' || col === 'with_pay' ? 'center' : 'left',
-                      cursor: !isDraggable ? 'default' : (isDragging ? 'grabbing' : 'grab'),
-                      background: isDragOver ? '#eff6ff' : (isSorted ? '#eff6ff' : (isDragging ? '#f1f5f9' : '#f8fafc')),
-                      borderLeft: isDragOver ? '3px solid #2563eb' : 'none',
-                      borderBottom: isSorted ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                      opacity: isDragging ? 0.4 : 1,
-                      transform: isDragging ? 'scale(0.97)' : (isDragOver ? 'translateX(2px)' : 'none'),
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <div
-                      onClick={() => isDraggable && handleSort(col)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: col === 'id' || col === 'actions' || col === 'duration_days' || col === 'status' || col === 'with_pay' ? 'center' : 'flex-start',
-                        gap: '5px',
-                        cursor: isDraggable ? 'pointer' : 'default',
-                        userSelect: 'none',
-                        paddingRight: col !== 'actions' ? '4px' : '0'
-                      }}
-                    >
-                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
-                      {isDraggable && (
-                        <span style={{ fontSize: '11px', color: isSorted ? '#2563eb' : '#94a3b8', flexShrink: 0, opacity: isSorted ? 1 : 0.4 }}>
-                          {isAsc ? '▲' : isDesc ? '▼' : '↕'}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Resize Handle */}
-                    {col !== 'actions' && (
-                      <div
-                        draggable={false}
-                        onDragStart={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                        onClick={(e) => e.stopPropagation()}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleResizeMouseDown(e, col);
-                        }}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          handleAutoFitColumn(col, filteredRecords);
-                        }}
-                        style={{
-                          position: 'absolute',
-                          right: 0,
-                          top: 0,
-                          bottom: 0,
-                          width: '8px',
-                          cursor: 'col-resize',
-                          zIndex: 5,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          background: 'transparent'
-                        }}
-                        title="ลากปรับขนาด / ดับเบิ้ลคลิกปรับพอดีข้อความ"
-                      >
-                        <div 
-                          style={{
-                            width: '1px',
-                            height: '16px',
-                            background: '#cbd5e1',
-                            transition: 'all 0.15s ease'
-                          }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = '#2563eb'; e.currentTarget.style.width = '2px'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = '#cbd5e1'; e.currentTarget.style.width = '1px'; }}
-                        />
-                      </div>
-                    )}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-          <tbody>
+      {/* Universal Table Area */}
+      <UniversalTableContainer
+        preferences={leavesPrefs}
+      >
+        <UniversalTableHeader
+          preferences={leavesPrefs}
+          data={filteredRecords}
+          alignMap={LEAVE_ALIGN_MAP}
+        />
+        <tbody>
             {loading ? (
               <tr>
                 <td colSpan={activeColumns.length} style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
@@ -671,19 +485,28 @@ export default function DriverLeavesView() {
                     onMouseLeave={e => e.currentTarget.style.background = isActive ? '#fffbeb' : '#ffffff'}
                   >
                     {activeColumns.map(col => {
+                      const align = LEAVE_ALIGN_MAP[col] || 'left';
+                      const cellStyle = {
+                        padding: '8px 10px',
+                        textAlign: align,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      };
+
                       if (col === 'id') {
-                        return <td key={col} style={{ padding: '10px 14px', textAlign: 'center', color: '#94a3b8' }}>{idx + 1}</td>;
+                        return <td key={col} style={{ ...cellStyle, color: '#94a3b8' }}>{idx + 1}</td>;
                       }
                       if (col === 'driver_name') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', fontWeight: 800, color: '#0f172a' }}>
+                          <td key={col} style={{ ...cellStyle, fontWeight: 800, color: '#0f172a' }}>
                             👤 {r.driver_name}
                           </td>
                         );
                       }
                       if (col === 'leave_type') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px' }}>
+                          <td key={col} style={cellStyle}>
                             <span style={{
                               padding: '3px 8px',
                               borderRadius: '6px',
@@ -699,14 +522,14 @@ export default function DriverLeavesView() {
                       }
                       if (col === 'start_date') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', color: '#334155' }}>
+                          <td key={col} style={{ ...cellStyle, color: '#334155' }}>
                             {formatDateDisplay(r.start_date)}
                           </td>
                         );
                       }
                       if (col === 'end_date') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', color: '#334155' }}>
+                          <td key={col} style={cellStyle}>
                             {isActive ? (
                               <span style={{ color: '#b45309', fontWeight: 600 }}>
                                 {r.is_indefinite ? '🟡 ลาไม่มีกำหนด' : `🟡 คาดว่าถึง ${formatDateDisplay(r.expected_end_date)}`}
@@ -719,14 +542,14 @@ export default function DriverLeavesView() {
                       }
                       if (col === 'duration_days') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', textAlign: 'center', fontWeight: 700, color: '#0f172a' }}>
+                          <td key={col} style={{ ...cellStyle, fontWeight: 700, color: '#0f172a' }}>
                             {r.duration_days || 1} วัน
                           </td>
                         );
                       }
                       if (col === 'with_pay') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', textAlign: 'center' }}>
+                          <td key={col} style={cellStyle}>
                             <span style={{
                               padding: '2px 8px',
                               borderRadius: '6px',
@@ -742,7 +565,7 @@ export default function DriverLeavesView() {
                       }
                       if (col === 'status') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', textAlign: 'center' }}>
+                          <td key={col} style={cellStyle}>
                             <span style={{
                               padding: '3px 8px',
                               borderRadius: '6px',
@@ -759,28 +582,28 @@ export default function DriverLeavesView() {
                       }
                       if (col === 'leave_reason') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', color: '#475569', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.leave_reason}>
+                          <td key={col} style={{ ...cellStyle, color: '#475569' }} title={r.leave_reason}>
                             {r.leave_reason || '-'}
                           </td>
                         );
                       }
                       if (col === 'approved_by') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', color: '#64748b' }}>
+                          <td key={col} style={{ ...cellStyle, color: '#64748b' }}>
                             {r.approved_by || '-'}
                           </td>
                         );
                       }
                       if (col === 'remark') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', color: '#64748b', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.remark}>
-                            {r.remark || '-'}
+                          <td key={col} style={{ ...cellStyle, color: '#64748b' }} title={r.remark}>
+                            {r.remark && r.remark !== '-' ? r.remark : '-'}
                           </td>
                         );
                       }
                       if (col === 'actions') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', textAlign: 'center' }}>
+                          <td key={col} style={cellStyle}>
                             <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
                               <button
                                 onClick={() => {
@@ -826,8 +649,7 @@ export default function DriverLeavesView() {
               })
             )}
           </tbody>
-        </table>
-      </div>
+      </UniversalTableContainer>
 
       {/* Leave Modal */}
       <LeaveModal
@@ -836,27 +658,6 @@ export default function DriverLeavesView() {
         onSave={handleSaveRecord}
         record={editingRecord}
         driverList={drivers}
-      />
-
-      {/* Table Context Menu */}
-      <TableContextMenu
-        contextMenu={contextMenu}
-        onClose={() => setContextMenu(null)}
-        onStartEditAlias={handleStartRename}
-        onAutoFitColumn={(col) => handleAutoFitColumn(col, filteredRecords)}
-        onToggleColumnHide={handleToggleColumnHide}
-        onShowAllColumns={handleShowAllColumns}
-        onResetColumnWidth={handleResetColumnWidth}
-        onResetColumnOrder={handleResetColumnOrder}
-        getColDisplayName={getColDisplayName}
-      />
-
-      {/* Rename Column Modal */}
-      <RenameColumnModal
-        renamingColumn={renamingColumn}
-        onClose={() => setRenamingColumn(null)}
-        onSaveAlias={handleSaveAlias}
-        onResetAlias={handleResetAlias}
       />
 
     </div>

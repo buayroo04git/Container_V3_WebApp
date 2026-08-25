@@ -1,4 +1,4 @@
-import { supabase } from '../supabaseClient';
+import { supabase } from '../supabaseClient.js';
 
 const STORAGE_KEY = 'fleet_driver_leave_records';
 
@@ -27,7 +27,6 @@ function calculateDuration(startDate, endDate) {
 function sanitizeLeaveRecords(list) {
   if (!Array.isArray(list) || list.length === 0) return list;
   const todayStr = new Date().toISOString().slice(0, 10);
-  const idsToFix = [];
 
   const sanitized = list.map(item => {
     const isIndefinite = item.is_indefinite === true;
@@ -35,39 +34,15 @@ function sanitizeLeaveRecords(list) {
 
     // ถ้ามีวันสิ้นสุดที่ระบุไว้ และวันที่นั้นผ่านมาแล้ว (definedEnd < todayStr)
     if (definedEnd && definedEnd < todayStr && (item.status === 'active_leave' || !item.end_date)) {
-      const fixed = {
+      return {
         ...item,
         end_date: item.end_date || definedEnd,
         status: 'completed',
-        duration_days: calculateDuration(item.start_date, item.end_date || definedEnd),
-        updated_at: new Date().toISOString()
+        duration_days: calculateDuration(item.start_date, item.end_date || definedEnd)
       };
-      idsToFix.push(fixed);
-      return fixed;
     }
     return item;
   });
-
-  // อัปเดตซิงค์ลง Supabase แบบเงียบๆ ใน background
-  if (idsToFix.length > 0) {
-    setTimeout(async () => {
-      for (const item of idsToFix) {
-        try {
-          await supabase
-            .from('driver_leave_records')
-            .update({
-              end_date: item.end_date,
-              status: 'completed',
-              duration_days: item.duration_days,
-              updated_at: new Date().toISOString()
-            })
-            .eq('id', item.id);
-        } catch (e) {
-          console.warn('Self-healing leave status fix error:', e);
-        }
-      }
-    }, 50);
-  }
 
   return sanitized;
 }

@@ -1,4 +1,4 @@
-import { supabase } from '../supabaseClient';
+import { supabase } from '../supabaseClient.js';
 // อัลกอริทึมหาความเหมือนของตัวอักษร (Levenshtein Distance)
 const levenshteinDistance = (a, b) => {
   if (a.length === 0) return b.length;

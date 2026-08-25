@@ -408,14 +408,16 @@ export function ContainerTableFilterBar({
 
         {/* Search Box */}
         <div style={{ position: 'relative', width: '220px' }}>
+          <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '13px', pointerEvents: 'none' }}>🔍</span>
           <input 
             type="text" 
-            placeholder="🔍 ค้นหาเลขตู้, เบอร์รถ..."
+            placeholder="ค้นหาเลขตู้, เบอร์รถ..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             style={{ 
               height: '35px',
-              padding: '0 12px 0 30px', 
+              paddingLeft: '32px',
+              paddingRight: searchTerm ? '28px' : '10px',
               width: '100%', 
               borderRadius: '7px', 
               background: '#ffffff', 
@@ -426,7 +428,30 @@ export function ContainerTableFilterBar({
               boxSizing: 'border-box'
             }}
           />
-          <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '13px' }}>🔍</span>
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              style={{
+                position: 'absolute',
+                right: '8px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                background: 'none',
+                border: 'none',
+                color: '#94a3b8',
+                cursor: 'pointer',
+                padding: 0,
+                fontSize: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              title="ล้างคำค้นหา"
+            >
+              ✕
+            </button>
+          )}
         </div>
         
         {/* Column Visibility Menu */}

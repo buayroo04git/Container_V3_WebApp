@@ -143,6 +143,7 @@ export const jobSheetService = {
     fileHash,
     batchName,
     truckNo,
+    driverName = null,
     imageUrl,
     imageName,
     driveFileId,
@@ -208,6 +209,7 @@ export const jobSheetService = {
         id: targetSheetId,
         batch_name: batchName,
         truck_no: String(truckNo || '').trim(),
+        driver_name: driverName || null,
         image_url: imageUrl || null,
         image_name: imageName || null,
         drive_file_id: driveFileId || null,
@@ -225,6 +227,7 @@ export const jobSheetService = {
         job_sheet_id: targetSheetId,
         batch_name: batchName,
         truck_no: truckNo,
+        driver_name: driverName || null,
         image_url: imageUrl,
         container_no: item.container_no,
         port: item.port,
@@ -322,6 +325,34 @@ export const jobSheetService = {
       return { success: true, sheetId: targetSheetId, error: null };
     } catch (error) {
       console.error('jobSheetService.completeJobSheet error:', error);
+      return { success: false, error };
+    }
+  },
+
+  /**
+   * 👤 อัปเดต/เปลี่ยนตัวคนขับของใบงาน (Update Driver Name)
+   */
+  async updateJobSheetDriver(sheetId, newDriverName) {
+    try {
+      const cleanDriver = newDriverName && newDriverName !== '-' ? String(newDriverName).trim() : null;
+      
+      const { error: sheetErr } = await supabase
+        .from('job_sheets')
+        .update({ driver_name: cleanDriver })
+        .eq('id', sheetId);
+
+      if (sheetErr) throw sheetErr;
+
+      try {
+        await supabase
+          .from('ocr_records')
+          .update({ driver_name: cleanDriver })
+          .eq('job_sheet_id', sheetId);
+      } catch (e) {}
+
+      return { success: true, error: null };
+    } catch (error) {
+      console.error('jobSheetService.updateJobSheetDriver error:', error);
       return { success: false, error };
     }
   },
@@ -606,14 +637,45 @@ export const jobSheetService = {
         query = query.eq('truck_no', truckFilter);
       }
 
-      // 📅 4. Month Filter (e.g. '2026-08')
+      // 📅 4. Month Filter (e.g. '2026-04' or '2026-08')
       if (monthFilter && monthFilter.trim()) {
         const [year, month] = monthFilter.trim().split('-');
         if (year && month) {
+          const monthIdx = parseInt(month, 10) - 1;
+          const monthNamesEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          const monthNamesTh = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+          const monthEn = monthNamesEn[monthIdx] || '';
+          const monthTh = monthNamesTh[monthIdx] || '';
+
           const startDate = `${year}-${month}-01`;
           const lastDay = new Date(Number(year), Number(month), 0).getDate();
           const endDate = `${year}-${month}-${String(lastDay).padStart(2, '0')}`;
-          query = query.gte('created_at', `${startDate}T00:00:00.000Z`).lte('created_at', `${endDate}T23:59:59.999Z`);
+
+          // ดึง sheet_ids ที่มีรายการตู้ (date_job) ตรงกับเดือนนี้
+          let itemSheetIds = [];
+          try {
+            const { data: matchedItems } = await supabase
+              .from('job_sheet_items')
+              .select('job_sheet_id')
+              .or(`date_job.ilike.%${monthEn}%,date_job.ilike.%${monthTh}%,date_job.ilike.%${year}-${month}%,date_job_parsed.gte.${startDate},date_job_parsed.lte.${endDate}`);
+            if (Array.isArray(matchedItems)) {
+              itemSheetIds = [...new Set(matchedItems.map(i => i.job_sheet_id).filter(Boolean))];
+            }
+          } catch (e) {}
+
+          const orConditions = [
+            `and(created_at.gte.${startDate}T00:00:00.000Z,created_at.lte.${endDate}T23:59:59.999Z)`,
+            monthEn ? `batch_name.ilike.%${monthEn}%` : null,
+            monthTh ? `batch_name.ilike.%${monthTh}%` : null,
+            `batch_name.ilike.%${year}-${month}%`,
+            monthEn ? `image_name.ilike.%${monthEn}%` : null
+          ].filter(Boolean);
+
+          if (itemSheetIds.length > 0) {
+            query = query.or(`${orConditions.join(',')},id.in.(${itemSheetIds.join(',')})`);
+          } else {
+            query = query.or(orConditions.join(','));
+          }
         }
       }
 
@@ -633,25 +695,88 @@ export const jobSheetService = {
       const { data, count, error } = await query;
       if (error) throw error;
 
-      // 📦 7. ดึงรายการตู้ (job_sheet_items) ของใบงานในหน้านี้
+      // 📦 7. ดึงรายการตู้ (job_sheet_items หรือ ocr_records) ของใบงานในหน้านี้
       const sheetIds = (data || []).map(s => s.id).filter(Boolean);
       const itemsMap = {};
-      if (sheetIds.length > 0) {
-        const { data: itemsData, error: itemsErr } = await supabase
-          .from('job_sheet_items')
-          .select('*')
-          .in('job_sheet_id', sheetIds)
-          .order('line_no', { ascending: true });
+      const masterIds = [];
 
-        if (!itemsErr && itemsData) {
-          itemsData.forEach(item => {
-            if (!itemsMap[item.job_sheet_id]) {
-              itemsMap[item.job_sheet_id] = [];
-            }
+      if (sheetIds.length > 0) {
+        const [itemsRes, legacyRes] = await Promise.all([
+          supabase.from('job_sheet_items').select('*').in('job_sheet_id', sheetIds).order('line_no', { ascending: true }),
+          supabase.from('ocr_records').select('*').in('job_sheet_id', sheetIds).neq('match_status', 'deleted')
+        ]);
+
+        if (itemsRes.data && itemsRes.data.length > 0) {
+          itemsRes.data.forEach(item => {
+            if (!itemsMap[item.job_sheet_id]) itemsMap[item.job_sheet_id] = [];
             itemsMap[item.job_sheet_id].push(item);
+            if (item.ref_master_id) masterIds.push(item.ref_master_id);
+          });
+        }
+        if (legacyRes.data && legacyRes.data.length > 0) {
+          legacyRes.data.forEach(item => {
+            if (!itemsMap[item.job_sheet_id]) itemsMap[item.job_sheet_id] = [];
+            if (!itemsMap[item.job_sheet_id].some(existing => existing.container_no === item.container_no)) {
+              itemsMap[item.job_sheet_id].push(item);
+              if (item.ref_db_id || item.ref_master_id) masterIds.push(item.ref_db_id || item.ref_master_id);
+            }
           });
         }
       }
+
+      // ดึงวันที่จาก Master DB (สำหรับตู้ที่แมตช์ได้ เพื่อนำวันที่สะอาดจากใบวางบิลมาหาคนขับ)
+      const masterDateMap = {};
+      if (masterIds.length > 0) {
+        const { data: masterRows } = await supabase
+          .from('container_records')
+          .select('id, date_job, date_job_parsed, truck_no')
+          .in('id', masterIds);
+        if (masterRows) {
+          masterRows.forEach(m => {
+            masterDateMap[m.id] = m.date_job_parsed || m.date_job;
+          });
+        }
+      }
+
+      // 🚚 8. ดึงข้อมูล Operations และ Trucks เพื่อคำนวณชื่อคนขับประจำใบงาน (Driver Enrichment)
+      const [opsRes, trucksRes] = await Promise.all([
+        supabase.from('truck_operations').select('truck_no, driver_name, start_date, end_date, status').limit(2000),
+        supabase.from('truck_records').select('truck_no, assigned_driver_name').limit(500)
+      ]);
+      const opsData = opsRes?.data || [];
+      const trucksData = trucksRes?.data || [];
+
+      const isTruckMatch = (t1, t2) => {
+        if (!t1 || !t2) return false;
+        const s1 = String(t1).trim().replace(/^รถ\s*/, '').toLowerCase();
+        const s2 = String(t2).trim().replace(/^รถ\s*/, '').toLowerCase();
+        return s1 === s2 || s1.includes(s2) || s2.includes(s1);
+      };
+
+      const resolveDriver = (truckNo, jobDate) => {
+        if (!truckNo || truckNo === '-') return '-';
+        let isoDate = null;
+        if (jobDate && jobDate !== '-') {
+          const norm = normalizeExcelDate(jobDate);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(norm)) isoDate = norm;
+        }
+        if (isoDate && opsData.length > 0) {
+          const op = opsData.find(o => {
+            if (!isTruckMatch(o.truck_no, truckNo)) return false;
+            const sDate = o.start_date ? String(o.start_date).slice(0, 10) : null;
+            const eDate = o.end_date ? String(o.end_date).slice(0, 10) : null;
+            if (sDate && isoDate < sDate) return false;
+            if (eDate && isoDate > eDate) return false;
+            return true;
+          });
+          if (op?.driver_name && op.driver_name !== '-') return op.driver_name;
+        }
+        const activeOp = opsData.find(o => isTruckMatch(o.truck_no, truckNo) && (o.status === 'active' || !o.end_date));
+        if (activeOp?.driver_name && activeOp.driver_name !== '-') return activeOp.driver_name;
+        const truck = trucksData.find(t => isTruckMatch(t.truck_no, truckNo));
+        if (truck?.assigned_driver_name && truck.assigned_driver_name !== '-') return truck.assigned_driver_name;
+        return '-';
+      };
 
       const formattedData = (data || []).map(sheet => {
         const sheetItems = itemsMap[sheet.id] || sheet.job_sheet_items || [];
@@ -662,8 +787,35 @@ export const jobSheetService = {
           is_red: i.match_status === 'manual_red',
           is_matched: i.match_status !== 'manual_red'
         }));
+
+        // 1. ลองหาวันที่จาก Master DB ที่แมตช์ตรงกับตู้นี้ (วันที่สะอาดจากใบวางบิล 100%)
+        let effectiveDate = null;
+        for (const item of sheetItems) {
+          const mId = item.ref_master_id || item.ref_db_id;
+          if (mId && masterDateMap[mId] && masterDateMap[mId] !== '-') {
+            effectiveDate = masterDateMap[mId];
+            break;
+          }
+        }
+
+        // 2. ถ้าไม่มีใน Master ให้ดูจากวันที่ในแถวตู้ใบงาน
+        if (!effectiveDate) {
+          const firstItemWithDate = sheetItems.find(i => i.date_job && i.date_job !== '-' && i.date_job !== 'null');
+          effectiveDate = firstItemWithDate?.date_job_parsed || firstItemWithDate?.date_job;
+        }
+
+        // 3. ถ้าไม่มี ให้ดูจากวันที่บนหัวใบงาน
+        if (!effectiveDate && sheet.date_job && sheet.date_job !== '-') {
+          effectiveDate = sheet.date_job_parsed || sheet.date_job;
+        }
+
+        const resolvedDriver = (sheet.driver_name && sheet.driver_name !== '-')
+          ? sheet.driver_name
+          : resolveDriver(sheet.truck_no, effectiveDate);
+
         return {
           ...sheet,
+          driver_name: resolvedDriver,
           containers: items,
           total: sheet.total_containers || items.length,
           green: sheet.matched_count ?? items.filter(i => i.match_status !== 'manual_red').length,
@@ -744,21 +896,123 @@ export const jobSheetService = {
 
       const { data, count, error } = await query;
       if (error) {
-        // ถ้ายังไม่ได้รัน migration view ใน Supabase ให้แจ้งเตือนและ fallback
-        console.warn('vw_ocr_container_history query failed, falling back to legacy fetch. Make sure to run migration 06.', error);
+        // ถ้ายังไม่ได้รัน migration view ใน Supabase ให้ fallback ไปยัง fetchAllOcrContainersHistory ทันที
+        console.warn('vw_ocr_container_history query failed, falling back to fetchAllOcrContainersHistory:', error);
         throw error;
       }
 
+      // ถ้า View ส่งกลับ 0 แถว แต่ในระบบมีข้อมูล ให้ Fallback
+      if ((!data || data.length === 0) && statusFilter === 'ALL') {
+        const checkCountRes = await supabase.from('job_sheet_items').select('id', { count: 'exact', head: true });
+        const checkLegacyRes = await supabase.from('ocr_records').select('id', { count: 'exact', head: true }).neq('match_status', 'deleted');
+        if ((checkCountRes.count || 0) > 0 || (checkLegacyRes.count || 0) > 0) {
+          console.warn('vw_ocr_container_history returned 0 rows but items exist. Falling back to fetchAllOcrContainersHistory.');
+          throw new Error('View returned 0 rows but completed items exist');
+        }
+      }
+
+      // 🚚 7. เติม driver_name ให้กับแถวตู้ในหน้านี้
+      const [opsRes, trucksRes] = await Promise.all([
+        supabase.from('truck_operations').select('truck_no, driver_name, start_date, end_date, status').limit(2000),
+        supabase.from('truck_records').select('truck_no, assigned_driver_name').limit(500)
+      ]);
+      const opsData = opsRes?.data || [];
+      const trucksData = trucksRes?.data || [];
+
+      const isTruckMatch = (t1, t2) => {
+        if (!t1 || !t2) return false;
+        const s1 = String(t1).trim().replace(/^รถ\s*/, '').toLowerCase();
+        const s2 = String(t2).trim().replace(/^รถ\s*/, '').toLowerCase();
+        return s1 === s2 || s1.includes(s2) || s2.includes(s1);
+      };
+
+      const resolveDriver = (truckNo, jobDate) => {
+        if (!truckNo || truckNo === '-') return '-';
+        let isoDate = null;
+        if (jobDate && jobDate !== '-') {
+          const norm = normalizeExcelDate(jobDate);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(norm)) isoDate = norm;
+        }
+        if (isoDate && opsData.length > 0) {
+          const op = opsData.find(o => {
+            if (!isTruckMatch(o.truck_no, truckNo)) return false;
+            const sDate = o.start_date ? String(o.start_date).slice(0, 10) : null;
+            const eDate = o.end_date ? String(o.end_date).slice(0, 10) : null;
+            if (sDate && isoDate < sDate) return false;
+            if (eDate && isoDate > eDate) return false;
+            return true;
+          });
+          if (op?.driver_name && op.driver_name !== '-') return op.driver_name;
+        }
+        const activeOp = opsData.find(o => isTruckMatch(o.truck_no, truckNo) && (o.status === 'active' || !o.end_date));
+        if (activeOp?.driver_name && activeOp.driver_name !== '-') return activeOp.driver_name;
+        const truck = trucksData.find(t => isTruckMatch(t.truck_no, truckNo));
+        if (truck?.assigned_driver_name && truck.assigned_driver_name !== '-') return truck.assigned_driver_name;
+        return '-';
+      };
+
+      const enrichedRows = (data || []).map(row => ({
+        ...row,
+        driver_name: (row.driver_name && row.driver_name !== '-')
+          ? row.driver_name
+          : resolveDriver(row.truck_no, row.date_job_parsed || row.date_job)
+      }));
+
       return {
-        data: data || [],
+        data: enrichedRows,
         totalCount: count || 0,
         totalPages: (pageSize === 'ALL' || !count) ? 1 : Math.ceil(count / Number(pageSize)),
         currentPage: page,
         error: null
       };
     } catch (error) {
-      console.error('jobSheetService.fetchPaginatedOcrContainersHistory error:', error);
-      return { data: [], totalCount: 0, totalPages: 1, currentPage: page, error };
+      console.warn('jobSheetService.fetchPaginatedOcrContainersHistory executing complete client-side fallback...');
+      try {
+        const fullRes = await this.fetchAllOcrContainersHistory();
+        let list = fullRes.data || [];
+
+        if (searchTerm && searchTerm.trim()) {
+          const cleanTerm = searchTerm.trim().toLowerCase();
+          list = list.filter(i => 
+            i.container_no?.toLowerCase().includes(cleanTerm) ||
+            i.truck_no?.toLowerCase().includes(cleanTerm) ||
+            i.batch_name?.toLowerCase().includes(cleanTerm) ||
+            i.driver_name?.toLowerCase().includes(cleanTerm)
+          );
+        }
+        if (statusFilter === 'COMPLETED') list = list.filter(i => i.workflow_status === 'completed');
+        else if (statusFilter === 'PENDING') list = list.filter(i => i.workflow_status === 'pending');
+        else if (statusFilter === 'MATCHED') list = list.filter(i => i.match_status === 'matched_green');
+        else if (statusFilter === 'UNMATCHED') list = list.filter(i => i.match_status === 'manual_red' || i.match_status === 'unmatched_red');
+
+        if (batchFilter && batchFilter !== 'ALL') list = list.filter(i => i.batch_name === batchFilter);
+        if (truckFilter && truckFilter !== 'ALL') list = list.filter(i => i.truck_no === truckFilter);
+
+        // Sorting
+        const sortColumn = sortConfig.key || 'created_at';
+        const isAscending = sortConfig.direction === 'asc';
+        list.sort((a, b) => {
+          const valA = a[sortColumn] || '';
+          const valB = b[sortColumn] || '';
+          return isAscending ? String(valA).localeCompare(String(valB)) : String(valB).localeCompare(String(valA));
+        });
+
+        const totalCount = list.length;
+        const size = pageSize === 'ALL' ? totalCount : (Number(pageSize) || 50);
+        const from = (page - 1) * size;
+        const paginated = list.slice(from, from + size);
+
+        return {
+          data: paginated,
+          totalCount,
+          totalPages: pageSize === 'ALL' ? 1 : Math.ceil(totalCount / size),
+          currentPage: page,
+          error: null
+        };
+      } catch (fallbackErr) {
+        console.error('jobSheetService.fetchPaginatedOcrContainersHistory fallback failed:', fallbackErr);
+        return { data: [], totalCount: 0, totalPages: 1, currentPage: page, error: fallbackErr };
+      }
     }
   },
 
@@ -767,19 +1021,44 @@ export const jobSheetService = {
    */
   async fetchOcrKpis() {
     try {
-      const [itemsRes, cacheRes, unmatchedRes] = await Promise.all([
-        supabase.from('job_sheet_items').select('*', { count: 'exact', head: true }),
-        supabase.from('ocr_cache').select('*', { count: 'exact', head: true }).not('model_used', 'in', '("completed","deleted")'),
-        supabase.from('job_sheet_items').select('*', { count: 'exact', head: true }).eq('match_status', 'manual_red')
+      // 1. ดึงยอด Completed ตรวจเสร็จแล้วจาก job_sheet_items และ ocr_records (Fallback)
+      const [itemsRes, cacheRes, unmatchedItemsRes, legacyRes, unmatchedLegacyRes] = await Promise.all([
+        supabase.from('job_sheet_items').select('id, match_status', { count: 'exact', head: true }),
+        supabase.from('ocr_cache').select('id, ocr_data').not('model_used', 'in', '("completed","deleted")'),
+        supabase.from('job_sheet_items').select('id', { count: 'exact', head: true }).in('match_status', ['unmatched_red', 'manual_red']),
+        supabase.from('ocr_records').select('id, match_status', { count: 'exact', head: true }).neq('match_status', 'deleted'),
+        supabase.from('ocr_records').select('id', { count: 'exact', head: true }).neq('match_status', 'deleted').in('match_status', ['unmatched_red', 'manual_red'])
       ]);
 
-      const completed = itemsRes.count || 0;
-      const pending = cacheRes.count || 0;
-      const unmatched = unmatchedRes.count || 0;
-      const matched = Math.max(0, completed - unmatched);
-      const total = completed + pending;
+      let completedCount = itemsRes.count || 0;
+      let unmatchedCount = unmatchedItemsRes.count || 0;
 
-      return { total, completed, pending, matched, unmatched };
+      // ถ้าใน job_sheet_items ยังไม่มีข้อมูล ให้ใช้ยอดจาก ocr_records (Legacy)
+      if (completedCount === 0 && (legacyRes.count || 0) > 0) {
+        completedCount = legacyRes.count || 0;
+        unmatchedCount = unmatchedLegacyRes.count || 0;
+      }
+
+      const matchedCount = Math.max(0, completedCount - unmatchedCount);
+
+      // 2. ดึงยอด Pending โดยนับจำนวนตู้จริงที่อยู่ในแต่ละไฟล์ของคิวรอตรวจ (Pending Containers)
+      let pendingCount = 0;
+      if (cacheRes.data && cacheRes.data.length > 0) {
+        cacheRes.data.forEach(c => {
+          const rows = c.ocr_data?.rows || c.ocr_data?.draft_items || c.ocr_data?.containers || c.ocr_data?.matching_results || c.ocr_data?.results || [];
+          pendingCount += (Array.isArray(rows) && rows.length > 0) ? rows.length : 1;
+        });
+      }
+
+      const totalCount = completedCount + pendingCount;
+
+      return {
+        total: totalCount,
+        completed: completedCount,
+        pending: pendingCount,
+        matched: matchedCount,
+        unmatched: unmatchedCount
+      };
     } catch (e) {
       console.error('Failed to fetch KPI counts:', e);
       return { total: 0, completed: 0, pending: 0, matched: 0, unmatched: 0 };
@@ -794,7 +1073,7 @@ export const jobSheetService = {
   async fetchAllOcrContainersHistory(existingMasterDb = null, options = {}) {
     try {
       const { startDate = null, endDate = null } = options;
-      const allContainers = [];
+      let allContainers = [];
 
       // ⚡ 1. ดึงข้อมูลทั้งหมดแบบ Parallel 100% (High-Speed Optimization)
       let masterQuery = supabase
@@ -803,7 +1082,7 @@ export const jobSheetService = {
 
       let sheetsQuery = supabase
         .from('job_sheets')
-        .select('id, batch_name, truck_no, image_name, image_url, drive_file_id, created_at, status, date_job, date_job_parsed')
+        .select('*')
         .neq('status', 'deleted')
         .order('created_at', { ascending: false });
 
@@ -815,7 +1094,6 @@ export const jobSheetService = {
       // Apply Date Filters
       if (startDate && endDate) {
         masterQuery = masterQuery.gte('date_job_parsed', startDate).lte('date_job_parsed', endDate);
-        sheetsQuery = sheetsQuery.gte('date_job_parsed', startDate).lte('date_job_parsed', endDate);
         itemsQuery = itemsQuery.gte('date_job_parsed', startDate).lte('date_job_parsed', endDate);
       }
 
@@ -832,17 +1110,57 @@ export const jobSheetService = {
         .neq('model_used', 'completed')
         .order('created_at', { ascending: false });
 
-      const [masterRes, sheetsRes, itemsRes, cacheRes] = await Promise.all([
+      const [masterRes, sheetsRes, itemsRes, cacheRes, opsRes, trucksRes, driversRes] = await Promise.all([
         masterPromise,
         sheetsQuery,
         itemsQuery,
-        cachePromise
+        cachePromise,
+        supabase.from('truck_operations').select('truck_no, driver_name, start_date, end_date, status').limit(2000),
+        supabase.from('truck_records').select('truck_no, assigned_driver_name').limit(500),
+        supabase.from('driver_records').select('driver_name, assigned_truck_no, phone, status').order('driver_name')
       ]);
 
       const masterDbList = masterRes?.data || [];
       const sheetsData = sheetsRes?.data || [];
       const itemsData = itemsRes?.data || [];
       const pendingCaches = cacheRes?.data || [];
+      const opsData = opsRes?.data || [];
+      const trucksData = trucksRes?.data || [];
+      const driversList = driversRes?.data || [];
+
+      const isTruckMatch = (t1, t2) => {
+        if (!t1 || !t2) return false;
+        const s1 = String(t1).trim().replace(/^รถ\s*/, '').toLowerCase();
+        const s2 = String(t2).trim().replace(/^รถ\s*/, '').toLowerCase();
+        return s1 === s2 || s1.includes(s2) || s2.includes(s1);
+      };
+
+      const resolveDriver = (truckNo, jobDate) => {
+        if (!truckNo || truckNo === '-') return '-';
+        let isoDate = null;
+        if (jobDate && jobDate !== '-') {
+          const norm = normalizeExcelDate(jobDate);
+          if (/^\d{4}-\d{2}-\d{2}$/.test(norm)) isoDate = norm;
+        }
+        if (isoDate && opsData.length > 0) {
+          const op = opsData.find(o => {
+            if (!isTruckMatch(o.truck_no, truckNo)) return false;
+            const sDate = o.start_date ? String(o.start_date).slice(0, 10) : null;
+            const eDate = o.end_date ? String(o.end_date).slice(0, 10) : null;
+            if (sDate && isoDate < sDate) return false;
+            if (eDate && isoDate > eDate) return false;
+            return true;
+          });
+          if (op?.driver_name && op.driver_name !== '-') return op.driver_name;
+        }
+        const activeOp = opsData.find(o => isTruckMatch(o.truck_no, truckNo) && (o.status === 'active' || !o.end_date));
+        if (activeOp?.driver_name && activeOp.driver_name !== '-') return activeOp.driver_name;
+        const truck = trucksData.find(t => isTruckMatch(t.truck_no, truckNo));
+        if (truck?.assigned_driver_name && truck.assigned_driver_name !== '-') return truck.assigned_driver_name;
+        const driverRec = driversList.find(d => isTruckMatch(d.assigned_truck_no, truckNo));
+        if (driverRec?.driver_name && driverRec.driver_name !== '-') return driverRec.driver_name;
+        return '-';
+      };
 
       // สร้าง Map สำหรับค้นหา Master Container แบบ O(1)
       const masterDbMap = new Map();
@@ -856,19 +1174,42 @@ export const jobSheetService = {
       });
 
       // 2. ประมวลผลรายการตู้ที่เสร็จสมบูรณ์แล้ว (Completed)
+      const sheetEffectiveDateMap = {};
+      const sheetDriverMap = {};
+
       if (sheetsData && sheetsData.length > 0) {
         const sheetMap = {};
         sheetsData.forEach(s => { sheetMap[s.id] = s; });
+
+        // คำนวณ effectiveDate และ driver ประจำแต่ละใบงานล่วงหน้า (1 Job Sheet = 1 Driver)
+        sheetsData.forEach(s => {
+          let effDate = s.date_job_parsed || s.date_job;
+          const sItems = itemsData.filter(i => i.job_sheet_id === s.id);
+          if (!effDate || effDate === '-') {
+            for (const it of sItems) {
+              const mDb = findBestMasterDbMatch(it.container_no, it.port, s.truck_no, masterDbList);
+              if (mDb?.date_job_parsed || mDb?.date_job) {
+                effDate = mDb.date_job_parsed || mDb.date_job;
+                break;
+              }
+            }
+          }
+          sheetEffectiveDateMap[s.id] = effDate || '-';
+          sheetDriverMap[s.id] = (s.driver_name && s.driver_name !== '-')
+            ? s.driver_name
+            : resolveDriver(s.truck_no, effDate);
+        });
 
         if (itemsData && itemsData.length > 0) {
           itemsData.forEach(item => {
             const sheet = sheetMap[item.job_sheet_id] || {};
             const matchedDb = findBestMasterDbMatch(item.container_no, item.port, sheet.truck_no, masterDbList);
+            const sheetEffDate = sheetEffectiveDateMap[item.job_sheet_id] || '-';
 
             const finalJobType = (item.job_type && item.job_type !== '-') ? item.job_type : (matchedDb?.dis_load || '-');
             const finalSize = (item.size && item.size !== '-') ? item.size : (matchedDb?.size || '-');
             const finalPort = (item.port && item.port !== '-') ? item.port : (matchedDb?.port || '-');
-            const finalDateJob = (item.date_job && item.date_job !== '-') ? item.date_job : (matchedDb?.date_job || '-');
+            const finalDateJob = (item.date_job && item.date_job !== '-') ? item.date_job : (matchedDb?.date_job || sheetEffDate);
             const dbBatch = matchedDb?.batch_name || (matchedDb?.source_file ? cleanBatchName(matchedDb.source_file) : null);
             const finalBatch = dbBatch || cleanBatchName(sheet.batch_name || 'General_Batch');
 
@@ -879,6 +1220,8 @@ export const jobSheetService = {
               db_id: item.id,
               job_sheet_item_id: item.id,
               ocr_record_id: null,
+              ref_master_id: item.ref_master_id || matchedDb?.id || null,
+              ref_db_id: item.ref_master_id || matchedDb?.id || null,
               source_table: 'job_sheet_items',
               sheet_id: item.job_sheet_id,
               container_no: item.container_no,
@@ -888,7 +1231,7 @@ export const jobSheetService = {
               size: finalSize,
               job_type: finalJobType,
               date_job: finalDateJob,
-              date_job_parsed: item.date_job_parsed || null,
+              date_job_parsed: item.date_job_parsed || (matchedDb?.date_job_parsed || null),
               match_status: finalMatchStatus,
               workflow_status: 'completed',
               batch_name: finalBatch,
@@ -896,6 +1239,7 @@ export const jobSheetService = {
               image_url: sheet.image_url || null,
               image_name: sheet.image_name || '-',
               drive_file_id: sheet.drive_file_id || null,
+              driver_name: sheetDriverMap[item.job_sheet_id] || resolveDriver(sheet.truck_no, finalDateJob),
               created_at: item.created_at || sheet.created_at
             });
           });
@@ -935,6 +1279,8 @@ export const jobSheetService = {
               db_id: rec.id,
               job_sheet_item_id: null,
               ocr_record_id: rec.id,
+              ref_master_id: rec.ref_master_id || matchedDb?.id || null,
+              ref_db_id: rec.ref_master_id || matchedDb?.id || null,
               source_table: 'ocr_records',
               sheet_id: rec.job_sheet_id || rec.image_url,
               container_no: rec.container_no,
@@ -1182,6 +1528,14 @@ export const jobSheetService = {
           console.warn("IndexedDB check in history warning:", e);
         }
       }
+
+      // 🚚 เติม driver_name ให้กับแถวที่ยังไม่ได้ระบุคนขับ
+      allContainers = allContainers.map(row => ({
+        ...row,
+        driver_name: (row.driver_name && row.driver_name !== '-' && row.driver_name !== 'ไม่ระบุคนขับ')
+          ? row.driver_name
+          : resolveDriver(row.truck_no, row.date_job_parsed || row.date_job || (row.sheet_id ? sheetEffectiveDateMap[row.sheet_id] : null))
+      }));
 
       // เรียงลำดับตามวันที่สร้างล่าสุด
       allContainers.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));

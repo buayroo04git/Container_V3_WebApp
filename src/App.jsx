@@ -61,6 +61,29 @@ function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [activeTab]);
 
+  // 📅 Global Date & Month Picker Trigger for Firefox & Cross-browser compatibility
+  useEffect(() => {
+    const handleGlobalDateClick = (e) => {
+      const target = e.target;
+      if (
+        target &&
+        target.tagName === 'INPUT' &&
+        (target.type === 'date' || target.type === 'month' || target.type === 'time' || target.type === 'datetime-local')
+      ) {
+        try {
+          if (typeof target.showPicker === 'function') {
+            target.showPicker();
+          }
+        } catch (err) {}
+      }
+    };
+
+    document.addEventListener('click', handleGlobalDateClick, true);
+    return () => {
+      document.removeEventListener('click', handleGlobalDateClick, true);
+    };
+  }, []);
+
   const handleEditSheet = (sheet) => {
     setEditingSheet(sheet);
     handleTabChange('jobsheet-pending');

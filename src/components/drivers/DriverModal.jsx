@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { driverPayrollService } from '../../services/driverPayrollService';
 
 /**
  * 👤 Modal Form สำหรับเพิ่ม / แก้ไขข้อมูลคนขับ
@@ -14,6 +15,9 @@ export default function DriverModal({ isOpen, onClose, onSave, driver = null, tr
     assigned_truck_no: '',
     status: 'active',
     start_date: '',
+    base_salary: '0',
+    tax_profile: 'social_security',
+    social_security_amount: '875',
     emergency_contact: '',
     remark: ''
   });
@@ -22,7 +26,13 @@ export default function DriverModal({ isOpen, onClose, onSave, driver = null, tr
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
+    const globalTax = driverPayrollService.fetchGlobalTaxConfig ? driverPayrollService.fetchGlobalTaxConfig() : { default_sso_amount: 875 };
+    const defaultSso = String(globalTax.default_sso_amount || 875);
+
     if (driver) {
+      const rawSso = driver.social_security_amount !== undefined && driver.social_security_amount !== null ? Number(driver.social_security_amount) : Number(defaultSso);
+      const ssoVal = (rawSso === 750 || !rawSso) ? defaultSso : String(rawSso);
+
       setFormData({
         driver_name: driver.driver_name || '',
         phone: driver.phone && driver.phone !== '-' ? driver.phone : '',
@@ -33,6 +43,9 @@ export default function DriverModal({ isOpen, onClose, onSave, driver = null, tr
         assigned_truck_no: driver.assigned_truck_no && driver.assigned_truck_no !== '-' ? driver.assigned_truck_no : '',
         status: driver.status || 'active',
         start_date: driver.start_date || '',
+        base_salary: driver.base_salary !== undefined && driver.base_salary !== null ? String(driver.base_salary) : '0',
+        tax_profile: driver.tax_profile || 'social_security',
+        social_security_amount: ssoVal,
         emergency_contact: driver.emergency_contact && driver.emergency_contact !== '-' ? driver.emergency_contact : '',
         remark: driver.remark && driver.remark !== '-' ? driver.remark : ''
       });
@@ -49,6 +62,9 @@ export default function DriverModal({ isOpen, onClose, onSave, driver = null, tr
         assigned_truck_no: '',
         status: 'active',
         start_date: '',
+        base_salary: '0',
+        tax_profile: 'social_security',
+        social_security_amount: defaultSso,
         emergency_contact: '',
         remark: ''
       });

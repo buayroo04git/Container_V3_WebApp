@@ -27,6 +27,22 @@
   box-sizing: border-box;
 }
 
+/* 📅 Cross-Browser Date & Month Picker Enhancement (Firefox, Chrome, Edge, Safari) */
+input[type="date"],
+input[type="month"],
+input[type="time"],
+input[type="datetime-local"] {
+  cursor: pointer;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="month"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  padding: 4px;
+}
+
 body {
   margin: 0;
   font-family: 'Inter', sans-serif;

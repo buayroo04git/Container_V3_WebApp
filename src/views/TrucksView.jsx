@@ -7,7 +7,7 @@ import {
   createTruck, 
   updateTruck, 
   deleteTruck, 
-  bulkUpsertTrucks,
+  bulkUpsertTrucks, 
   fetchDrivers 
 } from '../services/truckDriverService';
 import { createOperation, updateOperation } from '../services/operationsService';
@@ -15,11 +15,11 @@ import TruckModal from '../components/trucks/TruckModal';
 import OperationModal from '../components/operations/OperationModal';
 import AssignmentHistoryModal from '../components/ui/AssignmentHistoryModal';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
-import TableContextMenu from '../components/ui/TableContextMenu';
-import RenameColumnModal from '../components/ui/RenameColumnModal';
 import StatusChangeConfirmModal from '../components/ui/StatusChangeConfirmModal';
 import Badge from '../components/ui/Badge';
 import KpiCard from '../components/ui/KpiCard';
+import UniversalTableContainer from '../components/ui/UniversalTableContainer';
+import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 const DEFAULT_TRUCK_COLUMNS = [
@@ -65,24 +65,45 @@ const DEFAULT_COLUMN_NAMES = {
 };
 
 const DEFAULT_TRUCK_WIDTHS = {
-  id: 60,
-  truck_no: 100,
+  id: 45,
+  truck_no: 95,
   status: 120,
-  truck_license: 125,
-  assigned_driver_name: 155,
-  owner: 130,
-  master_containers: 130,
-  matched_containers: 130,
-  missing_containers: 130,
-  match_rate: 115,
-  truck_type: 120,
+  truck_license: 115,
+  assigned_driver_name: 150,
+  owner: 120,
+  master_containers: 115,
+  matched_containers: 115,
+  missing_containers: 115,
+  match_rate: 110,
+  truck_type: 115,
   truck_kind: 110,
-  brand: 100,
-  tax_expiry_date: 120,
-  act_expiry_date: 120,
+  brand: 95,
+  tax_expiry_date: 115,
+  act_expiry_date: 115,
   insurance_expiry_date: 125,
-  remark: 160,
-  actions: 100
+  remark: 140,
+  actions: 110
+};
+
+const TRUCK_ALIGN_MAP = {
+  id: 'center',
+  truck_no: 'center',
+  status: 'center',
+  truck_license: 'center',
+  assigned_driver_name: 'left',
+  owner: 'left',
+  master_containers: 'right',
+  matched_containers: 'right',
+  missing_containers: 'right',
+  match_rate: 'right',
+  truck_type: 'center',
+  truck_kind: 'center',
+  brand: 'center',
+  tax_expiry_date: 'center',
+  act_expiry_date: 'center',
+  insurance_expiry_date: 'center',
+  remark: 'left',
+  actions: 'center'
 };
 
 export default function TrucksView() {
@@ -129,43 +150,43 @@ export default function TrucksView() {
     }
   };
 
+  // 🚛 Render Expiry Badge for Tax, ACT, and Insurance Compliance
+  const renderExpiryBadge = (dateStr) => {
+    if (!dateStr || dateStr === '-') return <span style={{ color: '#94a3b8' }}>-</span>;
+    const formatted = formatDateDisplay(dateStr);
+    try {
+      const expDate = new Date(dateStr);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      expDate.setHours(0, 0, 0, 0);
+      if (isNaN(expDate.getTime())) return formatted;
+
+      const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) {
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#fee2e2', color: '#b91c1c', padding: '2px 8px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, border: '1px solid #fca5a5' }}>
+            ⚠️ {formatted} (หมดอายุ)
+          </span>
+        );
+      }
+      if (diffDays <= 30) {
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, border: '1px solid #fde68a' }}>
+            🟡 {formatted} (อีก {diffDays} วัน)
+          </span>
+        );
+      }
+      return <span style={{ color: '#334155' }}>{formatted}</span>;
+    } catch {
+      return formatted;
+    }
+  };
+
   // File Upload Ref
   const fileInputRef = useRef(null);
-  const menuRef = useRef(null);
 
   // Column Preferences Hook (Unified Centralized Architecture)
-  const {
-    allColumns,
-    activeColumns,
-    visibleColumns,
-    columnWidths,
-    draggedCol,
-    setDraggedCol,
-    dragOverCol,
-    setDragOverCol,
-    getColDisplayName,
-    handleToggleColumnHide,
-    handleShowAllColumns,
-    handleResizeMouseDown,
-    handleAutoFitColumn,
-    handleColumnReorder,
-    handleResetColumnOrder,
-    handleResetColumnWidth,
-    handleHeaderContextMenu,
-    handleStartRename,
-    handleSaveAlias,
-    handleResetAlias,
-    handleResetAllAliases,
-    contextMenu,
-    setContextMenu,
-    renamingColumn,
-    setRenamingColumn,
-    showColumnMenu,
-    setShowColumnMenu,
-    sortConfig,
-    handleSort,
-    sortRecords
-  } = useColumnPreferences({
+  const trucksPrefs = useColumnPreferences({
     storageKeyPrefix: 'trucks',
     rawColumns: DEFAULT_TRUCK_COLUMNS,
     defaultNames: DEFAULT_COLUMN_NAMES,
@@ -176,7 +197,7 @@ export default function TrucksView() {
         return val === 'active' ? '🟢 พร้อมใช้งาน' : (val === 'maintenance' ? '🔧 ซ่อมบำรุง' : '⚪ ระงับใช้งาน');
       }
       if (col === 'assigned_driver_name') {
-        return (val && val !== '-') ? String(val).trim() : '-';
+        return (val && val !== '-') ? `👤 ${String(val).trim()} ✏️` : '➕ เลือกคนขับ';
       }
       if (col === 'truck_no') {
         return `รถ ${val}`;
@@ -200,6 +221,8 @@ export default function TrucksView() {
     }
   });
 
+  const { activeColumns, sortRecords, sortConfig } = trucksPrefs;
+
   // Load Data
   const loadData = async () => {
     setLoading(true);
@@ -222,26 +245,20 @@ export default function TrucksView() {
     loadData();
   }, []);
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setShowColumnMenu(false);
-      }
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
-
   // KPI Calculations
   const kpis = useMemo(() => {
     const total = trucks.length;
     const active = trucks.filter(t => t.status === 'active').length;
     const maintenance = trucks.filter(t => t.status === 'maintenance').length;
+    const inactive = trucks.filter(t => t.status === 'inactive').length;
+    const assigned = trucks.filter(t => t.assigned_driver_name && t.assigned_driver_name !== '-').length;
+    const unassigned = Math.max(0, total - assigned);
     const totalMaster = trucks.reduce((sum, t) => sum + (t.master_containers || 0), 0);
     const totalMatched = trucks.reduce((sum, t) => sum + (t.matched_containers || 0), 0);
     const totalMissing = trucks.reduce((sum, t) => sum + (t.missing_containers || 0), 0);
-    return { total, active, maintenance, totalMaster, totalMatched, totalMissing };
+    const runningTrucks = trucks.filter(t => (t.master_containers || 0) > 0).length;
+    const matchRate = totalMaster > 0 ? Math.round((totalMatched / totalMaster) * 100) : 0;
+    return { total, active, maintenance, inactive, assigned, unassigned, totalMaster, totalMatched, totalMissing, runningTrucks, matchRate };
   }, [trucks]);
 
   // Filtered Records
@@ -518,7 +535,7 @@ export default function TrucksView() {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      padding: '24px 28px',
+      padding: '4px 28px 20px 28px',
       boxSizing: 'border-box',
       background: '#f8fafc',
       overflow: 'hidden'
@@ -641,10 +658,10 @@ export default function TrucksView() {
         </div>
       </div>
 
-      {/* 2. KPI Metric Cards (Standardized Central Component) */}
+      {/* 2. KPI Metric Cards (Standardized 4-Card Blueprint) */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
         gap: '12px',
         marginBottom: '16px',
         flexShrink: 0
@@ -654,6 +671,7 @@ export default function TrucksView() {
           value={kpis.total}
           unit="คัน"
           theme="slate"
+          subtext={`พร้อมวิ่ง ${kpis.active} • ซ่อม ${kpis.maintenance || 0} • ระงับ ${kpis.inactive || 0}`}
         />
 
         <KpiCard
@@ -661,6 +679,8 @@ export default function TrucksView() {
           value={kpis.active}
           unit="คัน"
           theme="green"
+          badge={kpis.total > 0 ? `${Math.round((kpis.active / kpis.total) * 100)}%` : undefined}
+          subtext={`มีคนขับ ${kpis.assigned || 0} คัน • รถว่าง ${kpis.unassigned || 0} คัน`}
         />
 
         <KpiCard
@@ -675,13 +695,8 @@ export default function TrucksView() {
           value={kpis.totalMatched}
           unit="งาน"
           theme="emerald"
-        />
-
-        <KpiCard
-          title="⚠️ รอตรวจสอบ (Pending Scan)"
-          value={kpis.totalMissing}
-          unit="งาน"
-          theme="amber"
+          badge={kpis.totalMaster > 0 ? `${kpis.matchRate}%` : undefined}
+          subtext={`⚠️ รอตรวจ ${kpis.totalMissing.toLocaleString()} งาน`}
         />
       </div>
 
@@ -711,7 +726,7 @@ export default function TrucksView() {
         }}>
           {/* ช่องค้นหา */}
           <div style={{ position: 'relative', width: '240px' }}>
-            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#94a3b8' }}>🔍</span>
+            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
             <input
               type="text"
               placeholder="ค้นหาเบอร์รถ, ทะเบียน, คนขับ..."
@@ -721,13 +736,37 @@ export default function TrucksView() {
                 width: '100%',
                 height: '36px',
                 paddingLeft: '32px',
-                paddingRight: '10px',
+                paddingRight: searchTerm ? '28px' : '10px',
                 borderRadius: '7px',
                 border: '1px solid #cbd5e1',
                 fontSize: '12.5px',
                 boxSizing: 'border-box'
               }}
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="ล้างคำค้นหา"
+              >
+                ✕
+              </button>
+            )}
           </div>
 
           {/* ฟิลเตอร์สถานะ */}
@@ -801,198 +840,23 @@ export default function TrucksView() {
 
           {/* Right: Column Visibility Menu */}
           <div style={{ marginLeft: 'auto' }}>
-            <ColumnVisibilityDropdown
-              showColumnMenu={showColumnMenu}
-              setShowColumnMenu={setShowColumnMenu}
-              menuRef={menuRef}
-              allColumns={allColumns}
-              activeColumns={activeColumns}
-              visibleColumns={visibleColumns}
-              onToggleColumnVisibility={handleToggleColumnHide}
-              getColDisplayName={getColDisplayName}
-              onStartEditAlias={handleStartRename}
-              onShowAllColumns={handleShowAllColumns}
-              onResetAllAliases={handleResetAllAliases}
-            />
+            <ColumnVisibilityDropdown preferences={trucksPrefs} />
           </div>
         </div>
 
-        {/* Scrollable Table Area (Floating Scrollbar in line of sight) */}
-        <div style={{
-          flex: 1,
-          minHeight: 0,
-          overflow: 'auto',
-          position: 'relative'
-        }}>
-          <table style={{
-            width: '100%',
-            tableLayout: 'fixed',
-            borderCollapse: 'collapse',
-            fontSize: '13px',
-            textAlign: 'left'
-          }}>
-            {/* Colgroup สำหรับความกว้าง */}
-            <colgroup>
-              {activeColumns.map(col => (
-                <col key={col} style={{ width: `${columnWidths[col] || DEFAULT_TRUCK_WIDTHS[col] || 120}px` }} />
-              ))}
-            </colgroup>
+        {/* Universal Table Area */}
+        <UniversalTableContainer
+          preferences={trucksPrefs}
+          style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}
+        >
+          <UniversalTableHeader
+            preferences={trucksPrefs}
+            data={filteredTrucks}
+            alignMap={TRUCK_ALIGN_MAP}
+          />
 
-            {/* Sticky Header */}
-            <thead style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 10,
-              background: '#f8fafc',
-              borderBottom: '1px solid #e2e8f0'
-            }}>
-              <tr>
-                {activeColumns.map(col => {
-                  const displayName = getColDisplayName(col);
-                  const isDragging = draggedCol === col;
-                  const isDragOver = dragOverCol === col;
-                  const isDraggable = col !== 'actions' && col !== 'id';
-                  const isSorted = sortConfig.key === col;
-                  const isAsc = isSorted && sortConfig.direction === 'asc';
-                  const isDesc = isSorted && sortConfig.direction === 'desc';
-
-                  return (
-                    <th
-                      key={col}
-                      draggable={isDraggable}
-                      onDragStart={(e) => {
-                        if (!isDraggable) return;
-                        setDraggedCol(col);
-                        e.dataTransfer.setData('text/plain', col);
-                        e.dataTransfer.effectAllowed = 'move';
-                      }}
-                      onDragOver={(e) => {
-                        if (!isDraggable) return;
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = 'move';
-                        if (draggedCol && draggedCol !== col && dragOverCol !== col) {
-                          setDragOverCol(col);
-                        }
-                      }}
-                      onDragLeave={() => {
-                        if (dragOverCol === col) setDragOverCol(null);
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        if (draggedCol && draggedCol !== col) {
-                          handleColumnReorder(draggedCol, col);
-                        }
-                        setDraggedCol(null);
-                        setDragOverCol(null);
-                      }}
-                      onDragEnd={() => {
-                        setDraggedCol(null);
-                        setDragOverCol(null);
-                      }}
-                      onContextMenu={(e) => handleHeaderContextMenu(e, col)}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        handleAutoFitColumn(col, filteredTrucks);
-                      }}
-                      style={{
-                        padding: '10px 14px',
-                        fontSize: '12.5px',
-                        fontWeight: 700,
-                        color: isSorted ? '#2563eb' : (isDragOver ? '#1d4ed8' : '#475569'),
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        userSelect: 'none',
-                        position: 'relative',
-                        textAlign: 'center',
-                        cursor: !isDraggable ? 'default' : (isDragging ? 'grabbing' : 'grab'),
-                        background: isDragOver ? '#eff6ff' : (isSorted ? '#eff6ff' : (isDragging ? '#f1f5f9' : '#f8fafc')),
-                        borderLeft: isDragOver ? '3px solid #2563eb' : 'none',
-                        borderBottom: isSorted ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                        opacity: isDragging ? 0.4 : 1,
-                        transform: isDragging ? 'scale(0.97)' : (isDragOver ? 'translateX(2px)' : 'none'),
-                        transition: 'background 0.18s cubic-bezier(0.4, 0, 0.2, 1), transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, border-left 0.15s ease'
-                      }}
-                    >
-                      <div
-                        onClick={() => isDraggable && handleSort(col)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '5px',
-                          cursor: isDraggable ? 'pointer' : 'default',
-                          userSelect: 'none',
-                          paddingRight: col !== 'actions' ? '4px' : '0'
-                        }}
-                      >
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
-                        {isDraggable && (
-                          <span style={{ 
-                            fontSize: '11px', 
-                            color: isSorted ? '#2563eb' : '#94a3b8', 
-                            flexShrink: 0,
-                            opacity: isSorted ? 1 : 0.4,
-                            transition: 'all 0.15s'
-                          }}>
-                            {isAsc ? '▲' : isDesc ? '▼' : '↕'}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Resize Handle with Subtle Divider Line */}
-                      {col !== 'actions' && (
-                        <div
-                          draggable={false}
-                          onDragStart={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleResizeMouseDown(e, col);
-                          }}
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            handleAutoFitColumn(col, filteredTrucks);
-                          }}
-                          style={{
-                            position: 'absolute',
-                            right: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: '8px',
-                            cursor: 'col-resize',
-                            zIndex: 5,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: 'transparent'
-                          }}
-                          title="ลากปรับขนาด / ดับเบิ้ลคลิกปรับพอดีข้อความ"
-                        >
-                          <div 
-                            style={{
-                              width: '1px',
-                              height: '16px',
-                              background: '#cbd5e1',
-                              transition: 'all 0.15s ease'
-                            }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = '#2563eb'; e.currentTarget.style.width = '2px'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = '#cbd5e1'; e.currentTarget.style.width = '1px'; }}
-                          />
-                        </div>
-                      )}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-
-            {/* Table Body */}
-            <tbody>
+          {/* Table Body */}
+          <tbody>
               {loading ? (
                 <tr>
                   <td colSpan={activeColumns.length} style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
@@ -1020,9 +884,18 @@ export default function TrucksView() {
                     onMouseLeave={(e) => e.currentTarget.style.background = idx % 2 === 0 ? '#ffffff' : '#fcfdfd'}
                   >
                     {activeColumns.map(col => {
+                      const align = TRUCK_ALIGN_MAP[col] || 'left';
+                      const cellStyle = {
+                        padding: '8px 10px',
+                        textAlign: align,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      };
+
                       if (col === 'id') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', textAlign: 'center', color: '#64748b', fontWeight: 600 }}>
+                          <td key={col} style={{ ...cellStyle, color: '#64748b', fontWeight: 600 }}>
                             {idx + 1}
                           </td>
                         );
@@ -1030,7 +903,7 @@ export default function TrucksView() {
 
                       if (col === 'truck_no') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 800, fontSize: '13.5px', color: '#1d4ed8' }}>
+                          <td key={col} style={{ ...cellStyle, fontFamily: 'monospace', fontWeight: 800, fontSize: '13.5px', color: '#1d4ed8' }}>
                             {truck.truck_no}
                           </td>
                         );
@@ -1045,7 +918,7 @@ export default function TrucksView() {
                         const cfg = statusConfig[truck.status] || statusConfig.active;
 
                         return (
-                          <td key={col} style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}>
+                          <td key={col} style={cellStyle}>
                             <select
                               value={truck.status || 'active'}
                               onChange={(e) => handleInlineStatusChange(truck, e.target.value)}
@@ -1072,7 +945,7 @@ export default function TrucksView() {
 
                       if (col === 'owner') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', fontWeight: 500, color: '#1e293b' }}>
+                          <td key={col} style={{ ...cellStyle, fontWeight: 500, color: '#1e293b' }}>
                             {truck.owner || '-'}
                           </td>
                         );
@@ -1081,27 +954,28 @@ export default function TrucksView() {
                       if (col === 'assigned_driver_name') {
                         const isAssigned = truck.assigned_driver_name && truck.assigned_driver_name !== '-';
                         return (
-                          <td key={col} style={{ padding: '6px 14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <td key={col} style={{ ...cellStyle, padding: '4px 8px' }}>
                             {isAssigned ? (
                               <button
                                 type="button"
                                 onClick={() => handleOpenAssignModalForTruck(truck, truck.assigned_driver_name)}
                                 title="คลิกเพื่อแก้ไขหรือเปลี่ยนคนขับ (จะเปิดฟอร์มการดำเนินงานรถ)"
                                 style={{
-                                  display: 'inline-flex',
+                                  display: 'flex',
                                   alignItems: 'center',
-                                  gap: '5px',
+                                  justifyContent: 'flex-start',
+                                  gap: '6px',
                                   background: '#eff6ff',
                                   color: '#1d4ed8',
                                   border: '1px solid #bfdbfe',
-                                  padding: '4px 10px',
+                                  padding: '0 10px',
+                                  height: '28px',
+                                  width: '100%',
+                                  boxSizing: 'border-box',
                                   borderRadius: '7px',
-                                  fontSize: '12.5px',
+                                  fontSize: '12px',
                                   fontWeight: 700,
                                   cursor: 'pointer',
-                                  maxWidth: '100%',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
                                   whiteSpace: 'nowrap',
                                   transition: 'all 0.15s ease'
                                 }}
@@ -1114,9 +988,9 @@ export default function TrucksView() {
                                   e.currentTarget.style.borderColor = '#bfdbfe';
                                 }}
                               >
-                                <span style={{ fontSize: '12px' }}>👤</span>
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{truck.assigned_driver_name}</span>
-                                <span style={{ fontSize: '10px', color: '#3b82f6', opacity: 0.8 }}>✏️</span>
+                                <span style={{ fontSize: '11.5px', flexShrink: 0 }}>👤</span>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{truck.assigned_driver_name}</span>
+                                <span style={{ fontSize: '10px', color: '#3b82f6', opacity: 0.85, flexShrink: 0, marginLeft: 'auto' }}>✏️</span>
                               </button>
                             ) : (
                               <button
@@ -1124,17 +998,22 @@ export default function TrucksView() {
                                 onClick={() => handleOpenAssignModalForTruck(truck, '')}
                                 title="คลิกเพื่อมอบหมายคนขับ (จะเปิดฟอร์มการดำเนินงานรถ)"
                                 style={{
-                                  display: 'inline-flex',
+                                  display: 'flex',
                                   alignItems: 'center',
-                                  gap: '4px',
+                                  justifyContent: 'flex-start',
+                                  gap: '6px',
                                   background: '#f8fafc',
                                   color: '#64748b',
                                   border: '1px dashed #cbd5e1',
-                                  padding: '4px 10px',
+                                  padding: '0 10px',
+                                  height: '28px',
+                                  width: '100%',
+                                  boxSizing: 'border-box',
                                   borderRadius: '7px',
                                   fontSize: '12px',
                                   fontWeight: 600,
                                   cursor: 'pointer',
+                                  whiteSpace: 'nowrap',
                                   transition: 'all 0.15s ease'
                                 }}
                                 onMouseEnter={(e) => {
@@ -1148,8 +1027,8 @@ export default function TrucksView() {
                                   e.currentTarget.style.borderColor = '#cbd5e1';
                                 }}
                               >
-                                <span>➕</span>
-                                <span>เลือกคนขับ</span>
+                                <span style={{ flexShrink: 0 }}>➕</span>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>เลือกคนขับ</span>
                               </button>
                             )}
                           </td>
@@ -1158,7 +1037,7 @@ export default function TrucksView() {
 
                       if (col === 'master_containers' || col === 'total_containers') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', fontWeight: 700, color: '#1e293b' }}>
+                          <td key={col} style={{ ...cellStyle, fontWeight: 700, color: '#1e293b' }}>
                             {Number(truck.master_containers || truck.total_containers || 0).toLocaleString()}
                           </td>
                         );
@@ -1167,7 +1046,7 @@ export default function TrucksView() {
                       if (col === 'matched_containers') {
                         const val = Number(truck.matched_containers || 0);
                         return (
-                          <td key={col} style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                          <td key={col} style={cellStyle}>
                             {val > 0 ? (
                               <span style={{ 
                                 display: 'inline-flex', 
@@ -1193,7 +1072,7 @@ export default function TrucksView() {
                       if (col === 'missing_containers') {
                         const val = Number(truck.missing_containers || 0);
                         return (
-                          <td key={col} style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                          <td key={col} style={cellStyle}>
                             {val > 0 ? (
                               <span style={{ 
                                 display: 'inline-flex', 
@@ -1220,9 +1099,9 @@ export default function TrucksView() {
                         const rate = Number(truck.match_rate || 0);
                         const isComplete = rate === 100 && (truck.master_containers || 0) > 0;
                         return (
-                          <td key={col} style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <div style={{ flex: 1, minWidth: '45px', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                          <td key={col} style={cellStyle}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end' }}>
+                              <div style={{ width: '45px', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
                                 <div style={{ width: `${rate}%`, height: '100%', background: isComplete ? '#16a34a' : (rate > 0 ? '#2563eb' : '#cbd5e1'), borderRadius: '3px' }} />
                               </div>
                               <span style={{ fontSize: '11.5px', fontWeight: 700, color: isComplete ? '#16a34a' : (rate > 0 ? '#2563eb' : '#94a3b8'), minWidth: '32px' }}>
@@ -1235,15 +1114,15 @@ export default function TrucksView() {
 
                       if (col === 'tax_expiry_date' || col === 'act_expiry_date' || col === 'insurance_expiry_date') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', color: '#475569' }}>
-                            {formatDateDisplay(truck[col])}
+                          <td key={col} style={cellStyle}>
+                            {renderExpiryBadge(truck[col])}
                           </td>
                         );
                       }
 
                       if (col === 'actions') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <td key={col} style={cellStyle}>
                             <button
                               onClick={() => setHistoryModal({
                                 isOpen: true,
@@ -1307,7 +1186,7 @@ export default function TrucksView() {
                       }
 
                       return (
-                        <td key={col} style={{ padding: '10px 14px', color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <td key={col} style={{ ...cellStyle, color: '#334155' }}>
                           {truck[col] || '-'}
                         </td>
                       );
@@ -1316,8 +1195,7 @@ export default function TrucksView() {
                 ))
               )}
             </tbody>
-          </table>
-        </div>
+        </UniversalTableContainer>
 
         {/* Footer / Status Bar */}
         <div style={{
@@ -1356,27 +1234,6 @@ export default function TrucksView() {
         targetType={historyModal.targetType}
         targetId={historyModal.targetId}
         targetTitle={historyModal.targetTitle}
-      />
-
-      {/* Context Menu */}
-      <TableContextMenu
-        contextMenu={contextMenu}
-        onClose={() => setContextMenu(null)}
-        onStartEditAlias={handleStartRename}
-        onAutoFitColumn={(col) => handleAutoFitColumn(col, filteredTrucks)}
-        onToggleColumnHide={handleToggleColumnHide}
-        onShowAllColumns={handleShowAllColumns}
-        onResetColumnWidth={handleResetColumnWidth}
-        onResetColumnOrder={handleResetColumnOrder}
-        getColDisplayName={getColDisplayName}
-      />
-
-      {/* Rename Column Modal */}
-      <RenameColumnModal
-        renamingColumn={renamingColumn}
-        onClose={() => setRenamingColumn(null)}
-        onSaveAlias={handleSaveAlias}
-        onResetAlias={handleResetAlias}
       />
 
       {/* App Native Status Change Confirmation Modal with Date Picker */}

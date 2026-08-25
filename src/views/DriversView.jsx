@@ -14,13 +14,14 @@ import { createOperation, updateOperation } from '../services/operationsService'
 import DriverModal from '../components/drivers/DriverModal';
 import OperationModal from '../components/operations/OperationModal';
 import AssignmentHistoryModal from '../components/ui/AssignmentHistoryModal';
-import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
-import TableContextMenu from '../components/ui/TableContextMenu';
-import RenameColumnModal from '../components/ui/RenameColumnModal';
 import StatusChangeConfirmModal from '../components/ui/StatusChangeConfirmModal';
 import Badge from '../components/ui/Badge';
 import KpiCard from '../components/ui/KpiCard';
+import UniversalTableContainer from '../components/ui/UniversalTableContainer';
+import UniversalTableHeader from '../components/ui/UniversalTableHeader';
+import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
+import { jobSheetService } from '../services/jobSheetService';
 
 const DEFAULT_DRIVER_COLUMNS = [
   'id',
@@ -28,6 +29,8 @@ const DEFAULT_DRIVER_COLUMNS = [
   'status',
   'work_status',
   'assigned_truck_no',
+  'base_salary',
+  'tax_profile',
   'phone',
   'master_containers',
   'matched_containers',
@@ -49,6 +52,8 @@ const DEFAULT_COLUMN_NAMES = {
   status: 'สถานะพนักงาน',
   work_status: 'สถานะปฏิบัติงาน',
   assigned_truck_no: 'เบอร์รถ',
+  base_salary: '💵 ฐานเงินเดือน',
+  tax_profile: '🏥 หัก สปส./3%',
   phone: 'เบอร์โทรศัพท์',
   master_containers: 'งานในใบวางบิล',
   matched_containers: 'ตรวจสอบแล้ว',
@@ -65,24 +70,49 @@ const DEFAULT_COLUMN_NAMES = {
 };
 
 const DEFAULT_DRIVER_WIDTHS = {
-  id: 60,
+  id: 45,
   driver_name: 150,
   status: 120,
   work_status: 110,
-  assigned_truck_no: 125,
-  phone: 125,
-  master_containers: 130,
-  matched_containers: 130,
-  missing_containers: 130,
-  match_rate: 115,
+  assigned_truck_no: 110,
+  base_salary: 115,
+  tax_profile: 125,
+  phone: 115,
+  master_containers: 115,
+  matched_containers: 115,
+  missing_containers: 115,
+  match_rate: 110,
   license_type: 110,
-  license_no: 120,
-  license_expiry_date: 120,
+  license_no: 115,
+  license_expiry_date: 115,
   start_date: 110,
-  emergency_contact: 150,
-  id_card: 135,
-  remark: 150,
+  emergency_contact: 140,
+  id_card: 130,
+  remark: 140,
   actions: 100
+};
+
+const DRIVER_ALIGN_MAP = {
+  id: 'center',
+  driver_name: 'left',
+  status: 'center',
+  work_status: 'center',
+  assigned_truck_no: 'center',
+  base_salary: 'right',
+  tax_profile: 'center',
+  phone: 'center',
+  master_containers: 'right',
+  matched_containers: 'right',
+  missing_containers: 'right',
+  match_rate: 'right',
+  license_type: 'center',
+  license_no: 'center',
+  license_expiry_date: 'center',
+  start_date: 'center',
+  emergency_contact: 'left',
+  id_card: 'center',
+  remark: 'left',
+  actions: 'center'
 };
 
 export default function DriversView() {
@@ -94,6 +124,7 @@ export default function DriversView() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [licenseFilter, setLicenseFilter] = useState('ALL');
+  const [totalJobsheetContainers, setTotalJobsheetContainers] = useState(140);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -116,41 +147,9 @@ export default function DriversView() {
 
   // File Upload Ref
   const fileInputRef = useRef(null);
-  const menuRef = useRef(null);
 
   // Column Preferences Hook (Unified Centralized Architecture)
-  const {
-    allColumns,
-    activeColumns,
-    visibleColumns,
-    columnWidths,
-    draggedCol,
-    setDraggedCol,
-    dragOverCol,
-    setDragOverCol,
-    getColDisplayName,
-    handleToggleColumnHide,
-    handleShowAllColumns,
-    handleResizeMouseDown,
-    handleAutoFitColumn,
-    handleColumnReorder,
-    handleResetColumnOrder,
-    handleResetColumnWidth,
-    handleHeaderContextMenu,
-    handleStartRename,
-    handleSaveAlias,
-    handleResetAlias,
-    handleResetAllAliases,
-    contextMenu,
-    setContextMenu,
-    renamingColumn,
-    setRenamingColumn,
-    showColumnMenu,
-    setShowColumnMenu,
-    sortConfig,
-    handleSort,
-    sortRecords
-  } = useColumnPreferences({
+  const driversPrefs = useColumnPreferences({
     storageKeyPrefix: 'drivers',
     rawColumns: DEFAULT_DRIVER_COLUMNS,
     defaultNames: DEFAULT_COLUMN_NAMES,
@@ -168,7 +167,7 @@ export default function DriversView() {
         return '⚪ ว่าง';
       }
       if (col === 'assigned_truck_no') {
-        return (val && val !== '-') ? String(val).trim() : '-';
+        return (val && val !== '-') ? `🚚 รถ ${String(val).trim()} ✏️` : '➕ เลือกรถ';
       }
       if (col === 'match_rate') {
         const rate = (row?.master_containers > 0) ? Math.round(((row.matched_containers || 0) / row.master_containers) * 100) : 0;
@@ -178,17 +177,23 @@ export default function DriversView() {
     }
   });
 
+  const { activeColumns, sortRecords, sortConfig } = driversPrefs;
+
   // Load Data
   const loadData = async () => {
     setLoading(true);
     try {
-      const [driverRes, truckRes] = await Promise.all([
+      const [driverRes, truckRes, ocrKpiRes] = await Promise.all([
         fetchDrivers(),
-        fetchTrucks()
+        fetchTrucks(),
+        jobSheetService.fetchOcrKpis()
       ]);
       if (driverRes.error) throw new Error(driverRes.error);
       setDrivers(driverRes.data || []);
       setTrucks(truckRes.data || []);
+      if (ocrKpiRes && typeof ocrKpiRes.total === 'number') {
+        setTotalJobsheetContainers(ocrKpiRes.total);
+      }
     } catch (err) {
       toastError('โหลดข้อมูลไม่สำเร็จ: ' + err.message);
     } finally {
@@ -198,17 +203,6 @@ export default function DriversView() {
 
   useEffect(() => {
     loadData();
-  }, []);
-
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setShowColumnMenu(false);
-      }
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
   // KPI Calculations
@@ -224,7 +218,10 @@ export default function DriversView() {
     const totalMaster = drivers.reduce((sum, d) => sum + (d.master_containers || 0), 0);
     const totalMatched = drivers.reduce((sum, d) => sum + (d.matched_containers || 0), 0);
     const totalMissing = drivers.reduce((sum, d) => sum + (d.missing_containers || 0), 0);
-    return { total, active, leave, inactive, assigned, unassigned, totalMaster, totalMatched, totalMissing };
+    const totalRed = drivers.reduce((sum, d) => sum + (d.red_containers || 0), 0);
+    const runningDrivers = drivers.filter(d => (d.master_containers || 0) > 0).length;
+    const matchRate = totalMaster > 0 ? Math.round((totalMatched / totalMaster) * 100) : 0;
+    return { total, active, leave, inactive, assigned, unassigned, totalMaster, totalMatched, totalMissing, totalRed, runningDrivers, matchRate };
   }, [drivers]);
 
   // Filtered Records
@@ -630,12 +627,44 @@ export default function DriversView() {
     }
   };
 
+  // 🪪 Render Expiry Badge for License & Compliance
+  const renderExpiryBadge = (dateStr) => {
+    if (!dateStr || dateStr === '-') return <span style={{ color: '#94a3b8' }}>-</span>;
+    const formatted = formatDateDisplay(dateStr);
+    try {
+      const expDate = new Date(dateStr);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      expDate.setHours(0, 0, 0, 0);
+      if (isNaN(expDate.getTime())) return formatted;
+
+      const diffDays = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) {
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#fee2e2', color: '#b91c1c', padding: '2px 8px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, border: '1px solid #fca5a5' }}>
+            ⚠️ {formatted} (หมดอายุ)
+          </span>
+        );
+      }
+      if (diffDays <= 30) {
+        return (
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: '#fef3c7', color: '#b45309', padding: '2px 8px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700, border: '1px solid #fde68a' }}>
+            🟡 {formatted} (อีก {diffDays} วัน)
+          </span>
+        );
+      }
+      return <span style={{ color: '#334155' }}>{formatted}</span>;
+    } catch {
+      return formatted;
+    }
+  };
+
   return (
     <div style={{
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      padding: '24px 28px',
+      padding: '4px 28px 20px 28px',
       boxSizing: 'border-box',
       background: '#f8fafc',
       overflow: 'hidden'
@@ -777,10 +806,10 @@ export default function DriversView() {
         </div>
       </div>
 
-      {/* 2. KPI Metric Cards (Standardized Central Component) */}
+      {/* 2. KPI Metric Cards (Standardized 4-Card Blueprint) */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
         gap: '12px',
         marginBottom: '16px',
         flexShrink: 0
@@ -790,27 +819,24 @@ export default function DriversView() {
           value={kpis.total}
           unit="คน"
           theme="slate"
+          subtext={`ปกติ ${kpis.active} • ลางาน ${kpis.leave} • พักงาน ${kpis.inactive}`}
         />
 
         <KpiCard
-          title="🚛 ขับประจำ"
+          title="🚛 ขับประจำ (มีรถประจำการ)"
           value={kpis.assigned}
           unit="คน"
-          theme="emerald"
+          theme="green"
+          badge={kpis.total > 0 ? `${Math.round((kpis.assigned / kpis.total) * 100)}%` : undefined}
+          subtext={`⚪ ว่าง/สแตนด์บาย ${kpis.unassigned} คน`}
         />
 
         <KpiCard
-          title="⚪ ว่าง"
-          value={kpis.unassigned}
-          unit="คน"
-          theme="blue"
-        />
-
-        <KpiCard
-          title="📋 งานทั้งหมดในใบวางบิล"
-          value={kpis.totalMaster}
+          title="📋 งานทั้งหมดในใบงาน"
+          value={totalJobsheetContainers}
           unit="งาน"
-          theme="indigo"
+          theme="blue"
+          subtext={`วิ่งงานในใบวางบิล ${kpis.totalMaster} งาน`}
         />
 
         <KpiCard
@@ -818,13 +844,8 @@ export default function DriversView() {
           value={kpis.totalMatched}
           unit="งาน"
           theme="emerald"
-        />
-
-        <KpiCard
-          title="⚠️ รอตรวจสอบ (Pending Scan)"
-          value={kpis.totalMissing}
-          unit="งาน"
-          theme="amber"
+          badge={kpis.totalMaster > 0 ? `${kpis.matchRate}%` : undefined}
+          subtext={`⚠️ รอตรวจ ${kpis.totalMissing.toLocaleString()} งาน${kpis.totalRed > 0 ? ` (รวมตู้แดง ${kpis.totalRed} งาน)` : ''}`}
         />
       </div>
 
@@ -854,7 +875,7 @@ export default function DriversView() {
         }}>
           {/* ช่องค้นหา */}
           <div style={{ position: 'relative', width: '240px' }}>
-            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#94a3b8' }}>🔍</span>
+            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
             <input
               type="text"
               placeholder="ค้นหาชื่อคนขับ, เบอร์โทร, เบอร์รถ..."
@@ -864,13 +885,37 @@ export default function DriversView() {
                 width: '100%',
                 height: '36px',
                 paddingLeft: '32px',
-                paddingRight: '10px',
+                paddingRight: searchTerm ? '28px' : '10px',
                 borderRadius: '7px',
                 border: '1px solid #cbd5e1',
                 fontSize: '12.5px',
                 boxSizing: 'border-box'
               }}
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="ล้างคำค้นหา"
+              >
+                ✕
+              </button>
+            )}
           </div>
 
           {/* ฟิลเตอร์สถานะ */}
@@ -943,197 +988,23 @@ export default function DriversView() {
 
           {/* Right: Column Visibility Menu */}
           <div style={{ marginLeft: 'auto' }}>
-            <ColumnVisibilityDropdown
-              showColumnMenu={showColumnMenu}
-              setShowColumnMenu={setShowColumnMenu}
-              menuRef={menuRef}
-              allColumns={allColumns}
-              activeColumns={activeColumns}
-              visibleColumns={visibleColumns}
-              onToggleColumnVisibility={handleToggleColumnHide}
-              getColDisplayName={getColDisplayName}
-              onStartEditAlias={handleStartRename}
-              onShowAllColumns={handleShowAllColumns}
-              onResetAllAliases={handleResetAllAliases}
-            />
+            <ColumnVisibilityDropdown preferences={driversPrefs} />
           </div>
         </div>
 
-        {/* Scrollable Table Area */}
-        <div style={{
-          flex: 1,
-          minHeight: 0,
-          overflow: 'auto',
-          position: 'relative'
-        }}>
-          <table style={{
-            width: '100%',
-            tableLayout: 'fixed',
-            borderCollapse: 'collapse',
-            fontSize: '13px',
-            textAlign: 'left'
-          }}>
-            <colgroup>
-              {activeColumns.map(col => (
-                <col key={col} style={{ width: `${columnWidths[col] || DEFAULT_DRIVER_WIDTHS[col] || 120}px` }} />
-              ))}
-            </colgroup>
+        {/* Universal Table Area */}
+        <UniversalTableContainer
+          preferences={driversPrefs}
+          style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}
+        >
+          <UniversalTableHeader
+            preferences={driversPrefs}
+            data={filteredDrivers}
+            alignMap={DRIVER_ALIGN_MAP}
+          />
 
-            {/* Sticky Header */}
-            <thead style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 10,
-              background: '#f8fafc',
-              borderBottom: '1px solid #e2e8f0'
-            }}>
-              <tr>
-                {activeColumns.map(col => {
-                  const displayName = getColDisplayName(col);
-                  const isDragging = draggedCol === col;
-                  const isDragOver = dragOverCol === col;
-                  const isDraggable = col !== 'actions' && col !== 'id';
-                  const isSorted = sortConfig.key === col;
-                  const isAsc = isSorted && sortConfig.direction === 'asc';
-                  const isDesc = isSorted && sortConfig.direction === 'desc';
-
-                  return (
-                    <th
-                      key={col}
-                      draggable={isDraggable}
-                      onDragStart={(e) => {
-                        if (!isDraggable) return;
-                        setDraggedCol(col);
-                        e.dataTransfer.setData('text/plain', col);
-                        e.dataTransfer.effectAllowed = 'move';
-                      }}
-                      onDragOver={(e) => {
-                        if (!isDraggable) return;
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = 'move';
-                        if (draggedCol && draggedCol !== col && dragOverCol !== col) {
-                          setDragOverCol(col);
-                        }
-                      }}
-                      onDragLeave={() => {
-                        if (dragOverCol === col) setDragOverCol(null);
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        if (draggedCol && draggedCol !== col) {
-                          handleColumnReorder(draggedCol, col);
-                        }
-                        setDraggedCol(null);
-                        setDragOverCol(null);
-                      }}
-                      onDragEnd={() => {
-                        setDraggedCol(null);
-                        setDragOverCol(null);
-                      }}
-                      onContextMenu={(e) => handleHeaderContextMenu(e, col)}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        handleAutoFitColumn(col, filteredDrivers);
-                      }}
-                      style={{
-                        padding: '10px 14px',
-                        fontSize: '12.5px',
-                        fontWeight: 700,
-                        color: isSorted ? '#2563eb' : (isDragOver ? '#1d4ed8' : '#475569'),
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        userSelect: 'none',
-                        position: 'relative',
-                        textAlign: 'center',
-                        cursor: !isDraggable ? 'default' : (isDragging ? 'grabbing' : 'grab'),
-                        background: isDragOver ? '#eff6ff' : (isSorted ? '#eff6ff' : (isDragging ? '#f1f5f9' : '#f8fafc')),
-                        borderLeft: isDragOver ? '3px solid #2563eb' : 'none',
-                        borderBottom: isSorted ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                        opacity: isDragging ? 0.4 : 1,
-                        transform: isDragging ? 'scale(0.97)' : (isDragOver ? 'translateX(2px)' : 'none'),
-                        transition: 'background 0.18s cubic-bezier(0.4, 0, 0.2, 1), transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.18s ease, border-left 0.15s ease'
-                      }}
-                    >
-                      <div
-                        onClick={() => isDraggable && handleSort(col)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '5px',
-                          cursor: isDraggable ? 'pointer' : 'default',
-                          userSelect: 'none',
-                          paddingRight: col !== 'actions' ? '4px' : '0'
-                        }}
-                      >
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
-                        {isDraggable && (
-                          <span style={{ 
-                            fontSize: '11px', 
-                            color: isSorted ? '#2563eb' : '#94a3b8', 
-                            flexShrink: 0,
-                            opacity: isSorted ? 1 : 0.4,
-                            transition: 'all 0.15s'
-                          }}>
-                            {isAsc ? '▲' : isDesc ? '▼' : '↕'}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Resize Handle with Subtle Divider Line */}
-                      {col !== 'actions' && (
-                        <div
-                          draggable={false}
-                          onDragStart={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleResizeMouseDown(e, col);
-                          }}
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            handleAutoFitColumn(col, filteredDrivers);
-                          }}
-                          style={{
-                            position: 'absolute',
-                            right: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: '8px',
-                            cursor: 'col-resize',
-                            zIndex: 5,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: 'transparent'
-                          }}
-                          title="ลากปรับขนาด / ดับเบิ้ลคลิกปรับพอดีข้อความ"
-                        >
-                          <div 
-                            style={{
-                              width: '1px',
-                              height: '16px',
-                              background: '#cbd5e1',
-                              transition: 'all 0.15s ease'
-                            }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = '#2563eb'; e.currentTarget.style.width = '2px'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = '#cbd5e1'; e.currentTarget.style.width = '1px'; }}
-                          />
-                        </div>
-                      )}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-
-            {/* Table Body */}
-            <tbody>
+          {/* Table Body */}
+          <tbody>
               {loading ? (
                 <tr>
                   <td colSpan={activeColumns.length} style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
@@ -1161,9 +1032,18 @@ export default function DriversView() {
                     onMouseLeave={(e) => e.currentTarget.style.background = idx % 2 === 0 ? '#ffffff' : '#fcfdfd'}
                   >
                     {activeColumns.map(col => {
+                      const align = DRIVER_ALIGN_MAP[col] || 'left';
+                      const cellStyle = {
+                        padding: '8px 10px',
+                        textAlign: align,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      };
+
                       if (col === 'id') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', textAlign: 'center', color: '#64748b', fontWeight: 600 }}>
+                          <td key={col} style={{ ...cellStyle, color: '#64748b', fontWeight: 600 }}>
                             {idx + 1}
                           </td>
                         );
@@ -1171,7 +1051,7 @@ export default function DriversView() {
 
                       if (col === 'driver_name') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', fontWeight: 600, color: '#0f172a' }}>
+                          <td key={col} style={{ ...cellStyle, fontWeight: 600, color: '#0f172a' }}>
                             {driver.driver_name || '-'}
                           </td>
                         );
@@ -1186,7 +1066,7 @@ export default function DriversView() {
                         const cfg = statusConfig[driver.status] || statusConfig.active;
 
                         return (
-                          <td key={col} style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}>
+                          <td key={col} style={cellStyle}>
                             <select
                               value={driver.status || 'active'}
                               onChange={(e) => handleInlineStatusChange(driver, e.target.value)}
@@ -1219,7 +1099,7 @@ export default function DriversView() {
 
                         if (isInactive) {
                           return (
-                            <td key={col} style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}>
+                            <td key={col} style={cellStyle}>
                               <span style={{ color: '#94a3b8', fontSize: '12px', fontWeight: 500 }}>
                                 ⚪ พ้นสภาพ
                               </span>
@@ -1229,7 +1109,7 @@ export default function DriversView() {
 
                         if (isLeave) {
                           return (
-                            <td key={col} style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}>
+                            <td key={col} style={cellStyle}>
                               <span style={{ color: '#b45309', fontSize: '12px', fontWeight: 600 }}>
                                 🟡 ลางาน
                               </span>
@@ -1239,7 +1119,7 @@ export default function DriversView() {
 
                         if (isSubstitute) {
                           return (
-                            <td key={col} style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}>
+                            <td key={col} style={cellStyle}>
                               <span style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
@@ -1260,13 +1140,14 @@ export default function DriversView() {
 
                         if (hasTruck) {
                           return (
-                            <td key={col} style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}>
+                            <td key={col} style={cellStyle}>
                               <span style={{
                                 display: 'inline-flex',
                                 alignItems: 'center',
                                 gap: '4px',
                                 background: '#ecfdf5',
                                 color: '#15803d',
+                                border: '1px solid #a7f3d0',
                                 padding: '2px 8px',
                                 borderRadius: '6px',
                                 fontSize: '11.5px',
@@ -1278,9 +1159,8 @@ export default function DriversView() {
                           );
                         }
 
-                        // ไม่มีรถขับ ➡️ แสดงเป็นว่าง
                         return (
-                          <td key={col} style={{ padding: '8px 14px', whiteSpace: 'nowrap' }}>
+                          <td key={col} style={cellStyle}>
                             <span style={{
                               display: 'inline-flex',
                               alignItems: 'center',
@@ -1302,28 +1182,29 @@ export default function DriversView() {
                       if (col === 'assigned_truck_no') {
                         const isAssigned = driver.assigned_truck_no && driver.assigned_truck_no !== '-';
                         return (
-                          <td key={col} style={{ padding: '6px 14px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <td key={col} style={{ ...cellStyle, padding: '4px 8px' }}>
                             {isAssigned ? (
                               <button
                                 type="button"
                                 onClick={() => handleOpenAssignModalForDriver(driver, driver.assigned_truck_no)}
                                 title="คลิกเพื่อแก้ไขหรือเปลี่ยนเบอร์รถ (จะเปิดฟอร์มการดำเนินงานรถ)"
                                 style={{
-                                  display: 'inline-flex',
+                                  display: 'flex',
                                   alignItems: 'center',
-                                  gap: '5px',
+                                  justifyContent: 'flex-start',
+                                  gap: '6px',
                                   background: '#eff6ff',
                                   color: '#1d4ed8',
                                   border: '1px solid #bfdbfe',
-                                  padding: '4px 10px',
+                                  padding: '0 10px',
+                                  height: '28px',
+                                  width: '100%',
+                                  boxSizing: 'border-box',
                                   borderRadius: '7px',
                                   fontFamily: 'monospace',
-                                  fontSize: '13px',
+                                  fontSize: '12.5px',
                                   fontWeight: 800,
                                   cursor: 'pointer',
-                                  maxWidth: '100%',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
                                   whiteSpace: 'nowrap',
                                   transition: 'all 0.15s ease'
                                 }}
@@ -1336,9 +1217,9 @@ export default function DriversView() {
                                   e.currentTarget.style.borderColor = '#bfdbfe';
                                 }}
                               >
-                                <span style={{ fontSize: '11.5px' }}>🚚</span>
-                                <span>{driver.assigned_truck_no}</span>
-                                <span style={{ fontSize: '10px', color: '#3b82f6', opacity: 0.8 }}>✏️</span>
+                                <span style={{ fontSize: '11.5px', flexShrink: 0 }}>🚚</span>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{driver.assigned_truck_no}</span>
+                                <span style={{ fontSize: '10px', color: '#3b82f6', opacity: 0.85, flexShrink: 0, marginLeft: 'auto' }}>✏️</span>
                               </button>
                             ) : (
                               <button
@@ -1346,17 +1227,22 @@ export default function DriversView() {
                                 onClick={() => handleOpenAssignModalForDriver(driver, '')}
                                 title="คลิกเพื่อมอบหมายเบอร์รถ (จะเปิดฟอร์มการดำเนินงานรถ)"
                                 style={{
-                                  display: 'inline-flex',
+                                  display: 'flex',
                                   alignItems: 'center',
-                                  gap: '4px',
+                                  justifyContent: 'flex-start',
+                                  gap: '6px',
                                   background: '#f8fafc',
                                   color: '#64748b',
                                   border: '1px dashed #cbd5e1',
-                                  padding: '4px 10px',
+                                  padding: '0 10px',
+                                  height: '28px',
+                                  width: '100%',
+                                  boxSizing: 'border-box',
                                   borderRadius: '7px',
                                   fontSize: '12px',
                                   fontWeight: 600,
                                   cursor: 'pointer',
+                                  whiteSpace: 'nowrap',
                                   transition: 'all 0.15s ease'
                                 }}
                                 onMouseEnter={(e) => {
@@ -1370,9 +1256,45 @@ export default function DriversView() {
                                   e.currentTarget.style.borderColor = '#cbd5e1';
                                 }}
                               >
-                                <span>➕</span>
-                                <span>เลือกรถ</span>
+                                <span style={{ flexShrink: 0 }}>➕</span>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>เลือกรถ</span>
                               </button>
+                            )}
+                          </td>
+                        );
+                      }
+
+                      if (col === 'base_salary') {
+                        const sal = Number(driver.base_salary || 0);
+                        return (
+                          <td key={col} style={cellStyle}>
+                            {sal > 0 ? (
+                              <span style={{ fontWeight: 700, color: '#1e40af', fontSize: '13px' }}>
+                                ฿{sal.toLocaleString()}
+                              </span>
+                            ) : (
+                              <span style={{ color: '#cbd5e1' }}>-</span>
+                            )}
+                          </td>
+                        );
+                      }
+
+                      if (col === 'tax_profile') {
+                        const prof = driver.tax_profile || 'social_security';
+                        return (
+                          <td key={col} style={cellStyle}>
+                            {prof === 'social_security' && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '2px 8px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700 }}>
+                                🏥 สปส. ({Number(driver.social_security_amount || 875).toLocaleString()}฿)
+                              </span>
+                            )}
+                            {prof === 'withholding_3pct' && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', background: '#fffbeb', color: '#b45309', border: '1px solid #fde68a', padding: '2px 8px', borderRadius: '6px', fontSize: '11.5px', fontWeight: 700 }}>
+                                📑 หัก 3%
+                              </span>
+                            )}
+                            {prof === 'none' && (
+                              <span style={{ color: '#94a3b8', fontSize: '11.5px' }}>⚪ ไม่หัก</span>
                             )}
                           </td>
                         );
@@ -1380,7 +1302,7 @@ export default function DriversView() {
 
                       if (col === 'master_containers' || col === 'total_containers') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', fontWeight: 700, color: '#1e293b' }}>
+                          <td key={col} style={{ ...cellStyle, fontWeight: 700, color: '#1e293b' }}>
                             {Number(driver.master_containers || driver.total_containers || 0).toLocaleString()}
                           </td>
                         );
@@ -1389,7 +1311,7 @@ export default function DriversView() {
                       if (col === 'matched_containers') {
                         const val = Number(driver.matched_containers || 0);
                         return (
-                          <td key={col} style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                          <td key={col} style={cellStyle}>
                             {val > 0 ? (
                               <span style={{ 
                                 display: 'inline-flex', 
@@ -1414,22 +1336,27 @@ export default function DriversView() {
 
                       if (col === 'missing_containers') {
                         const val = Number(driver.missing_containers || 0);
+                        const redVal = Number(driver.red_containers || 0);
                         return (
-                          <td key={col} style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                          <td key={col} style={cellStyle}>
                             {val > 0 ? (
-                              <span style={{ 
-                                display: 'inline-flex', 
-                                alignItems: 'center', 
-                                gap: '4px', 
-                                background: '#fffbeb', 
-                                color: '#b45309', 
-                                border: '1px solid #fde68a', 
-                                padding: '2px 8px', 
-                                borderRadius: '6px', 
-                                fontWeight: 700, 
-                                fontSize: '12px' 
-                              }}>
-                                ⚠️ {val.toLocaleString()}
+                              <span
+                                title={redVal > 0 ? `รอตรวจสอบ ${val} งาน (รวมตู้แดง ${redVal} งาน)` : `รอตรวจสอบ ${val} งาน`}
+                                style={{ 
+                                  display: 'inline-flex', 
+                                  alignItems: 'center', 
+                                  gap: '4px', 
+                                  background: redVal > 0 ? '#fef2f2' : '#fffbeb', 
+                                  color: redVal > 0 ? '#b91c1c' : '#b45309', 
+                                  border: redVal > 0 ? '1px solid #fecaca' : '1px solid #fde68a', 
+                                  padding: '2px 8px', 
+                                  borderRadius: '6px', 
+                                  fontWeight: 700, 
+                                  fontSize: '12px' 
+                                }}
+                              >
+                                {redVal > 0 ? '🔴' : '⚠️'} {val.toLocaleString()}
+                                {redVal > 0 && <span style={{ fontSize: '10px', opacity: 0.85 }}>(แดง {redVal})</span>}
                               </span>
                             ) : (
                               <span style={{ color: '#94a3b8', fontSize: '12.5px' }}>0</span>
@@ -1442,9 +1369,9 @@ export default function DriversView() {
                         const rate = Number(driver.match_rate || 0);
                         const isComplete = rate === 100 && (driver.master_containers || 0) > 0;
                         return (
-                          <td key={col} style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                              <div style={{ flex: 1, minWidth: '45px', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
+                          <td key={col} style={cellStyle}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: align === 'right' ? 'flex-end' : 'flex-start' }}>
+                              <div style={{ width: '45px', height: '6px', background: '#e2e8f0', borderRadius: '3px', overflow: 'hidden' }}>
                                 <div style={{ width: `${rate}%`, height: '100%', background: isComplete ? '#16a34a' : (rate > 0 ? '#2563eb' : '#cbd5e1'), borderRadius: '3px' }} />
                               </div>
                               <span style={{ fontSize: '11.5px', fontWeight: 700, color: isComplete ? '#16a34a' : (rate > 0 ? '#2563eb' : '#94a3b8'), minWidth: '32px' }}>
@@ -1455,9 +1382,17 @@ export default function DriversView() {
                         );
                       }
 
-                      if (col === 'license_expiry_date' || col === 'start_date') {
+                      if (col === 'license_expiry_date') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', color: '#475569' }}>
+                          <td key={col} style={cellStyle}>
+                            {renderExpiryBadge(driver[col])}
+                          </td>
+                        );
+                      }
+
+                      if (col === 'start_date') {
+                        return (
+                          <td key={col} style={{ ...cellStyle, color: '#475569' }}>
                             {formatDateDisplay(driver[col])}
                           </td>
                         );
@@ -1465,7 +1400,7 @@ export default function DriversView() {
 
                       if (col === 'actions') {
                         return (
-                          <td key={col} style={{ padding: '10px 14px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                          <td key={col} style={cellStyle}>
                             <button
                               onClick={() => setHistoryModal({
                                 isOpen: true,
@@ -1529,7 +1464,7 @@ export default function DriversView() {
                       }
 
                       return (
-                        <td key={col} style={{ padding: '10px 14px', color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <td key={col} style={{ ...cellStyle, color: '#334155' }}>
                           {driver[col] || '-'}
                         </td>
                       );
@@ -1538,8 +1473,7 @@ export default function DriversView() {
                 ))
               )}
             </tbody>
-          </table>
-        </div>
+        </UniversalTableContainer>
 
         {/* Footer / Status Bar */}
         <div style={{
@@ -1578,27 +1512,6 @@ export default function DriversView() {
         targetType={historyModal.targetType}
         targetId={historyModal.targetId}
         targetTitle={historyModal.targetTitle}
-      />
-
-      {/* Context Menu */}
-      <TableContextMenu
-        contextMenu={contextMenu}
-        onClose={() => setContextMenu(null)}
-        onStartEditAlias={handleStartRename}
-        onAutoFitColumn={(col) => handleAutoFitColumn(col, filteredDrivers)}
-        onToggleColumnHide={handleToggleColumnHide}
-        onShowAllColumns={handleShowAllColumns}
-        onResetColumnWidth={handleResetColumnWidth}
-        onResetColumnOrder={handleResetColumnOrder}
-        getColDisplayName={getColDisplayName}
-      />
-
-      {/* Rename Column Modal */}
-      <RenameColumnModal
-        renamingColumn={renamingColumn}
-        onClose={() => setRenamingColumn(null)}
-        onSaveAlias={handleSaveAlias}
-        onResetAlias={handleResetAlias}
       />
 
       {/* App Native Status Change Confirmation Modal with Date Picker */}

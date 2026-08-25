@@ -7,6 +7,9 @@ import React from 'react';
 export default function InspectorTopBar({
   selectedImage,
   ocrResult,
+  currentDriverName,
+  availableDrivers = [],
+  onDriverNameChange,
   isScanning,
   scanStatusDetail,
   isSaving,
@@ -19,6 +22,9 @@ export default function InspectorTopBar({
   const isCompletedEdit = selectedImage?.isCompletedEdit;
   const truckNo = selectedImage?.truckNo || selectedImage?.truckGuess || ocrResult?.truck_no || '-';
   const batchName = selectedImage?.batchGuess || selectedImage?.batch_name || '-';
+  const driverName = (selectedImage?.driver_name && selectedImage.driver_name !== '-')
+    ? selectedImage.driver_name
+    : (currentDriverName && currentDriverName !== '-' ? currentDriverName : (ocrResult?.driver_name || '-'));
 
   return (
     <div style={{
@@ -89,6 +95,42 @@ export default function InspectorTopBar({
             }}>
               {truckNo}
             </span>
+          </div>
+
+          <span style={{ color: '#cbd5e1' }}>|</span>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ color: '#94a3b8', fontWeight: 600 }}>คนขับ:</span>
+            {availableDrivers && availableDrivers.length > 0 ? (
+              <select
+                value={driverName || '-'}
+                onChange={(e) => onDriverNameChange && onDriverNameChange(e.target.value)}
+                style={{
+                  fontSize: '12.5px',
+                  fontWeight: 700,
+                  color: driverName && driverName !== '-' ? '#0f172a' : '#64748b',
+                  background: '#f8fafc',
+                  border: '1px solid #cbd5e1',
+                  borderRadius: '6px',
+                  padding: '2px 8px',
+                  cursor: 'pointer',
+                  outline: 'none',
+                  maxWidth: '180px'
+                }}
+              >
+                <option value="-">- ไม่ระบุคนขับ -</option>
+                {driverName && driverName !== '-' && !availableDrivers.includes(driverName) && (
+                  <option value={driverName}>{driverName}</option>
+                )}
+                {availableDrivers.map(d => (
+                  <option key={d} value={d}>{d}</option>
+                ))}
+              </select>
+            ) : (
+              <span style={{ fontWeight: 700, color: '#334155' }}>
+                {driverName}
+              </span>
+            )}
           </div>
 
           <span style={{ color: '#cbd5e1' }}>|</span>

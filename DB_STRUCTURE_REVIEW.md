@@ -1,84 +1,46 @@
-# สรุปรีวิวโครงสร้าง Database & สถานะการปรับปรุง
+# สรุปโครงสร้าง Database & Stored Procedures (Supabase PostgreSQL)
 
-วันที่รีวิว: 2026-08-20 (อัปเดตสมบูรณ์: 2026-08-20 17:30 น.)
-
-## ภาพรวม & สถานะความคืบหน้า
-
-โครงสร้างฐานข้อมูลของโปรเจกต์นี้แยกโดเมนหลักออกเป็น 2 กลุ่มชัดเจน:
-
-1. กลุ่ม OCR / Container
-   - `container_records`: Master DB ฝั่งใบวางบิล
-   - `job_sheets`: หัวใบงานที่ตรวจเสร็จ
-   - `job_sheet_items`: รายการตู้ในแต่ละใบงาน
-   - `ocr_cache`: คิว/แคช OCR ระหว่างรอตรวจ
-   - `ocr_records`: ตาราง legacy/archive สำรอง
-
-2. กลุ่ม Fleet / Driver
-   - `truck_records`: ข้อมูลรถ
-   - `driver_records`: ข้อมูลคนขับ
-   - `truck_operations`: งวดการขับขี่และการมอบหมายรถ-คนขับ
-   - `driver_truck_history`: ประวัติ/audit timeline
-   - `truck_maintenance_records`: ประวัติซ่อมบำรุง
-   - `driver_leave_records`: ประวัติการลา
+อัปเดตล่าสุด: 2026-08-25
 
 ---
 
-## 📊 สถานะการแก้ไขและยกระดับระบบ (Update Status)
+## 🗄️ 1. รายชื่อตารางในระบบ (Database Tables)
 
-### 1. หมวด Master Container / ใบวางบิล
-- [x] **✅ [จัดการแล้ว] Data Normalization วันที่:** แปลงวันที่ทุกรูปแบบจาก Excel เป็นมาตรฐาน `YYYY-MM-DD` (`normalizeExcelDate`) ทั้งหมด
-- [x] **✅ [จัดการแล้ว] กำหนดรอบงาน (Batch) รายตู้:** ตู้แต่ละตู้ใน Master DB มี `batch_name` ของตัวเอง 100% ตามไฟล์วางบิล Excel
-- [x] **✅ [จัดการแล้ว] รวมไฟล์ Migration เต็ม:** สร้างไฟล์ `supabase/migrations/01_initial_ocr_master_schema.sql` รวบรวม DDL เริ่มต้นของกลุ่ม OCR ครบชุด 100%
-- [x] **✅ [จัดการแล้ว] Normalized Date Column (`date_job_parsed`):** เพิ่มคอลัมน์ `date_job_parsed DATE` พร้อมระบบ Auto-Backfill และ Index รองรับ Date Filtering ความเร็วสูง
+### กลุ่มที่ 1: OCR & Master Container (ใบงาน & ใบวางบิล)
+- **`container_records`**: Master DB ใบวางบิล (34 คอลัมน์, Single Source of Truth ของยอดงานที่รถต้องวิ่ง)
+- **`job_sheets`**: หัวใบงานที่สแกนและตรวจเสร็จสมบูรณ์แล้ว (1 ใบ = 1 แถว)
+- **`job_sheet_items`**: รายการตู้ย่อยในแต่ละใบงาน (1-25 แถว, มี `ref_master_id` ชี้ตรงไปที่ `container_records.id`)
+- **`ocr_cache`**: คิวรูปภาพและผลสแกน AI ระหว่างรอตรวจ
+- **`ocr_records`**: ตารางประวัติการสแกนสำรอง (Legacy Archive)
 
----
+### กลุ่มที่ 2: Fleet & Drivers (รถและคนขับ)
+- **`truck_records`**: ทะเบียนรถ, สภาพรถ, สถานะ (`active`, `maintenance`, `inactive`)
+- **`driver_records`**: ทะเบียนคนขับ, สถานะ, ฐานเงินเดือน (`base_salary`), รูปแบบภาษี/สปส. (`tax_profile`), ยอดหัก สปส. (`social_security_amount`)
+- **`truck_operations`**: งวดการขับขี่และการมอบหมายรถ-คนขับ (Single Source of Truth ของการมอบหมาย)
+- **`driver_truck_history`**: Audit Trail บันทึกประวัติการเปลี่ยนตัวคนขับ/ส่งซ่อม/ลางาน
+- **`truck_maintenance_records`**: สมุดบันทึกประวัติค่าซ่อมบำรุงและอะไหล่
+- **`driver_leave_records`**: สมุดบันทึกประวัติการลางาน
 
-### 2. หมวด OCR / Job Sheets
-- [x] **✅ [จัดการแล้ว] Atomic Transaction บันทึกใบงาน:** สร้าง Stored Procedure `complete_job_sheet_rpc` บันทึกทั้ง Header, Detail Items, Archive, และ Cache ใน Transaction เดียว (All-or-Nothing) ป้องกันใบงานไร้ไส้
-- [x] **✅ [จัดการแล้ว] 1:1 Consumption Matching:** ตู้ที่จับคู่แล้วจะไม่ถูกนำมานับเบิ้ลซ้ำในรอบเดียวกัน
-- [x] **✅ [จัดการแล้ว] แก้บั๊ก `masterMap` ใน Auto-Reconcile:** แก้ไขฟังก์ชันค้นหาให้สมบูรณ์ ไม่มี Error หยุดชะงัก
-- [x] **✅ [จัดการแล้ว] เพิ่ม Foreign Key:** สร้างสคริปต์ผูก FK `job_sheet_items.job_sheet_id -> job_sheets.id (CASCADE)` และ `ref_master_id -> container_records.id (SET NULL)` ใน `04_foreign_keys_and_check_constraints.sql`
-- [x] **✅ [จัดการแล้ว] ลด Payload `.select('*')` บน `ocr_cache`:** ปรับให้ดึงเฉพาะ Metadata ตอนแสดงหน้ารวมคิวใน `jobSheetService.js` และ `ScannerView.jsx` ลดขนาด Payload และเพิ่มความเร็วโหลด 3-5 เท่า
-
----
-
-### 3. หมวด Truck / Driver Master
-- [x] **✅ [จัดการแล้ว] ป้องกันการนับยอดเบิ้ล (`fetchTrucks` & `fetchDrivers`):** ตัดยอดแบบ Strict 1:1 Matching โดยบังคับเช็กจาก `ref_master_id` เท่านั้น (ตัด Fallback ออกเพื่อกันเพี้ยน)
-- [x] **✅ [จัดการแล้ว] Live Derived Driver/Truck (Timeline Matching):** ดึงยอดผลงานตู้และข้อมูลคนขับประจำปัจจุบันแบบ Live Real-time โดยอิงตามวันที่ทำงานจริงเทียบกับ Timeline ใน `truck_operations` เสมอ
-- [x] **✅ [จัดการแล้ว] Safe / Soft Deletion:** หากคนขับหรือรถมีประวัติงานในระบบ ระบบจะระงับการใช้งาน (inactive) แทนการลบ เพื่อรักษา Ledger และกัน Foreign Key Constraint Error
-- [x] **✅ [จัดการแล้ว] Unique & Check Constraints:** มี Unique บน `truck_no`, `driver_name` และ CHECK บนสถานะ ใน `02_initial_fleet_schema.sql`
-- [—] **⚪ [ข้ามได้/ไม่จำเป็น] เปลี่ยนเป็น Surrogate UUID:** โครงสร้างปัจจุบันใช้ `truck_no`/`driver_name` คู่กับ `ON UPDATE CASCADE` ทำงานได้ดีและตรงกับงานจริง
+### กลุ่มที่ 3: Payroll & Expenses (การเงิน & ค่าใช้จ่าย)
+- **`driver_rate_configs`**: ช่วงเวลาเรทค่ารอบแยกตามขนาดตู้ (20, 40, 45 ฟุต)
+- **`driver_incentive_configs`**: ตารางขั้นบันไดเงินพิเศษตามจำนวนงาน (150-230 ตู้)
+- **`driver_advances`**: ประวัติการเบิกเงินล่วงหน้า / เบิกค่าเที่ยว
+- **`driver_payment_batches`**: สมุดใบสำคัญจ่ายค่ารอบคนขับ (Payment Vouchers)
+- **`truck_expenses`**: สมุดบันทึกค่าใช้จ่ายรถรวม 17 คอลัมน์ (ตัดคอลัมน์ซ้ำซ้อนออกทั้งหมด: รวมยอดเงินเป็น `amount_total`, รองรับหมวดหมู่ `salary` เงินเดือน/ค่ารอบ, `fuel`, `maintenance`, `toll_port`, `installment`, `tax_insurance`, `misc` อื่นๆ)
 
 ---
 
-### 4. หมวด Truck Operations
-- [x] **✅ [จัดการแล้ว] Partial Unique Indexes & Preflight Cleanup:** เพิ่ม Index บังคับว่ารถ 1 คัน และ คนขับ 1 คน มี active operation ได้เพียง 1 แถว ณ เวลาเดียวกัน (`unique_active_truck_op`, `unique_active_driver_op`) พร้อมคำสั่ง Preflight auto-clean ใน `03_data_integrity_and_atomic_rpc.sql`
-- [x] **✅ [จัดการแล้ว] Stored Procedures:** มี RPC สำหรับ assign/unassign แบบ Atomic ยึด `truck_operations` เป็น Single Source of Truth
+## ⚡ 2. รายชื่อ Stored Procedures (Atomic RPCs)
+
+1. **`complete_job_sheet_rpc`**: บันทึกหัวใบงาน, รายการตู้ 25 แถว, อัปเดตแคช และตัดยอดตู้ใน Transaction เดียว
+2. **`assign_driver_to_truck_rpc`**: มอบหมายคนขับประจำรถ, ปิดงวดเดิมอัตโนมัติแบบ Seamless, บันทึกประวัติลง Audit Log
+3. **`unassign_driver_truck_rpc`**: ปลดคนขับออกจากรถ พร้อมบันทึกลง Audit Log
+4. **`mark_driver_containers_paid_rpc`**: ตัดจ่ายเงินค่ารอบคนขับ สร้างใบสำคัญจ่าย และล็อกสถานะตู้เป็น `paid`
+5. **`cancel_driver_payment_batch_rpc`**: ยกเลิกใบสำคัญจ่าย และย้อนคืนสถานะตู้กลับเป็น `unpaid`
 
 ---
 
-### 5. หมวด Assignment History / Audit Trail
-- [x] **✅ [จัดการแล้ว] แยก Event Log อิสระ:** `driver_truck_history` คงอยู่ถาวรแยกจากตาราง Master
-- [x] **✅ [จัดการแล้ว] เพิ่ม Check Constraint บน `action`:** กำหนดให้รับเฉพาะ Action ที่ถูกต้องครบ 11 รูปแบบ ป้องกันพิมพ์ผิด ใน `04_foreign_keys_and_check_constraints.sql`
-
----
-
-### 6. หมวด Maintenance / Leave
-- [x] **✅ [จัดการแล้ว] แยก Ledger อิสระ:** ตารางซ่อมบำรุงและลางานแยกเป็นเอกเทศ ไม่กวนสถานะรถ
-- [x] **✅ [จัดการแล้ว] Trigger คำนวณ `cost_total` อัตโนมัติ (Derived เสมอ):** รวมยอดค่าแรง+ค่าอะไหล่อัตโนมัติใน `02_initial_fleet_schema.sql`
-- [x] **✅ [จัดการแล้ว] Validation Constraints:** เพิ่ม `CHECK (end_date IS NULL OR end_date >= start_date)` และ `CHECK (cost_parts >= 0 AND cost_labor >= 0)` ใน `04_foreign_keys_and_check_constraints.sql`
-
----
-
-### 7. Security / RLS
-- [—] **⚪ [ข้ามตาม Business Requirement]:** คงสิทธิ์ Zero-login สำหรับ Inspectors หน้างาน เพื่อความคล่องตัวในการทำงานของสาขาชลบุรี
-
----
-
-## 🎯 สรุปสถานะภาพรวมของโปรเจกต์ (Overall Project Status)
-
-🎉 **เสร็จสมบูรณ์ครบ 100% ทุกรายการตามแผนงาน (All Items Completed & Production-Ready)**
-
-* 📁 **Canonical Migrations:** โฟลเดอร์ `supabase/migrations/` สะอาดเรียบร้อย รวบรวมคำสั่ง DDL, Constraints, Triggers, RPCs ไว้ใน 4 ไฟล์มาตรฐาน (`01_...` ถึง `04_...`)
-* 🗄️ **Archive Folder:** ย้ายไฟล์ SQL ประวัติเดิมและไฟล์ทดสอบไปไว้ใน `supabase/archive/` อย่างเป็นระเบียบ
-* 🚀 **ระบบพร้อมใช้งาน:** Frontend และ Backend ทำงานประสานกันแบบ Atomic Transaction และป้องกันข้อมูลขยะ/ข้อมูลซ้ำซ้อนระดับ Database Engine 100%
+## 🛡️ 3. มาตรฐานความปลอดภัยและ Data Integrity
+- **Foreign Key Cascade/Restrict:** ป้องกัน Orphaned Records และป้องกันการเผลอลบข้อมูล Master ที่มีประวัติเชื่อมโยง
+- **Atomic Operations:** ทุกการเปลี่ยนแปลงที่กระทบ >= 2 ตาราง ทำงานผ่าน RPC Transaction เดียว
+- **RLS Soft-Deletion:** ไม่ใช้ `DELETE` บนตารางแคช ใช้ Soft-Update เพื่อความปลอดภัย

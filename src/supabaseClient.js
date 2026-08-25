@@ -6,8 +6,8 @@ const sanitize = (val) => {
   return val.replace(/[\s\r\n"'`]/g, '').trim();
 };
 
-const rawEnvUrl = import.meta.env.VITE_SUPABASE_URL;
-const rawEnvKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const rawEnvUrl = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) || '';
+const rawEnvKey = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_ANON_KEY) || (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_ANON_KEY) || '';
 
 const supabaseUrl = sanitize(rawEnvUrl);
 const supabaseAnonKey = sanitize(rawEnvKey);

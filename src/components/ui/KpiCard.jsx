@@ -174,18 +174,18 @@ export default function KpiCard({
             </span>
           )}
         </div>
-        {subtext && (
-          <div style={{
-            fontSize: '10.5px',
-            color: '#64748b',
-            marginTop: '3px',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis'
-          }}>
-            {subtext}
-          </div>
-        )}
+        <div style={{
+          fontSize: '10.5px',
+          color: '#64748b',
+          marginTop: '3px',
+          minHeight: '15px',
+          lineHeight: '15px',
+          whiteSpace: 'nowrap',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis'
+        }}>
+          {subtext || '\u00A0'}
+        </div>
       </div>
     </div>
   );

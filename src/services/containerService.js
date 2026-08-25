@@ -23,6 +23,70 @@ export const containerService = {
   },
 
   /**
+   * ดึงข้อมูล Master Containers แบบแบ่งหน้า (Server-Side Pagination & Filter)
+   */
+  async fetchMasterContainersPaginated(params = {}) {
+    const {
+      page = 1,
+      pageSize = 50,
+      searchTerm = '',
+      batchName = 'ALL',
+      truckNo = 'ALL',
+      port = 'ALL',
+      dateFrom = null,
+      dateTo = null,
+      sortBy = 'id',
+      sortAsc = false
+    } = params;
+
+    try {
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      let query = supabase
+        .from('container_records')
+        .select('*', { count: 'exact' });
+
+      if (searchTerm && searchTerm.trim()) {
+        const cleanTerm = searchTerm.trim();
+        query = query.or(`container_no.ilike.%${cleanTerm}%,truck_no.ilike.%${cleanTerm}%,batch_name.ilike.%${cleanTerm}%`);
+      }
+      if (batchName && batchName !== 'ALL') {
+        query = query.eq('batch_name', batchName);
+      }
+      if (truckNo && truckNo !== 'ALL') {
+        query = query.eq('truck_no', truckNo);
+      }
+      if (port && port !== 'ALL') {
+        query = query.eq('port', port);
+      }
+      if (dateFrom) {
+        query = query.or(`date_job_parsed.gte.${dateFrom},date_job.gte.${dateFrom}`);
+      }
+      if (dateTo) {
+        query = query.or(`date_job_parsed.lte.${dateTo},date_job.lte.${dateTo}`);
+      }
+
+      query = query.order(sortBy, { ascending: sortAsc }).range(from, to);
+
+      const { data, count, error } = await query;
+      if (error) throw error;
+
+      return {
+        data: data || [],
+        total: count || 0,
+        page,
+        pageSize,
+        totalPages: Math.ceil((count || 0) / pageSize),
+        error: null
+      };
+    } catch (error) {
+      console.error('containerService.fetchMasterContainersPaginated error:', error);
+      return { data: [], total: 0, page: 1, pageSize, totalPages: 0, error };
+    }
+  },
+
+  /**
    * ดึงข้อมูลผลการสแกน OCR ทั้งหมดจากตาราง ocr_records
    */
   async fetchOcrRecords() {

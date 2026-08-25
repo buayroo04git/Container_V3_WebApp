@@ -6,16 +6,16 @@ import {
   createOperation, 
   updateOperation, 
   deleteOperation, 
-  closeOperation,
-  clearAllOperations,
-  syncOperationsFromAssignedTrucks
+  closeOperation, 
+  clearAllOperations, 
+  syncOperationsFromAssignedTrucks 
 } from '../services/operationsService';
 import { fetchTrucks, fetchDrivers } from '../services/truckDriverService';
 import OperationModal from '../components/operations/OperationModal';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
-import TableContextMenu from '../components/ui/TableContextMenu';
-import RenameColumnModal from '../components/ui/RenameColumnModal';
 import KpiCard from '../components/ui/KpiCard';
+import UniversalTableContainer from '../components/ui/UniversalTableContainer';
+import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 const DEFAULT_OPERATION_COLUMNS = [
@@ -45,16 +45,29 @@ const DEFAULT_COLUMN_NAMES = {
 };
 
 const DEFAULT_OPERATION_WIDTHS = {
-  id: 60,
-  truck_no: 100,
-  driver_name: 160,
-  operation_type: 140,
-  start_date: 120,
-  end_date: 135,
-  duration_days: 110,
-  status: 130,
-  remark: 200,
-  actions: 140
+  id: 45,
+  truck_no: 95,
+  driver_name: 150,
+  operation_type: 130,
+  start_date: 110,
+  end_date: 125,
+  duration_days: 100,
+  status: 120,
+  remark: 160,
+  actions: 130
+};
+
+const OPERATION_ALIGN_MAP = {
+  id: 'center',
+  truck_no: 'center',
+  driver_name: 'left',
+  operation_type: 'center',
+  start_date: 'center',
+  end_date: 'center',
+  duration_days: 'right',
+  status: 'center',
+  remark: 'left',
+  actions: 'center'
 };
 
 export default function TruckOperationsView() {
@@ -82,7 +95,6 @@ export default function TruckOperationsView() {
   });
 
   const fileInputRef = useRef(null);
-  const menuRef = useRef(null);
 
   // Format Date for display
   const formatDateDisplay = (dateStr) => {
@@ -114,38 +126,7 @@ export default function TruckOperationsView() {
   };
 
   // Column Preferences Hook
-  const {
-    allColumns,
-    activeColumns,
-    visibleColumns,
-    columnWidths,
-    draggedCol,
-    setDraggedCol,
-    dragOverCol,
-    setDragOverCol,
-    getColDisplayName,
-    handleToggleColumnHide,
-    handleShowAllColumns,
-    handleResizeMouseDown,
-    handleAutoFitColumn,
-    handleColumnReorder,
-    handleResetColumnOrder,
-    handleResetColumnWidth,
-    handleHeaderContextMenu,
-    handleStartRename,
-    handleSaveAlias,
-    handleResetAlias,
-    handleResetAllAliases,
-    contextMenu,
-    setContextMenu,
-    renamingColumn,
-    setRenamingColumn,
-    showColumnMenu,
-    setShowColumnMenu,
-    sortConfig,
-    handleSort,
-    sortRecords
-  } = useColumnPreferences({
+  const opPrefs = useColumnPreferences({
     storageKeyPrefix: 'truck_operations',
     rawColumns: DEFAULT_OPERATION_COLUMNS,
     defaultNames: DEFAULT_COLUMN_NAMES,
@@ -170,6 +151,8 @@ export default function TruckOperationsView() {
       return String(val || '');
     }
   });
+
+  const { activeColumns, sortRecords, sortConfig } = opPrefs;
 
   // Load Data
   const loadData = async () => {
@@ -196,26 +179,43 @@ export default function TruckOperationsView() {
     loadData();
   }, []);
 
-  // Close dropdown on outside click
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        setShowColumnMenu(false);
-      }
-    };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, []);
-
   // KPI Calculations
   const kpis = useMemo(() => {
     const total = operations.length;
-    const active = operations.filter(o => !o.end_date || o.status === 'active').length;
-    const activeTrucks = new Set(operations.filter(o => !o.end_date || o.status === 'active').map(o => o.truck_no)).size;
-    const activeDrivers = new Set(operations.filter(o => !o.end_date || o.status === 'active').map(o => o.driver_name)).size;
+    const activeOps = operations.filter(o => !o.end_date || o.status === 'active');
+    const active = activeOps.length;
+    const completed = operations.filter(o => o.end_date && o.status === 'completed').length;
+    
+    // Type Breakdown for active
+    const primaryActive = activeOps.filter(o => !o.operation_type || o.operation_type === 'primary').length;
+    const substituteActive = activeOps.filter(o => o.operation_type === 'substitute').length;
+    const contractActive = activeOps.filter(o => o.operation_type === 'contract').length;
 
-    return { total, active, activeTrucks, activeDrivers };
-  }, [operations]);
+    // Total substitute operations across history
+    const totalSubstitute = operations.filter(o => o.operation_type === 'substitute').length;
+
+    // Fleet utilization rate
+    const totalFleetTrucks = trucks.length;
+    const utilizationRate = totalFleetTrucks > 0 ? Math.round((active / totalFleetTrucks) * 100) : 0;
+
+    // Duration days calculation
+    const totalDays = operations.reduce((sum, o) => sum + (Number(o.duration_days) || 1), 0);
+    const avgDuration = total > 0 ? Math.round(totalDays / total) : 0;
+
+    return {
+      total,
+      active,
+      completed,
+      primaryActive,
+      substituteActive,
+      contractActive,
+      totalSubstitute,
+      totalFleetTrucks,
+      utilizationRate,
+      totalDays,
+      avgDuration
+    };
+  }, [operations, trucks]);
 
   // Filtered Records
   const filteredOperations = useMemo(() => {
@@ -347,7 +347,7 @@ export default function TruckOperationsView() {
       height: '100%',
       display: 'flex',
       flexDirection: 'column',
-      padding: '24px 28px',
+      padding: '4px 28px 20px 28px',
       boxSizing: 'border-box',
       background: '#f8fafc',
       overflow: 'hidden'
@@ -502,42 +502,6 @@ export default function TruckOperationsView() {
         </div>
       )}
 
-      {/* 2. KPI Summary Cards */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-        gap: '12px',
-        marginBottom: '16px',
-        flexShrink: 0
-      }}>
-        <KpiCard
-          title="🟢 กำลังปฏิบัติงานอยู่ (Active Ongoing)"
-          value={kpis.active}
-          unit="รายการ"
-          theme="emerald"
-        />
-
-        <KpiCard
-          title="📋 บันทึกการดำเนินงานทั้งหมด"
-          value={kpis.total}
-          unit="รายการ"
-          theme="blue"
-        />
-
-        <KpiCard
-          title="🚛 รถที่มีการปฏิบัติงาน (Active Trucks)"
-          value={kpis.activeTrucks}
-          unit="คัน"
-          theme="indigo"
-        />
-
-        <KpiCard
-          title="👤 คนขับที่ปฏิบัติงาน (Active Drivers)"
-          value={kpis.activeDrivers}
-          unit="ท่าน"
-          theme="amber"
-        />
-      </div>
 
       {/* 3. Main Table Card */}
       <div style={{
@@ -565,7 +529,7 @@ export default function TruckOperationsView() {
         }}>
           {/* ช่องค้นหา */}
           <div style={{ position: 'relative', width: '240px' }}>
-            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#94a3b8' }}>🔍</span>
+            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontSize: '13px', color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
             <input
               type="text"
               placeholder="ค้นหาเบอร์รถ, คนขับ, หมายเหตุ..."
@@ -575,13 +539,37 @@ export default function TruckOperationsView() {
                 width: '100%',
                 height: '36px',
                 paddingLeft: '32px',
-                paddingRight: '10px',
+                paddingRight: searchTerm ? '28px' : '10px',
                 borderRadius: '7px',
                 border: '1px solid #cbd5e1',
                 fontSize: '12.5px',
                 boxSizing: 'border-box'
               }}
             />
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                style={{
+                  position: 'absolute',
+                  right: '8px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  padding: 0,
+                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+                title="ล้างคำค้นหา"
+              >
+                ✕
+              </button>
+            )}
           </div>
 
           {/* ฟิลเตอร์สถานะ */}
@@ -674,191 +662,23 @@ export default function TruckOperationsView() {
 
           {/* Right: Column Visibility Dropdown */}
           <div style={{ marginLeft: 'auto' }}>
-            <ColumnVisibilityDropdown
-              showColumnMenu={showColumnMenu}
-              setShowColumnMenu={setShowColumnMenu}
-              menuRef={menuRef}
-              allColumns={allColumns}
-              activeColumns={activeColumns}
-              visibleColumns={visibleColumns}
-              onToggleColumnVisibility={handleToggleColumnHide}
-              getColDisplayName={getColDisplayName}
-              onStartEditAlias={(col) => handleStartRename(col)}
-              onShowAllColumns={handleShowAllColumns}
-              onResetAllAliases={handleResetAllAliases}
-            />
+            <ColumnVisibilityDropdown preferences={opPrefs} />
           </div>
         </div>
 
-        {/* Scrollable Table Area */}
-        <div style={{
-          flex: 1,
-          minHeight: 0,
-          overflow: 'auto',
-          position: 'relative'
-        }}>
-          <table style={{
-            width: '100%',
-            tableLayout: 'fixed',
-            borderCollapse: 'collapse',
-            fontSize: '13px',
-            textAlign: 'left'
-          }}>
-            <colgroup>
-              {activeColumns.map(col => (
-                <col key={col} style={{ width: `${columnWidths[col] || DEFAULT_OPERATION_WIDTHS[col] || 120}px` }} />
-              ))}
-            </colgroup>
+        {/* Universal Table Area */}
+        <UniversalTableContainer
+          preferences={opPrefs}
+          style={{ border: 'none', borderRadius: 0, boxShadow: 'none' }}
+        >
+          <UniversalTableHeader
+            preferences={opPrefs}
+            data={filteredOperations}
+            alignMap={OPERATION_ALIGN_MAP}
+          />
 
-            {/* Sticky Header */}
-            <thead style={{
-              position: 'sticky',
-              top: 0,
-              zIndex: 10,
-              background: '#f8fafc',
-              borderBottom: '1px solid #e2e8f0'
-            }}>
-              <tr>
-                {activeColumns.map(col => {
-                  const displayName = getColDisplayName(col);
-                  const isDragging = draggedCol === col;
-                  const isDragOver = dragOverCol === col;
-                  const isDraggable = col !== 'actions' && col !== 'id';
-                  const isSorted = sortConfig.key === col;
-                  const isAsc = isSorted && sortConfig.direction === 'asc';
-                  const isDesc = isSorted && sortConfig.direction === 'desc';
-
-                  return (
-                    <th
-                      key={col}
-                      draggable={isDraggable}
-                      onDragStart={(e) => {
-                        if (!isDraggable) return;
-                        setDraggedCol(col);
-                        e.dataTransfer.setData('text/plain', col);
-                        e.dataTransfer.effectAllowed = 'move';
-                      }}
-                      onDragOver={(e) => {
-                        if (!isDraggable) return;
-                        e.preventDefault();
-                        e.dataTransfer.dropEffect = 'move';
-                        if (draggedCol && draggedCol !== col && dragOverCol !== col) {
-                          setDragOverCol(col);
-                        }
-                      }}
-                      onDragLeave={() => {
-                        if (dragOverCol === col) setDragOverCol(null);
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        if (draggedCol && draggedCol !== col) {
-                          handleColumnReorder(draggedCol, col);
-                        }
-                        setDraggedCol(null);
-                        setDragOverCol(null);
-                      }}
-                      onDragEnd={() => {
-                        setDraggedCol(null);
-                        setDragOverCol(null);
-                      }}
-                      onContextMenu={(e) => handleHeaderContextMenu(e, col)}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        handleAutoFitColumn(col, filteredOperations);
-                      }}
-                      style={{
-                        padding: '10px 14px',
-                        fontSize: '12.5px',
-                        fontWeight: 700,
-                        color: isSorted ? '#2563eb' : (isDragOver ? '#1d4ed8' : '#475569'),
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        userSelect: 'none',
-                        position: 'relative',
-                        textAlign: 'center',
-                        cursor: !isDraggable ? 'default' : (isDragging ? 'grabbing' : 'grab'),
-                        background: isDragOver ? '#eff6ff' : (isSorted ? '#eff6ff' : (isDragging ? '#f1f5f9' : '#f8fafc')),
-                        borderLeft: isDragOver ? '3px solid #2563eb' : 'none',
-                        borderBottom: isSorted ? '2px solid #2563eb' : '1px solid #e2e8f0',
-                        opacity: isDragging ? 0.4 : 1,
-                        transform: isDragging ? 'scale(0.97)' : (isDragOver ? 'translateX(2px)' : 'none'),
-                        transition: 'all 0.15s ease'
-                      }}
-                    >
-                      <div
-                        onClick={() => isDraggable && handleSort(col)}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: '5px',
-                          cursor: isDraggable ? 'pointer' : 'default',
-                          userSelect: 'none',
-                          paddingRight: col !== 'actions' ? '4px' : '0'
-                        }}
-                      >
-                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{displayName}</span>
-                        {isDraggable && (
-                          <span style={{ fontSize: '11px', color: isSorted ? '#2563eb' : '#94a3b8', flexShrink: 0, opacity: isSorted ? 1 : 0.4 }}>
-                            {isAsc ? '▲' : isDesc ? '▼' : '↕'}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Resize Handle with Subtle Divider Line */}
-                      {col !== 'actions' && (
-                        <div
-                          draggable={false}
-                          onDragStart={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          onMouseDown={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleResizeMouseDown(e, col);
-                          }}
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            handleAutoFitColumn(col, filteredOperations);
-                          }}
-                          style={{
-                            position: 'absolute',
-                            right: 0,
-                            top: 0,
-                            bottom: 0,
-                            width: '8px',
-                            cursor: 'col-resize',
-                            zIndex: 5,
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: 'transparent'
-                          }}
-                          title="ลากปรับขนาด / ดับเบิ้ลคลิกปรับพอดีข้อความ"
-                        >
-                          <div 
-                            style={{
-                              width: '1px',
-                              height: '16px',
-                              background: '#cbd5e1',
-                              transition: 'all 0.15s ease'
-                            }}
-                            onMouseEnter={(e) => { e.currentTarget.style.background = '#2563eb'; e.currentTarget.style.width = '2px'; }}
-                            onMouseLeave={(e) => { e.currentTarget.style.background = '#cbd5e1'; e.currentTarget.style.width = '1px'; }}
-                          />
-                        </div>
-                      )}
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-
-            {/* Table Body */}
-            <tbody>
+          {/* Table Body */}
+          <tbody>
               {loading ? (
                 <tr>
                   <td colSpan={activeColumns.length} style={{ padding: '60px 20px', textAlign: 'center', color: '#64748b' }}>
@@ -890,9 +710,18 @@ export default function TruckOperationsView() {
                       onMouseLeave={(e) => e.currentTarget.style.background = isOngoing ? '#ffffff' : '#fafafa'}
                     >
                       {activeColumns.map(col => {
+                        const align = OPERATION_ALIGN_MAP[col] || 'left';
+                        const cellStyle = {
+                          padding: '8px 10px',
+                          textAlign: align,
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis'
+                        };
+
                         if (col === 'id') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>
+                            <td key={col} style={{ ...cellStyle, color: '#94a3b8', fontSize: '12px' }}>
                               {index + 1}
                             </td>
                           );
@@ -900,7 +729,7 @@ export default function TruckOperationsView() {
 
                         if (col === 'truck_no') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', fontFamily: 'monospace', fontWeight: 800, fontSize: '13.5px', color: '#1d4ed8' }}>
+                            <td key={col} style={{ ...cellStyle, fontFamily: 'monospace', fontWeight: 800, fontSize: '13.5px', color: '#1d4ed8' }}>
                               {op.truck_no}
                             </td>
                           );
@@ -908,7 +737,7 @@ export default function TruckOperationsView() {
 
                         if (col === 'driver_name') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', fontWeight: 600, color: '#0f172a' }}>
+                            <td key={col} style={{ ...cellStyle, fontWeight: 600, color: '#0f172a' }}>
                               {op.driver_name}
                             </td>
                           );
@@ -918,7 +747,7 @@ export default function TruckOperationsView() {
                           const typeLabel = op.operation_type === 'primary' ? '🟢 คนขับประจำ' : 
                                            (op.operation_type === 'substitute' ? '🟡 ขับแทน' : '🟣 จ๊อบพิเศษ');
                           return (
-                            <td key={col} style={{ padding: '10px 14px', fontSize: '12px', fontWeight: 600, color: '#475569' }}>
+                            <td key={col} style={{ ...cellStyle, fontSize: '12px', fontWeight: 600, color: '#475569' }}>
                               {typeLabel}
                             </td>
                           );
@@ -926,7 +755,7 @@ export default function TruckOperationsView() {
 
                         if (col === 'start_date') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', color: '#334155' }}>
+                            <td key={col} style={{ ...cellStyle, color: '#334155' }}>
                               {formatDateDisplay(op.start_date)}
                             </td>
                           );
@@ -934,7 +763,7 @@ export default function TruckOperationsView() {
 
                         if (col === 'end_date') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                            <td key={col} style={cellStyle}>
                               {isOngoing ? (
                                 <span style={{
                                   display: 'inline-flex',
@@ -961,7 +790,7 @@ export default function TruckOperationsView() {
 
                         if (col === 'duration_days') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', fontWeight: 600, color: isOngoing ? '#1d4ed8' : '#64748b' }}>
+                            <td key={col} style={{ ...cellStyle, fontWeight: 600, color: isOngoing ? '#1d4ed8' : '#64748b' }}>
                               {duration.toLocaleString()} วัน
                             </td>
                           );
@@ -969,7 +798,7 @@ export default function TruckOperationsView() {
 
                         if (col === 'status') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', whiteSpace: 'nowrap' }}>
+                            <td key={col} style={cellStyle}>
                               {isOngoing ? (
                                 <span style={{ color: '#15803d', fontWeight: 700, fontSize: '12px' }}>
                                   🟢 กำลังปฏิบัติงาน
@@ -985,7 +814,7 @@ export default function TruckOperationsView() {
 
                         if (col === 'remark') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', color: '#64748b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            <td key={col} style={{ ...cellStyle, color: '#64748b' }}>
                               {op.remark || '-'}
                             </td>
                           );
@@ -993,7 +822,7 @@ export default function TruckOperationsView() {
 
                         if (col === 'actions') {
                           return (
-                            <td key={col} style={{ padding: '10px 14px', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            <td key={col} style={cellStyle}>
                               {isOngoing && (
                                 <button
                                   onClick={() => handleOpenStopModal(op)}
@@ -1054,7 +883,7 @@ export default function TruckOperationsView() {
                         }
 
                         return (
-                          <td key={col} style={{ padding: '10px 14px', color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <td key={col} style={{ ...cellStyle, color: '#334155' }}>
                             {op[col] || '-'}
                           </td>
                         );
@@ -1064,8 +893,7 @@ export default function TruckOperationsView() {
                 })
               )}
             </tbody>
-          </table>
-        </div>
+        </UniversalTableContainer>
 
         {/* Footer / Status Bar */}
         <div style={{
@@ -1096,27 +924,6 @@ export default function TruckOperationsView() {
         operation={editingOperation}
         truckList={trucks}
         driverList={drivers}
-      />
-
-      {/* Context Menu */}
-      <TableContextMenu
-        contextMenu={contextMenu}
-        onClose={() => setContextMenu(null)}
-        onStartEditAlias={handleStartRename}
-        onAutoFitColumn={(col) => handleAutoFitColumn(col, filteredOperations)}
-        onToggleColumnHide={handleToggleColumnHide}
-        onShowAllColumns={handleShowAllColumns}
-        onResetColumnWidth={handleResetColumnWidth}
-        onResetColumnOrder={handleResetColumnOrder}
-        getColDisplayName={getColDisplayName}
-      />
-
-      {/* Rename Column Modal */}
-      <RenameColumnModal
-        renamingColumn={renamingColumn}
-        onClose={() => setRenamingColumn(null)}
-        onSaveAlias={handleSaveAlias}
-        onResetAlias={handleResetAlias}
       />
 
       {/* Modal หยุดการดำเนินงาน (Stop Operation Modal with Calendar Picker) */}

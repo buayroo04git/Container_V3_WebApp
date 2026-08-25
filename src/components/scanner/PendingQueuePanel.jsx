@@ -469,22 +469,48 @@ export default function PendingQueuePanel({
 
             {/* ช่องค้นหาในหน้า Pending */}
             <div style={{ position: 'relative' }}>
+              <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#94a3b8', pointerEvents: 'none' }}>🔍</span>
               <input
                 type="text"
                 value={pendingSearchTerm}
                 onChange={(e) => setPendingSearchTerm(e.target.value)}
-                placeholder="🔍 ค้นหาเบอร์รถ / ชื่อไฟล์..."
+                placeholder="ค้นหาเบอร์รถ, ชื่อไฟล์..."
                 style={{
                   height: '32px',
-                  padding: '0 10px 0 26px',
+                  paddingLeft: '28px',
+                  paddingRight: pendingSearchTerm ? '24px' : '10px',
                   borderRadius: '6px',
                   border: '1px solid #cbd5e1',
                   fontSize: '12px',
                   width: '180px',
-                  outline: 'none'
+                  outline: 'none',
+                  boxSizing: 'border-box'
                 }}
               />
-              <span style={{ position: 'absolute', left: '8px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#94a3b8' }}>🔍</span>
+              {pendingSearchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setPendingSearchTerm('')}
+                  style={{
+                    position: 'absolute',
+                    right: '6px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    color: '#94a3b8',
+                    cursor: 'pointer',
+                    padding: 0,
+                    fontSize: '11px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  title="ล้างคำค้นหา"
+                >
+                  ✕
+                </button>
+              )}
             </div>
 
             {/* ปุ่มล้างตัวกรองในหน้า Pending */}

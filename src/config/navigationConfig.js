@@ -2,12 +2,11 @@ import ScannerView from '../views/ScannerView';
 import BatchManagerView from '../views/BatchManagerView';
 import OcrContainerHistoryView from '../views/OcrContainerHistoryView';
 import DatabaseView from '../views/DatabaseView';
-import TrucksView from '../views/TrucksView';
-import DriversView from '../views/DriversView';
-import TruckOperationsView from '../views/TruckOperationsView';
-import TruckMaintenanceView from '../views/TruckMaintenanceView';
-import DriverLeavesView from '../views/DriverLeavesView';
-import DriverTruckHistoryView from '../views/DriverTruckHistoryView';
+import FleetTrucksHubView from '../views/FleetTrucksHubView';
+import FleetDriversHubView from '../views/FleetDriversHubView';
+import FleetOperationsHubView from '../views/FleetOperationsHubView';
+import DriverPayrollView from '../views/DriverPayrollView';
+import TruckExpensesView from '../views/TruckExpensesView';
 import SettingsView from '../views/SettingsView';
 
 /**
@@ -93,46 +92,46 @@ export const NAVIGATION_SECTIONS = [
     icon: '🚚',
     items: [
       {
-        id: 'fleet-operations',
-        label: 'การดำเนินงานรถ (Operations)',
-        icon: '📜',
-        description: 'บันทึกประวัติการใช้รถ ช่วงเวลาการขับขี่ และการมอบหมายคนขับ',
-        component: TruckOperationsView,
-      },
-      {
         id: 'fleet-trucks',
-        label: 'ข้อมูลรถ (Trucks)',
+        label: 'ข้อมูลรถและการซ่อม',
         icon: '🚛',
-        description: 'จัดการทะเบียนรถ สถานะพร้อมใช้งาน และคนขับประจำ',
-        component: TrucksView,
+        description: 'จัดการทะเบียนรถ คนขับประจำ และประวัติการซ่อมบำรุง',
+        component: FleetTrucksHubView,
       },
       {
         id: 'fleet-drivers',
-        label: 'ข้อมูลคนขับ (Drivers)',
+        label: 'ข้อมูลคนขับและการลา',
         icon: '👤',
-        description: 'ทะเบียนคนขับ ใบอนุญาตขับขี่ และข้อมูลติดต่อ',
-        component: DriversView,
+        description: 'ทะเบียนคนขับ ใบอนุญาต และประวัติการลางาน',
+        component: FleetDriversHubView,
       },
       {
-        id: 'fleet-maintenance',
-        label: 'ประวัติการซ่อมบำรุง (Maintenance)',
-        icon: '🔧',
-        description: 'บันทึกประวัติการซ่อมบำรุงรถ เข้าอู่ และค่าใช้จ่าย',
-        component: TruckMaintenanceView,
-      },
-      {
-        id: 'fleet-leaves',
-        label: 'ประวัติการลางาน (Driver Leaves)',
-        icon: '🏖️',
-        description: 'บันทึกประวัติการลางาน วันหยุดพักผ่อน และสถิติวันลา',
-        component: DriverLeavesView,
-      },
-      {
-        id: 'fleet-history',
-        label: 'ประวัติการปฏิบัติงาน (Operation History)',
+        id: 'fleet-operations',
+        label: 'การดำเนินงานและประวัติ',
         icon: '📜',
-        description: 'Audit Trail บันทึกประวัติการเริ่มปฏิบัติงาน สลับรถ สิ้นสุดการปฏิบัติงาน ซ่อมบำรุง และลางานของทั้งระบบ',
-        component: DriverTruckHistoryView,
+        description: 'บันทึกการใช้รถ มอบหมายคนขับ และ Timeline ประวัติการปฏิบัติงาน',
+        component: FleetOperationsHubView,
+      }
+    ]
+  },
+  {
+    id: 'payroll',
+    title: 'ค่ารอบ & การเงิน',
+    icon: '💰',
+    items: [
+      {
+        id: 'driver-payroll',
+        label: 'สรุปรายได้คนขับ',
+        icon: '💵',
+        description: 'ศูนย์รวมสรุปรายได้ ค่ารอบตู้ เงินพิเศษ ฐานเงินเดือน ประกันสังคม และเบิกล่วงหน้า',
+        component: DriverPayrollView,
+      },
+      {
+        id: 'truck-expenses',
+        label: 'ค่าใช้จ่ายรถ & น้ำมัน',
+        icon: '⛽',
+        description: 'บันทึกค่าใช้จ่ายรถ ค่าน้ำมัน ค่าซ่อมบำรุง และค่างวดรถแบบเบ็ดเสร็จ',
+        component: TruckExpensesView,
       }
     ]
   },
@@ -152,6 +151,14 @@ export const NAVIGATION_SECTIONS = [
   }
 ];
 
+// Legacy / Shortcut navigation aliases
+const NAVIGATION_ALIASES = {
+  'fleet-maintenance': { targetId: 'fleet-trucks', defaultProps: { defaultSubTab: 'maintenance' } },
+  'fleet-leaves': { targetId: 'fleet-drivers', defaultProps: { defaultSubTab: 'leaves' } },
+  'fleet-history': { targetId: 'fleet-operations', defaultProps: { defaultSubTab: 'history' } },
+  'driver-rates': { targetId: 'driver-payroll', defaultProps: { defaultSubTab: 'rates' } }
+};
+
 /**
  * ค้นหา Item จาก Navigation ID
  * @param {string} id - รหัสเมนู เช่น 'jobsheet-pending', 'containers-all'
@@ -159,6 +166,22 @@ export const NAVIGATION_SECTIONS = [
  */
 export function getNavigationItem(id) {
   if (!id) return null;
+
+  // Check aliases first for smooth backward compatibility
+  if (NAVIGATION_ALIASES[id]) {
+    const alias = NAVIGATION_ALIASES[id];
+    const targetItem = getNavigationItem(alias.targetId);
+    if (targetItem) {
+      return {
+        ...targetItem,
+        defaultProps: {
+          ...(targetItem.defaultProps || {}),
+          ...alias.defaultProps
+        }
+      };
+    }
+  }
+
   for (const section of NAVIGATION_SECTIONS) {
     for (const item of section.items) {
       if (item.id === id) {

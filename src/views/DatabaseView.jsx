@@ -739,6 +739,10 @@ const DEFAULT_COLUMN_ORDER = [
   const formatCellValue = (col, val) => {
     if (val === null || val === undefined || val === '') return '-';
 
+    if (col === 'image_url') {
+      return val ? '🖼️ ดูรูป' : '-';
+    }
+
     if (col === 'date_job' || col === 'date_eta') {
       const iso = normalizeExcelDate(val);
       if (typeof iso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(iso)) {

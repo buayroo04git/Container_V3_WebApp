@@ -51,8 +51,6 @@ function sanitizeOperationsData(list) {
     trucksMap[t].push(op);
   });
 
-  const idsToFix = [];
-
   Object.values(trucksMap).forEach(ops => {
     ops.sort((a, b) => (a.start_date || '').localeCompare(b.start_date || ''));
 
@@ -64,26 +62,10 @@ function sanitizeOperationsData(list) {
         const fixedEnd = getPreviousDay(next.start_date, current.start_date);
         if (fixedEnd !== current.end_date) {
           current.end_date = fixedEnd;
-          idsToFix.push({ id: current.id, end_date: fixedEnd });
         }
       }
     }
   });
-
-  if (idsToFix.length > 0) {
-    setTimeout(async () => {
-      for (const item of idsToFix) {
-        try {
-          await supabase
-            .from('truck_operations')
-            .update({ end_date: item.end_date, updated_at: new Date().toISOString() })
-            .eq('id', item.id);
-        } catch (e) {
-          console.warn('Self-healing operation end_date fix error:', e);
-        }
-      }
-    }, 50);
-  }
 
   return list;
 }

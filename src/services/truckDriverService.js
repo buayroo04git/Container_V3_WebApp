@@ -1,8 +1,44 @@
-import { supabase } from '../supabaseClient';
-import { recordAssignmentHistory, getLastMaintenanceRecord, getLastLeaveRecord } from './historyService';
-import { createMaintenanceRecord, completeMaintenanceRecord } from './maintenanceService';
-import { createLeaveRecord, completeLeaveRecord } from './leaveService';
-import { normalizeExcelDate } from '../utils/matchingLogic';
+import { supabase } from '../supabaseClient.js';
+import { recordAssignmentHistory, getLastMaintenanceRecord, getLastLeaveRecord } from './historyService.js';
+import { createMaintenanceRecord, completeMaintenanceRecord } from './maintenanceService.js';
+import { createLeaveRecord, completeLeaveRecord } from './leaveService.js';
+import { normalizeExcelDate } from '../utils/matchingLogic.js';
+
+const DRIVER_PROFILES_KEY = 'driver_payroll_profiles_cache_v1';
+
+export const getDriverPayrollProfile = (driverName) => {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const cached = localStorage.getItem(DRIVER_PROFILES_KEY);
+      if (cached) {
+        const map = JSON.parse(cached);
+        const prof = map[driverName];
+        if (prof) {
+          if (Number(prof.social_security_amount) === 750) {
+            prof.social_security_amount = 875;
+          }
+          return prof;
+        }
+      }
+    }
+  } catch (e) {}
+  return null;
+};
+
+export const saveDriverPayrollProfile = (driverName, profile) => {
+  try {
+    if (typeof localStorage !== 'undefined') {
+      const cached = localStorage.getItem(DRIVER_PROFILES_KEY);
+      const map = cached ? JSON.parse(cached) : {};
+      map[driverName] = {
+        ...(map[driverName] || {}),
+        ...profile,
+        updated_at: new Date().toISOString()
+      };
+      localStorage.setItem(DRIVER_PROFILES_KEY, JSON.stringify(map));
+    }
+  } catch (e) {}
+};
 
 /**
  * 🚚 Service Layer: Truck & Driver Management
@@ -18,20 +54,45 @@ import { normalizeExcelDate } from '../utils/matchingLogic';
 export function calculateMatchedMasterIds(masterList = [], completedItems = []) {
   const consumedMasterIds = new Set();
 
-  // สร้าง Map ของ Master DB ID เพื่อค้นหาแบบ O(1)
+  // สร้าง Map ของ Master DB ID และ Map ของ container_no เพื่อค้นหาแบบ O(1)
   const masterIdMap = new Map();
+  const masterByContainerNo = new Map();
+
   masterList.forEach(m => {
-    if (m.id) masterIdMap.set(Number(m.id), m);
+    if (m.id) {
+      const idNum = Number(m.id);
+      masterIdMap.set(idNum, m);
+      if (m.container_no) {
+        const cKey = String(m.container_no).toUpperCase().replace(/[^A-Z0-9]/g, '');
+        if (cKey) {
+          if (!masterByContainerNo.has(cKey)) masterByContainerNo.set(cKey, []);
+          masterByContainerNo.get(cKey).push(m);
+        }
+      }
+    }
   });
 
-  // จับคู่เฉพาะตู้ที่มี ref_master_id ตรงกับ Master DB แบบ 1:1 เท่านั้น (Strict ref_master_id Matching)
+  // 🎯 Pass 1: จับคู่ตาม ref_master_id แบบ 1:1 เท่านั้น (Strict ref_master_id Matching)
   completedItems.forEach(item => {
     if (!item || item.match_status === 'manual_red' || item.match_status === 'cancelled') return;
 
-    if (item.ref_master_id) {
-      const refId = Number(item.ref_master_id);
-      if (masterIdMap.has(refId) && !consumedMasterIds.has(refId)) {
-        consumedMasterIds.add(refId);
+    const refId = item.ref_master_id ? Number(item.ref_master_id) : (item.ref_db_id ? Number(item.ref_db_id) : null);
+    if (refId && masterIdMap.has(refId) && !consumedMasterIds.has(refId)) {
+      consumedMasterIds.add(refId);
+    }
+  });
+
+  // 🎯 Pass 2: Fallback จับคู่ตาม container_no สำหรับรายการที่ไม่มี ref_master_id (1:1 Consumption)
+  completedItems.forEach(item => {
+    if (!item || item.match_status === 'manual_red' || item.match_status === 'cancelled') return;
+
+    const refId = item.ref_master_id ? Number(item.ref_master_id) : (item.ref_db_id ? Number(item.ref_db_id) : null);
+    if (!refId && item.container_no) {
+      const cKey = String(item.container_no).toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const candidates = masterByContainerNo.get(cKey) || [];
+      const match = candidates.find(c => !consumedMasterIds.has(Number(c.id)));
+      if (match) {
+        consumedMasterIds.add(Number(match.id));
       }
     }
   });
@@ -78,16 +139,23 @@ export async function fetchTrucks() {
 
     // 📄 จัดกลุ่ม Completed Items ตามเบอร์รถ
     const itemsByTruck = {};
+    const redByTruck = {};
     itemsData.forEach(item => {
-      if (item.match_status === 'manual_red' || item.match_status === 'cancelled') return;
+      if (item.match_status === 'cancelled') return;
       const sheet = sheetMap[item.job_sheet_id] || {};
       const tNo = String(sheet.truck_no || '').trim();
       if (!tNo) return;
-      if (!itemsByTruck[tNo]) itemsByTruck[tNo] = [];
-      itemsByTruck[tNo].push({
-        ...item,
-        truck_no: tNo
-      });
+
+      if (item.match_status === 'manual_red') {
+        if (!redByTruck[tNo]) redByTruck[tNo] = [];
+        redByTruck[tNo].push(item);
+      } else {
+        if (!itemsByTruck[tNo]) itemsByTruck[tNo] = [];
+        itemsByTruck[tNo].push({
+          ...item,
+          truck_no: tNo
+        });
+      }
     });
 
     const enrichedTrucks = trucks.map(t => {
@@ -105,7 +173,9 @@ export async function fetchTrucks() {
       // 🎯 1:1 Consumption Matching Algorithm (ตู้ที่จับคู่แล้วจะไม่ถูกใช้ซ้ำ)
       const matchedMasterIds = calculateMatchedMasterIds(truckMasterList, truckItems);
       const matchedCount = matchedMasterIds.size;
-      const missingCount = Math.max(0, masterTotal - matchedCount);
+      const baseMissing = Math.max(0, masterTotal - matchedCount);
+      const redCount = (redByTruck[tNo] || []).length;
+      const totalMissing = baseMissing + redCount; // รวมตู้ยังไม่สแกน + ตู้แดง
       const matchRate = masterTotal > 0 ? Math.round((matchedCount / masterTotal) * 100) : 0;
 
       return {
@@ -113,7 +183,8 @@ export async function fetchTrucks() {
         assigned_driver_name: liveDriver,    // สะท้อนคนขับปัจจุบันจาก truck_operations สด 100%
         master_containers: masterTotal,      // งานทั้งหมดใน DB (ฝั่งใบวางบิล)
         matched_containers: matchedCount,    // มีใบงานแล้ว (จับคู่แล้ว 1:1)
-        missing_containers: missingCount,    // ยังไม่มีใบงาน (รอสแกน)
+        missing_containers: totalMissing,    // รอตรวจสอบ (รวมตู้ยังไม่สแกน + ตู้แดง)
+        red_containers: redCount,            // ยอดตู้แดงเฉพาะ
         match_rate: matchRate,               // อัตราความคืบหน้า %
         total_containers: masterTotal        // ยอดงานรวม (งานใน DB)
       };
@@ -589,58 +660,112 @@ export async function fetchDrivers() {
         }
       }
 
-      // ถ้าไม่มีวันที่ระบุ ไม่สามารถระบุคนขับตามช่วงเวลาได้
-      if (!isoDate || opsData.length === 0) return null;
+      // 1. ค้นหา Operation ของรถคันนี้ที่ครอบคลุมวันที่ทำงานนั้น (start_date <= date_job <= end_date)
+      if (isoDate && opsData.length > 0) {
+        const matchedOp = opsData.find(op => {
+          if (String(op.truck_no || '').trim() !== cleanTruck) return false;
+          const sDate = op.start_date ? String(op.start_date).slice(0, 10) : null;
+          const eDate = op.end_date ? String(op.end_date).slice(0, 10) : null;
+          
+          // ถ้ามี start_date แล้ว date_job มาก่อนวันเริ่ม -> ไม่ใช่งวดนี้
+          if (sDate && isoDate < sDate) return false;
+          // ถ้ามี end_date แล้ว date_job เลยวันสิ้นสุด -> ไม่ใช่งวดนี้
+          if (eDate && isoDate > eDate) return false;
+          return true;
+        });
 
-      // ค้นหา Operation ของรถคันนี้ที่ครอบคลุมวันที่ทำงานนั้น (start_date <= date_job <= end_date)
-      const matchedOp = opsData.find(op => {
-        if (String(op.truck_no || '').trim() !== cleanTruck) return false;
-        const sDate = op.start_date ? String(op.start_date).slice(0, 10) : null;
-        const eDate = op.end_date ? String(op.end_date).slice(0, 10) : null;
-        
-        // ถ้ามี start_date แล้ว date_job มาก่อนวันเริ่ม -> ไม่ใช่งวดนี้
-        if (sDate && isoDate < sDate) return false;
-        // ถ้ามี end_date แล้ว date_job เลยวันสิ้นสุด -> ไม่ใช่งวดนี้
-        if (eDate && isoDate > eDate) return false;
-        return true;
-      });
+        if (matchedOp && matchedOp.driver_name && matchedOp.driver_name !== '-') {
+          return String(matchedOp.driver_name).trim();
+        }
+      }
 
-      if (matchedOp && matchedOp.driver_name && matchedOp.driver_name !== '-') {
-        return String(matchedOp.driver_name).trim();
+      // 2. Fallback: ถ้าหาตามช่วงเวลาไม่พบ ให้ดูคนขับประจำปัจจุบันใน truck_operations
+      const activeOp = opsData.find(op => String(op.truck_no || '').trim() === cleanTruck && (op.status === 'active' || !op.end_date));
+      if (activeOp && activeOp.driver_name && activeOp.driver_name !== '-') {
+        return String(activeOp.driver_name).trim();
+      }
+
+      // 3. Fallback: ดูคนขับประจำในทะเบียนรถ truck_records (กรณีลืมลง Operation)
+      const defaultTruck = trucksData.find(t => String(t.truck_no || '').trim() === cleanTruck);
+      if (defaultTruck && defaultTruck.assigned_driver_name && defaultTruck.assigned_driver_name !== '-') {
+        return String(defaultTruck.assigned_driver_name).trim();
       }
 
       return null;
     };
 
-    // 👤 จัดกลุ่มงานตู้จาก Master DB ตามคนขับจริงตาม Timeline
+    // 📄 สร้าง Map เจ้าของใบงาน (1 Job Sheet = 1 Driver Consensus)
+    const sheetDriverMap = {};
+    sheetsData.forEach(sheet => {
+      const sId = sheet.id;
+      const tNo = String(sheet.truck_no || '').trim();
+      const sDate = sheet.date_job_parsed || sheet.date_job;
+      
+      // 1. ถ้ามีระบุ driver_name ชัดเจนบนหัวใบงาน
+      if (sheet.driver_name && sheet.driver_name !== '-') {
+        sheetDriverMap[sId] = String(sheet.driver_name).trim();
+        return;
+      }
+      
+      // 2. หาคนขับตามวันที่และเบอร์รถบนหัวใบงาน (พร้อม Fallback คนขับประจำรถ)
+      const detectedDriver = findDriverForJob(tNo, sDate);
+      if (detectedDriver) {
+        sheetDriverMap[sId] = detectedDriver;
+      }
+    });
+
+    // 📄 จัดกลุ่ม Completed & Red Items จากใบงานตามเจ้าของใบงาน (1 Sheet = 1 Driver)
+    const itemsByDriver = {};
+    const redByDriver = {};
+    const matchedMasterIdToDriverMap = {};
+
+    itemsData.forEach(item => {
+      if (item.match_status === 'cancelled') return;
+      const sheet = sheetMap[item.job_sheet_id] || {};
+      const tNo = String(sheet.truck_no || '').trim();
+      
+      // เจ้าของใบงานของตู้นี้ (ยึดตาม 1 ใบงาน = 1 คนขับ)
+      const drvName = sheetDriverMap[item.job_sheet_id] || findDriverForJob(tNo, item.date_job_parsed || item.date_job);
+      if (!drvName || drvName === '-') return;
+
+      if (item.match_status === 'manual_red' || item.match_status === 'unmatched_red') {
+        if (!redByDriver[drvName]) redByDriver[drvName] = [];
+        redByDriver[drvName].push(item);
+      } else {
+        if (!itemsByDriver[drvName]) itemsByDriver[drvName] = [];
+        itemsByDriver[drvName].push({
+          ...item,
+          truck_no: tNo,
+          assigned_driver_at_job: drvName
+        });
+
+        // บันทึกว่า Master Record ID นี้ถูกคนขับคนไหนสแกนตรวจสำเร็จ (Job Sheet Driver Override Date Lag)
+        if (item.ref_master_id) {
+          matchedMasterIdToDriverMap[Number(item.ref_master_id)] = drvName;
+        }
+      }
+    });
+
+    // 👤 จัดกลุ่มงานตู้จาก Master DB ตามคนขับจริง (ตู้ที่สแกนแล้วยึดคนขับจากใบงาน / ตู้ยังไม่สแกนยึดตามช่วงเวลา)
     const masterByDriver = {};
     masterData.forEach(m => {
+      const mId = Number(m.id);
       const tNo = String(m.truck_no || '').trim();
-      const drvName = findDriverForJob(tNo, m.date_job_parsed || m.date_job);
+      
+      // หากตู้นี้ในใบวางบิลถูกสแกนสำเร็จแล้ว -> ให้สิทธิ์เป็นของคนขับตัวจริงที่สแกนใบงานนั้น (แก้ปัญหา Date Lag ข้ามวัน)
+      let drvName = matchedMasterIdToDriverMap[mId];
+      
+      // หากยังไม่ได้สแกน -> กระจายตามช่วงเวลาในใบวางบิล (Planned Driver Assignment)
+      if (!drvName) {
+        drvName = findDriverForJob(tNo, m.date_job_parsed || m.date_job);
+      }
+
       if (!drvName || drvName === '-') return;
 
       if (!masterByDriver[drvName]) masterByDriver[drvName] = [];
       masterByDriver[drvName].push({
         ...m,
         assigned_truck_at_job: tNo
-      });
-    });
-
-    // 📄 จัดกลุ่ม Completed Items จากใบงานตามคนขับจริงตาม Timeline
-    const itemsByDriver = {};
-    itemsData.forEach(item => {
-      if (item.match_status === 'manual_red' || item.match_status === 'cancelled') return;
-      const sheet = sheetMap[item.job_sheet_id] || {};
-      const tNo = String(sheet.truck_no || '').trim();
-      const jobDate = item.date_job_parsed || item.date_job || sheet.date_job_parsed || sheet.date_job;
-      const drvName = findDriverForJob(tNo, jobDate);
-      if (!drvName || drvName === '-') return;
-
-      if (!itemsByDriver[drvName]) itemsByDriver[drvName] = [];
-      itemsByDriver[drvName].push({
-        ...item,
-        truck_no: tNo,
-        assigned_driver_at_job: drvName
       });
     });
 
@@ -685,18 +810,30 @@ export async function fetchDrivers() {
       // 🎯 1:1 Consumption Matching Algorithm (ตู้ที่จับคู่แล้วจะไม่ถูกใช้ซ้ำ)
       const matchedMasterIds = calculateMatchedMasterIds(driverMasterList, driverItems);
       const matchedCount = matchedMasterIds.size;
-      const missingCount = Math.max(0, masterTotal - matchedCount);
+      const baseMissing = Math.max(0, masterTotal - matchedCount);
+      const redCount = (redByDriver[dName] || []).length;
+      const totalMissing = baseMissing + redCount; // รวมตู้ยังไม่สแกน + ตู้แดงที่คนขับสแกนเข้ามา
       const matchRate = masterTotal > 0 ? Math.round((matchedCount / masterTotal) * 100) : 0;
+
+      const cachedProfile = getDriverPayrollProfile(dName) || {};
+      const baseSalary = (d.base_salary !== undefined && d.base_salary !== null) ? Number(d.base_salary) : Number(cachedProfile.base_salary || 0);
+      const taxProfile = d.tax_profile || cachedProfile.tax_profile || 'social_security';
+      const ssoRaw = (d.social_security_amount !== undefined && d.social_security_amount !== null) ? Number(d.social_security_amount) : Number(cachedProfile.social_security_amount || 875);
+      const socialSecurityAmount = ssoRaw === 750 ? 875 : ssoRaw;
 
       return {
         ...d,
+        base_salary: baseSalary,
+        tax_profile: taxProfile,
+        social_security_amount: socialSecurityAmount,
         status: liveStatus,                  // สะท้อนสถานะการทำงานจริงตามใบลาอัตโนมัติ
         assigned_truck_no: liveTruck,        // สะท้อนรถประจำปัจจุบันจาก truck_operations สด 100%
-        master_containers: masterTotal,
-        matched_containers: matchedCount,    // จับคู่แล้ว 1:1 ไม่นับเบิ้ล
-        missing_containers: missingCount,    // ยังไม่มีใบงาน
-        match_rate: matchRate,
-        total_containers: masterTotal
+        master_containers: masterTotal,      // งานในใบวางบิลที่คนขับรับผิดชอบ
+        total_containers: masterTotal,
+        matched_containers: matchedCount,    // ตรวจสอบแล้ว (ตรงใบวางบิล Green)
+        missing_containers: totalMissing,    // รอตรวจสอบ (ตู้ยังไม่สแกน + ตู้แดง)
+        red_containers: redCount,            // ยอดตู้แดงเฉพาะ
+        match_rate: matchRate
       };
     });
 
@@ -742,10 +879,19 @@ export async function createDriver(driverData) {
       assigned_truck_no: targetTruckNo,
       status: driverData.status || 'active',
       start_date: driverData.start_date || null,
+      base_salary: Number(driverData.base_salary || 0),
+      tax_profile: driverData.tax_profile || 'social_security',
+      social_security_amount: Number(driverData.social_security_amount || 875),
       emergency_contact: driverData.emergency_contact?.trim() || '-',
       remark: driverData.remark?.trim() || '-',
       updated_at: new Date().toISOString()
     };
+
+    saveDriverPayrollProfile(cleanData.driver_name, {
+      base_salary: cleanData.base_salary,
+      tax_profile: cleanData.tax_profile,
+      social_security_amount: cleanData.social_security_amount
+    });
 
     // 1. ถ้ามีการระบุรถ และสถานะ Active ➡️ ตรวจสอบและปลดคนขับเดิมของรถคันนี้ (ถ้ามี)
     let previousDriverOfTruck = null;
@@ -773,14 +919,29 @@ export async function createDriver(driverData) {
       }
     }
 
-    // 2. Insert คนขับใหม่
-    const { data, error } = await supabase
+    // 2. Insert คนขับใหม่ (พร้อม Fallback กรณี Database ยังไม่ได้รัน Migration เพิ่มคอลัมน์)
+    let insertResult = await supabase
       .from('driver_records')
       .insert([cleanData])
       .select()
-      .single();
+      .maybeSingle();
 
-    if (error) throw error;
+    let data = insertResult.data;
+    let error = insertResult.error;
+
+    if (error && (error.message?.includes('schema cache') || error.message?.includes('base_salary') || error.message?.includes('column'))) {
+      console.warn('Supabase missing salary/tax columns, retrying without them and using local cache fallback');
+      const fallbackData = { ...cleanData };
+      delete fallbackData.base_salary;
+      delete fallbackData.tax_profile;
+      delete fallbackData.social_security_amount;
+      const retry = await supabase.from('driver_records').insert([fallbackData]).select().maybeSingle();
+      if (retry.error) throw retry.error;
+      data = retry.data ? { ...retry.data, ...cleanData } : cleanData;
+      error = null;
+    } else if (error) {
+      throw error;
+    }
 
     // 3. ผูกชื่อคนขับเข้ากับตาราง truck_records
     if (cleanData.assigned_truck_no && cleanData.assigned_truck_no !== '-') {
@@ -832,23 +993,49 @@ export async function updateDriver(id, driverData) {
       assigned_truck_no: targetTruckNo,
       status: driverData.status || 'active',
       start_date: driverData.start_date || null,
+      base_salary: driverData.base_salary !== undefined ? Number(driverData.base_salary || 0) : (oldDriver?.base_salary || 0),
+      tax_profile: driverData.tax_profile || oldDriver?.tax_profile || 'social_security',
+      social_security_amount: driverData.social_security_amount !== undefined ? Number(driverData.social_security_amount || 875) : (oldDriver?.social_security_amount || 875),
       emergency_contact: driverData.emergency_contact?.trim() || '-',
       remark: driverData.remark?.trim() || '-',
       updated_at: new Date().toISOString()
     };
+
+    saveDriverPayrollProfile(cleanData.driver_name, {
+      base_salary: cleanData.base_salary,
+      tax_profile: cleanData.tax_profile,
+      social_security_amount: cleanData.social_security_amount
+    });
 
     const oldTruckNo = oldDriver?.assigned_truck_no && oldDriver.assigned_truck_no !== '-' ? String(oldDriver.assigned_truck_no).trim() : null;
     const newTruckNo = cleanData.assigned_truck_no && cleanData.assigned_truck_no !== '-' ? String(cleanData.assigned_truck_no).trim() : null;
     const oldStatus = oldDriver?.status || 'active';
     const newStatus = cleanData.status;
 
-    // 2. อัปเดตข้อมูลคนขับ
-    const { data, error } = await supabase
+    // 2. อัปเดตข้อมูลคนขับ (พร้อม Fallback กรณี Database ยังไม่ได้รัน Migration เพิ่มคอลัมน์)
+    let updateResult = await supabase
       .from('driver_records')
       .update(cleanData)
       .eq('id', id)
       .select()
-      .single();
+      .maybeSingle();
+
+    let data = updateResult.data;
+    let error = updateResult.error;
+
+    if (error && (error.message?.includes('schema cache') || error.message?.includes('base_salary') || error.message?.includes('column'))) {
+      console.warn('Supabase missing salary/tax columns, updating without them and using local cache fallback');
+      const fallbackData = { ...cleanData };
+      delete fallbackData.base_salary;
+      delete fallbackData.tax_profile;
+      delete fallbackData.social_security_amount;
+      const retry = await supabase.from('driver_records').update(fallbackData).eq('id', id).select().maybeSingle();
+      if (retry.error) throw retry.error;
+      data = retry.data ? { ...retry.data, ...cleanData } : cleanData;
+      error = null;
+    } else if (error) {
+      throw error;
+    }
 
     if (error) throw error;
 
@@ -1266,3 +1453,20 @@ export async function bulkUpsertDrivers(driverList) {
     return { count: 0, error: err.message };
   }
 }
+
+export const truckDriverService = {
+  calculateMatchedMasterIds,
+  fetchTrucks,
+  createTruck,
+  updateTruck,
+  deleteTruck,
+  bulkUpsertTrucks,
+  fetchDrivers,
+  createDriver,
+  updateDriver,
+  deleteDriver,
+  bulkUpsertDrivers
+};
+
+export default truckDriverService;
+
