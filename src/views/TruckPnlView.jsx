@@ -22,10 +22,10 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
     setLoading(true);
     try {
       const [
-        { data: ratesData },
-        { data: expensesData },
-        trucksData,
-        { data: itemsData }
+        ratesRes,
+        expensesRes,
+        trucksRes,
+        itemsRes
       ] = await Promise.all([
         portBillingService.fetchPortRates(),
         truckExpenseService.fetchExpenses(),
@@ -33,10 +33,15 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
         supabase.from('job_sheet_items').select('id, size, port, match_status, date_job_parsed, job_sheet_id, job_sheets(truck_no, driver_name, date_job_parsed)')
       ]);
 
-      if (ratesData) setPortRates(ratesData);
-      if (expensesData) setExpenses(expensesData);
-      if (trucksData) setTrucks(trucksData);
-      if (itemsData) setContainers(itemsData);
+      const ratesList = Array.isArray(ratesRes) ? ratesRes : (ratesRes?.data || []);
+      const expensesList = Array.isArray(expensesRes) ? expensesRes : (expensesRes?.data || []);
+      const trucksList = Array.isArray(trucksRes) ? trucksRes : (trucksRes?.data || []);
+      const itemsList = Array.isArray(itemsRes) ? itemsRes : (itemsRes?.data || []);
+
+      setPortRates(ratesList);
+      setExpenses(expensesList);
+      setTrucks(trucksList);
+      setContainers(itemsList);
     } catch (err) {
       console.error('load P&L data error:', err);
     } finally {
@@ -52,8 +57,12 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
     const startOfMonth = `${selectedMonth}-01`;
     const endOfMonth = `${selectedMonth}-31`;
 
+    const safeContainers = Array.isArray(containers) ? containers : [];
+    const safeExpenses = Array.isArray(expenses) ? expenses : [];
+    const safeTrucks = Array.isArray(trucks) ? trucks : [];
+
     // 1. ตู้ที่วิ่งในเดือนนี้
-    const monthlyContainers = containers.filter(item => {
+    const monthlyContainers = safeContainers.filter(item => {
       const date = item.date_job_parsed || item.job_sheets?.date_job_parsed || '';
       return date >= startOfMonth && date <= endOfMonth;
     });
@@ -63,7 +72,7 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
     );
 
     // 2. ค่าใช้จ่ายในเดือนนี้
-    const monthlyExpenses = expenses.filter(exp => {
+    const monthlyExpenses = safeExpenses.filter(exp => {
       const date = exp.expense_date || '';
       return date >= startOfMonth && date <= endOfMonth;
     });
@@ -72,7 +81,7 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
     const truckMap = {};
 
     // Init with all trucks
-    trucks.forEach(tr => {
+    safeTrucks.forEach(tr => {
       const tNo = tr.truck_no;
       truckMap[tNo] = {
         truck_no: tNo,

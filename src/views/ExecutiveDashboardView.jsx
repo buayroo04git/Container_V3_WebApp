@@ -20,10 +20,10 @@ export default function ExecutiveDashboardView({ setActiveTab }) {
       setLoading(true);
       try {
         const [
-          { data: ratesData },
-          { data: expensesData },
-          trucksData,
-          { data: itemsData }
+          ratesRes,
+          expensesRes,
+          trucksRes,
+          itemsRes
         ] = await Promise.all([
           portBillingService.fetchPortRates(),
           truckExpenseService.fetchExpenses(),
@@ -31,10 +31,15 @@ export default function ExecutiveDashboardView({ setActiveTab }) {
           supabase.from('job_sheet_items').select('id, size, port, match_status, date_job_parsed, job_sheet_id, job_sheets(truck_no, driver_name, date_job_parsed)')
         ]);
 
-        if (ratesData) setPortRates(ratesData);
-        if (expensesData) setExpenses(expensesData);
-        if (trucksData) setTrucks(trucksData);
-        if (itemsData) setContainers(itemsData);
+        const ratesList = Array.isArray(ratesRes) ? ratesRes : (ratesRes?.data || []);
+        const expensesList = Array.isArray(expensesRes) ? expensesRes : (expensesRes?.data || []);
+        const trucksList = Array.isArray(trucksRes) ? trucksRes : (trucksRes?.data || []);
+        const itemsList = Array.isArray(itemsRes) ? itemsRes : (itemsRes?.data || []);
+
+        setPortRates(ratesList);
+        setExpenses(expensesList);
+        setTrucks(trucksList);
+        setContainers(itemsList);
       } catch (err) {
         console.error('loadDashboardData error:', err);
       } finally {
