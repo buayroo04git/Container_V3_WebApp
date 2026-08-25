@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { supabase } from '../supabaseClient.js';
 import { portBillingService, DEFAULT_PORT_RATES } from '../services/portBillingService.js';
-import { truckExpenseService } from '../services/truckExpenseService.js';
 import { fetchTrucks } from '../services/truckDriverService.js';
 import PortRatesView from './PortRatesView.jsx';
 import KpiCard from '../components/ui/KpiCard.jsx';
@@ -11,39 +10,36 @@ import * as XLSX from 'xlsx';
 export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
   const [activeSubTab, setActiveSubTab] = useState(defaultSubTab);
   const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [cycleFilter, setCycleFilter] = useState('ALL'); // 'ALL', 'H1' (1-15), 'H2' (16-สิ้นเดือน)
   const [loading, setLoading] = useState(true);
   const [containers, setContainers] = useState([]);
-  const [expenses, setExpenses] = useState([]);
   const [trucks, setTrucks] = useState([]);
   const [portRates, setPortRates] = useState(DEFAULT_PORT_RATES);
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedTruckDetail, setSelectedTruckDetail] = useState(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
       const [
         ratesRes,
-        expensesRes,
         trucksRes,
         itemsRes
       ] = await Promise.all([
         portBillingService.fetchPortRates(),
-        truckExpenseService.fetchExpenses(),
         fetchTrucks(),
-        supabase.from('job_sheet_items').select('id, size, port, match_status, date_job_parsed, job_sheet_id, job_sheets(truck_no, driver_name, date_job_parsed)')
+        supabase.from('job_sheet_items').select('id, container_no, size, port, match_status, date_job_parsed, date_job, job_sheet_id, job_sheets(truck_no, driver_name, date_job_parsed, date_job)')
       ]);
 
       const ratesList = Array.isArray(ratesRes) ? ratesRes : (ratesRes?.data || []);
-      const expensesList = Array.isArray(expensesRes) ? expensesRes : (expensesRes?.data || []);
       const trucksList = Array.isArray(trucksRes) ? trucksRes : (trucksRes?.data || []);
       const itemsList = Array.isArray(itemsRes) ? itemsRes : (itemsRes?.data || []);
 
       setPortRates(ratesList);
-      setExpenses(expensesList);
       setTrucks(trucksList);
       setContainers(itemsList);
     } catch (err) {
-      console.error('load P&L data error:', err);
+      console.error('load revenue data error:', err);
     } finally {
       setLoading(false);
     }
@@ -53,189 +49,164 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
     loadData();
   }, [loadData]);
 
-  const pnlData = useMemo(() => {
-    const startOfMonth = `${selectedMonth}-01`;
-    const endOfMonth = `${selectedMonth}-31`;
+  // คำนวณรายได้รถเพียวๆ ตามรอบงวดและเรทท่าเรือ
+  const revenueData = useMemo(() => {
+    const [yStr, mStr] = (selectedMonth || new Date().toISOString().slice(0, 7)).split('-');
+    const year = Number(yStr) || new Date().getFullYear();
+    const month = Number(mStr) || (new Date().getMonth() + 1);
+    const lastDayNum = new Date(year, month, 0).getDate();
+
+    let startDate = `${selectedMonth}-01`;
+    let endDate = `${selectedMonth}-${String(lastDayNum).padStart(2, '0')}`;
+
+    if (cycleFilter === 'H1') {
+      startDate = `${selectedMonth}-01`;
+      endDate = `${selectedMonth}-15`;
+    } else if (cycleFilter === 'H2') {
+      startDate = `${selectedMonth}-16`;
+      endDate = `${selectedMonth}-${String(lastDayNum).padStart(2, '0')}`;
+    }
 
     const safeContainers = Array.isArray(containers) ? containers : [];
-    const safeExpenses = Array.isArray(expenses) ? expenses : [];
     const safeTrucks = Array.isArray(trucks) ? trucks : [];
 
-    // 1. ตู้ที่วิ่งในเดือนนี้
-    const monthlyContainers = safeContainers.filter(item => {
-      const date = item.date_job_parsed || item.job_sheets?.date_job_parsed || '';
-      return date >= startOfMonth && date <= endOfMonth;
+    // 1. กรองตู้ที่ตรวจผ่านในงวดที่เลือก
+    const verifiedContainers = safeContainers.filter(item => {
+      const isVerified = item.match_status === 'matched_green' || item.match_status === 'verified';
+      if (!isVerified) return false;
+
+      const date = item.date_job_parsed || item.job_sheets?.date_job_parsed || item.date_job || item.job_sheets?.date_job || '';
+      return date >= startDate && date <= endDate;
     });
 
-    const verifiedContainers = monthlyContainers.filter(item => 
-      item.match_status === 'matched_green' || item.match_status === 'verified'
-    );
-
-    // 2. ค่าใช้จ่ายในเดือนนี้
-    const monthlyExpenses = safeExpenses.filter(exp => {
-      const date = exp.expense_date || '';
-      return date >= startOfMonth && date <= endOfMonth;
-    });
-
-    // 3. รวมยอดรายคันรถ
+    // 2. Map รถและคำนวณรายได้แยกตามตู้ 20", 40", 45"
     const truckMap = {};
 
-    // Init with all trucks
+    // เริ่มต้นจากทะเบียนรถทั้งหมดในระบบ
     safeTrucks.forEach(tr => {
       const tNo = tr.truck_no;
       truckMap[tNo] = {
         truck_no: tNo,
         driver_name: tr.assigned_driver_name || '-',
-        total_containers: 0,
         count_20: 0,
+        revenue_20: 0,
         count_40: 0,
+        revenue_40: 0,
         count_45: 0,
-        port_revenue: 0,
-        fuel_cost: 0,
-        maintenance_cost: 0,
-        toll_cost: 0,
-        installment_cost: 0,
-        misc_cost: 0,
-        driver_cost: 0
+        revenue_45: 0,
+        total_containers: 0,
+        total_port_revenue: 0,
+        items: []
       };
     });
 
-    // Populate revenue
+    // รวมตู้รายคันรถ
     verifiedContainers.forEach(item => {
       const tNo = item.job_sheets?.truck_no || 'ไม่ระบุ';
       const dName = item.job_sheets?.driver_name || '-';
-      const size = item.size || '20';
-      const jobDate = item.date_job_parsed || item.job_sheets?.date_job_parsed || '';
-      const price = portBillingService.calculatePortUnitPrice(size, jobDate, portRates);
+      const size = String(item.size || '20').trim();
+      const jobDate = item.date_job_parsed || item.job_sheets?.date_job_parsed || item.date_job || '';
+      const unitPrice = portBillingService.calculatePortUnitPrice(size, jobDate, portRates);
+      const effectiveRatePeriod = portBillingService.findEffectivePortRate(jobDate, portRates);
 
       if (!truckMap[tNo]) {
         truckMap[tNo] = {
           truck_no: tNo,
           driver_name: dName,
-          total_containers: 0,
           count_20: 0,
+          revenue_20: 0,
           count_40: 0,
+          revenue_40: 0,
           count_45: 0,
-          port_revenue: 0,
-          fuel_cost: 0,
-          maintenance_cost: 0,
-          toll_cost: 0,
-          installment_cost: 0,
-          misc_cost: 0,
-          driver_cost: 0
+          revenue_45: 0,
+          total_containers: 0,
+          total_port_revenue: 0,
+          items: []
         };
       }
 
-      truckMap[tNo].total_containers += 1;
-      truckMap[tNo].port_revenue += price;
       if (dName !== '-' && truckMap[tNo].driver_name === '-') {
         truckMap[tNo].driver_name = dName;
       }
 
-      if (String(size).includes('45')) truckMap[tNo].count_45 += 1;
-      else if (String(size).includes('40')) truckMap[tNo].count_40 += 1;
-      else truckMap[tNo].count_20 += 1;
-    });
+      truckMap[tNo].total_containers += 1;
+      truckMap[tNo].total_port_revenue += unitPrice;
 
-    // Populate expenses
-    monthlyExpenses.forEach(exp => {
-      const tNo = exp.truck_no || 'ไม่ระบุ';
-      const cat = exp.category || 'other';
-      const amt = Number(exp.amount) || 0;
-
-      if (!truckMap[tNo]) {
-        truckMap[tNo] = {
-          truck_no: tNo,
-          driver_name: '-',
-          total_containers: 0,
-          count_20: 0,
-          count_40: 0,
-          count_45: 0,
-          port_revenue: 0,
-          fuel_cost: 0,
-          maintenance_cost: 0,
-          toll_cost: 0,
-          installment_cost: 0,
-          misc_cost: 0,
-          driver_cost: 0
-        };
+      if (size.includes('45')) {
+        truckMap[tNo].count_45 += 1;
+        truckMap[tNo].revenue_45 += unitPrice;
+      } else if (size.includes('40')) {
+        truckMap[tNo].count_40 += 1;
+        truckMap[tNo].revenue_40 += unitPrice;
+      } else {
+        truckMap[tNo].count_20 += 1;
+        truckMap[tNo].revenue_20 += unitPrice;
       }
 
-      if (cat === 'fuel') truckMap[tNo].fuel_cost += amt;
-      else if (cat === 'maintenance') truckMap[tNo].maintenance_cost += amt;
-      else if (cat === 'toll') truckMap[tNo].toll_cost += amt;
-      else if (cat === 'installment') truckMap[tNo].installment_cost += amt;
-      else if (cat === 'driver_pay') truckMap[tNo].driver_cost += amt;
-      else truckMap[tNo].misc_cost += amt;
+      truckMap[tNo].items.push({
+        id: item.id,
+        container_no: item.container_no,
+        size,
+        date_job: jobDate,
+        unit_price: unitPrice,
+        period_name: effectiveRatePeriod?.period_name || '-'
+      });
     });
 
-    // Calculate profit per truck
-    const rows = Object.values(truckMap).map(t => {
-      const totalCost = t.fuel_cost + t.maintenance_cost + t.toll_cost + t.installment_cost + t.misc_cost + t.driver_cost;
-      const netProfit = t.port_revenue - totalCost;
-      const margin = t.port_revenue > 0 ? ((netProfit / t.port_revenue) * 100).toFixed(1) : '0.0';
+    const rows = Object.values(truckMap);
 
-      return {
-        ...t,
-        total_cost: totalCost,
-        net_profit: netProfit,
-        margin_pct: Number(margin)
-      };
-    });
-
-    // Filter by search
+    // กรองค้นหา
     const filtered = rows.filter(r => {
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase().trim();
       return r.truck_no.toLowerCase().includes(q) || r.driver_name.toLowerCase().includes(q);
     });
 
-    // Sort by profit descending
-    filtered.sort((a, b) => b.net_profit - a.net_profit);
+    // เรียงลำดับจากรายได้สูงสุด
+    filtered.sort((a, b) => b.total_port_revenue - a.total_port_revenue);
 
-    // Summary Totals
-    const totalRevenue = rows.reduce((sum, r) => sum + r.port_revenue, 0);
-    const totalFuel = rows.reduce((sum, r) => sum + r.fuel_cost, 0);
-    const totalMaint = rows.reduce((sum, r) => sum + r.maintenance_cost, 0);
-    const totalCost = rows.reduce((sum, r) => sum + r.total_cost, 0);
-    const totalNetProfit = totalRevenue - totalCost;
-    const overallMargin = totalRevenue > 0 ? ((totalNetProfit / totalRevenue) * 100).toFixed(1) : '0.0';
+    // ยอดรวมทั้งระบบ
+    const totalPortRevenue = rows.reduce((sum, r) => sum + r.total_port_revenue, 0);
+    const totalContainers = rows.reduce((sum, r) => sum + r.total_containers, 0);
+    const totalCount20 = rows.reduce((sum, r) => sum + r.count_20, 0);
+    const totalRevenue20 = rows.reduce((sum, r) => sum + r.revenue_20, 0);
+    const totalCount40 = rows.reduce((sum, r) => sum + r.count_40, 0);
+    const totalRevenue40 = rows.reduce((sum, r) => sum + r.revenue_40, 0);
+    const activeTruckCount = rows.filter(r => r.total_containers > 0).length;
 
     return {
       rows: filtered,
-      totalRevenue,
-      totalFuel,
-      totalMaint,
-      totalCost,
-      totalNetProfit,
-      overallMargin,
-      totalContainers: verifiedContainers.length
+      totalPortRevenue,
+      totalContainers,
+      totalCount20,
+      totalRevenue20,
+      totalCount40,
+      totalRevenue40,
+      activeTruckCount,
+      totalTruckCount: rows.length
     };
-  }, [containers, expenses, trucks, portRates, selectedMonth, searchQuery]);
+  }, [containers, trucks, portRates, selectedMonth, cycleFilter, searchQuery]);
 
   const exportToExcel = () => {
-    const rows = pnlData.rows.map((t, idx) => ({
+    const cycleLabel = cycleFilter === 'H1' ? 'ครึ่งเดือนแรก' : cycleFilter === 'H2' ? 'ครึ่งเดือนหลัง' : 'ทั้งเดือน';
+    const rows = revenueData.rows.map((t, idx) => ({
       'ลำดับ': idx + 1,
       'ทะเบียนรถ': t.truck_no,
       'คนขับประจำ': t.driver_name,
-      'ตู้ 20"': t.count_20,
-      'ตู้ 40"': t.count_40,
-      'ตู้ 45"': t.count_45,
-      'รวมจำนวนตู้': t.total_containers,
-      'รายรับจากท่าเรือ (บาท)': t.port_revenue,
-      'ค่าน้ำมัน (บาท)': t.fuel_cost,
-      'ค่าซ่อมบำรุง (บาท)': t.maintenance_cost,
-      'ค่างวดรถ (บาท)': t.installment_cost,
-      'ค่าทางด่วน/จิปาถะ (บาท)': t.toll_cost + t.misc_cost,
-      'รวมต้นทุน (บาท)': t.total_cost,
-      'กำไรสุทธิ (บาท)': t.net_profit,
-      'อัตรากำไร (%)': `${t.margin_pct}%`
+      'ตู้ 20" (เที่ยว)': t.count_20,
+      'รายได้ 20" (บาท)': t.revenue_20,
+      'ตู้ 40" (เที่ยว)': t.count_40,
+      'รายได้ 40" (บาท)': t.revenue_40,
+      'ตู้ 45" (เที่ยว)': t.count_45,
+      'รายได้ 45" (บาท)': t.revenue_45,
+      'รวมจำนวนตู้ (เที่ยว)': t.total_containers,
+      'รวมรายได้ท่าเรือ (บาท)': t.total_port_revenue
     }));
 
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, `P&L_${selectedMonth}`);
-    XLSX.writeFile(wb, `Truck_PnL_Report_${selectedMonth}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, `Truck_Revenue_${selectedMonth}`);
+    XLSX.writeFile(wb, `Truck_Revenue_Report_${selectedMonth}_${cycleLabel}.xlsx`);
   };
 
   return (
@@ -258,12 +229,12 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '22px' }}>📈</span>
             <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: '#0f172a' }}>
-              {activeSubTab === 'revenue' ? 'รายได้และผลประกอบการรถ (Truck Revenue & Performance)' : 'เรทท่าเรือ (Port Billing Rates)'}
+              {activeSubTab === 'revenue' ? 'บัญชีสรุปรายได้รถ (Truck Port Revenue Ledger)' : 'เรทท่าเรือ (Port Billing Rates)'}
             </h1>
           </div>
           <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: '#64748b' }}>
             {activeSubTab === 'revenue'
-              ? 'สรุปรายได้ที่รถแต่ละคันสร้างจากตู้ท่าเรือ เปรียบเทียบกับต้นทุนฟลีท (น้ำมัน/ซ่อม/งวด)'
+              ? 'สรุปรายได้ที่รถแต่ละคันสร้างจากตู้ท่าเรือ คำนวณตามขนาดตู้ 20"/40" และเรทช่วงเวลาจริง'
               : 'กำหนดราคาตู้ 20" และ 40" ที่ท่าเรือจ่ายให้เรา แยกตามรอบครึ่งเดือนแรก (1-15) และครึ่งเดือนหลัง (16-สิ้นเดือน)'}
           </p>
         </div>
@@ -287,7 +258,10 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
                 color: '#ffffff',
                 fontWeight: 700,
                 fontSize: '12.5px',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px'
               }}
             >
               📥 ส่งออก Excel
@@ -299,8 +273,8 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
       {/* 🧭 Subtabs Navigation */}
       <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid #e2e8f0', paddingBottom: '4px' }}>
         {[
-          { id: 'revenue', label: '📈 ผลประกอบการ & รายได้รถ', desc: 'สรุปรายได้และกำไรสุทธิรายคัน' },
-          { id: 'rates', label: '💵 เรทท่าเรือ', desc: 'ตั้งค่าราคาตู้ 20"/40" ตามช่วงเวลา' }
+          { id: 'revenue', label: '📈 บัญชีรายได้รถ (Truck Revenue)', desc: 'สรุปรายได้ตู้ท่าเรือรายคัน' },
+          { id: 'rates', label: '💵 เรทท่าเรือ (Port Rates)', desc: 'ตั้งค่าราคาตู้ 20"/40" ตามช่วงเวลา' }
         ].map(tab => {
           const isActive = activeSubTab === tab.id;
           return (
@@ -340,43 +314,70 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
           {/* 🌟 KPI Cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
             <KpiCard
-              icon="💵"
-              title="รายรับท่าเรือรวม"
-              value={`฿${pnlData.totalRevenue.toLocaleString()}`}
-              subtext={`จากตู้ที่ตรวจผ่าน: ${pnlData.totalContainers.toLocaleString()} ตู้`}
+              icon="💰"
+              title="รายรับจากท่าเรือรวม"
+              value={`฿${revenueData.totalPortRevenue.toLocaleString()}`}
+              subtext={`รวมตู้ที่ตรวจผ่าน: ${revenueData.totalContainers.toLocaleString()} ตู้`}
+              color="emerald"
+            />
+            <KpiCard
+              icon="📦"
+              title="รายได้ตู้ 20 ฟุต"
+              value={`฿${revenueData.totalRevenue20.toLocaleString()}`}
+              subtext={`จำนวน: ${revenueData.totalCount20.toLocaleString()} เที่ยว`}
               color="blue"
             />
             <KpiCard
-              icon="⛽"
-              title="ค่าน้ำมันรวม"
-              value={`฿${pnlData.totalFuel.toLocaleString()}`}
-              subtext="ต้นทุนเชื้อเพลิงรวมของฟลีท"
-              color="orange"
-            />
-            <KpiCard
-              icon="🔧"
-              title="ค่าซ่อมบำรุงรวม"
-              value={`฿${pnlData.totalMaint.toLocaleString()}`}
-              subtext="ต้นทุนบำรุงรักษารถ"
+              icon="📦"
+              title="รายได้ตู้ 40 ฟุต"
+              value={`฿${revenueData.totalRevenue40.toLocaleString()}`}
+              subtext={`จำนวน: ${revenueData.totalCount40.toLocaleString()} เที่ยว`}
               color="purple"
             />
             <KpiCard
-              icon="💰"
-              title="กำไรสุทธิฟลีท (Net Profit)"
-              value={`฿${pnlData.totalNetProfit.toLocaleString()}`}
-              subtext={`อัตรากำไรเฉลี่ย: ${pnlData.overallMargin}%`}
-              color={pnlData.totalNetProfit >= 0 ? 'emerald' : 'red'}
+              icon="🚚"
+              title="รถที่วิ่งงานในงวดนี้"
+              value={`${revenueData.activeTruckCount} / ${revenueData.totalTruckCount} คัน`}
+              subtext="จำนวนรถที่มีรายรับจากตู้"
+              color="orange"
             />
           </div>
 
-          {/* 📋 Ledger Table */}
+          {/* 📋 Pure Truck Revenue Table */}
           <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
             
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
-              <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>
-                🚚 บัญชีรายได้และต้นทุนรายคันรถ ({pnlData.rows.length} คัน)
-              </h3>
+            {/* Table Header Filter Controls */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '12px' }}>
+              
+              {/* Half-Month Cycle Tabs Filter */}
+              <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', padding: '4px', borderRadius: '10px' }}>
+                {[
+                  { id: 'ALL', label: '📅 ทั้งเดือน' },
+                  { id: 'H1', label: '🌓 ครึ่งเดือนแรก (1-15)' },
+                  { id: 'H2', label: '🌕 ครึ่งเดือนหลัง (16-สิ้นเดือน)' }
+                ].map(cycle => (
+                  <button
+                    key={cycle.id}
+                    type="button"
+                    onClick={() => setCycleFilter(cycle.id)}
+                    style={{
+                      padding: '5px 12px',
+                      borderRadius: '6px',
+                      border: 'none',
+                      background: cycleFilter === cycle.id ? '#ffffff' : 'transparent',
+                      color: cycleFilter === cycle.id ? '#0f172a' : '#64748b',
+                      fontWeight: cycleFilter === cycle.id ? 700 : 500,
+                      fontSize: '12.5px',
+                      cursor: 'pointer',
+                      boxShadow: cycleFilter === cycle.id ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                    }}
+                  >
+                    {cycle.label}
+                  </button>
+                ))}
+              </div>
 
+              {/* Search */}
               <div style={{ width: '260px' }}>
                 <input
                   type="text"
@@ -390,94 +391,191 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
 
             {loading ? (
               <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>กำลังคำนวณรายได้รถ...</div>
-            ) : pnlData.rows.length === 0 ? (
+            ) : revenueData.rows.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '40px', color: '#64748b', background: '#f8fafc', borderRadius: '12px' }}>
-                ไม่พบข้อมูลผลประกอบการรถในงวด {selectedMonth}
+                ไม่พบข้อมูลรายได้รถในงวด {selectedMonth}
               </div>
             ) : (
               <div style={{ overflowX: 'auto' }}>
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
                   <thead>
-                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 700 }}>
+                    <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 800 }}>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', width: '45px' }}>#</th>
                       <th style={{ padding: '10px 12px', textAlign: 'left' }}>ทะเบียนรถ</th>
                       <th style={{ padding: '10px 12px', textAlign: 'left' }}>คนขับประจำ</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'center' }}>20'</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'center' }}>40'</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'center' }}>รวมตู้</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'right', color: '#059669' }}>รายรับท่าเรือ</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'right' }}>ค่าน้ำมัน</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'right' }}>ค่าซ่อม</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'right' }}>ค่างวด</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'right', color: '#dc2626' }}>รวมต้นทุน</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'right' }}>กำไรสุทธิ</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'center' }}>Margin</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#2563eb' }}>ตู้ 20" (เที่ยว)</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', color: '#2563eb' }}>รายได้ 20" (บาท)</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#7c3aed' }}>ตู้ 40" (เที่ยว)</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', color: '#7c3aed' }}>รายได้ 40" (บาท)</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center', color: '#0f172a' }}>รวมจำนวนตู้</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'right', color: '#059669', fontSize: '13.5px' }}>รวมรายได้ท่าเรือ</th>
+                      <th style={{ padding: '10px 12px', textAlign: 'center' }}>รายละเอียด</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {pnlData.rows.map((row, idx) => {
-                      const isProfit = row.net_profit >= 0;
-                      return (
-                        <tr key={row.truck_no || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                          <td style={{ padding: '12px', fontWeight: 800, color: '#0f172a' }}>
-                            🚛 {row.truck_no}
-                          </td>
-                          <td style={{ padding: '12px', color: '#475569' }}>
-                            {row.driver_name}
-                          </td>
-                          <td style={{ padding: '12px', textAlign: 'center', fontWeight: 700, color: '#3b82f6' }}>
-                            {row.count_20 || '-'}
-                          </td>
-                          <td style={{ padding: '12px', textAlign: 'center', fontWeight: 700, color: '#8b5cf6' }}>
-                            {row.count_40 || '-'}
-                          </td>
-                          <td style={{ padding: '12px', textAlign: 'center', fontWeight: 800, color: '#0f172a' }}>
-                            {row.total_containers}
-                          </td>
-                          <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, color: '#059669', fontSize: '13.5px' }}>
-                            ฿{row.port_revenue.toLocaleString()}
-                          </td>
-                          <td style={{ padding: '12px', textAlign: 'right', color: '#d97706', fontWeight: 600 }}>
-                            {row.fuel_cost > 0 ? `฿${row.fuel_cost.toLocaleString()}` : '-'}
-                          </td>
-                          <td style={{ padding: '12px', textAlign: 'right', color: '#7c3aed', fontWeight: 600 }}>
-                            {row.maintenance_cost > 0 ? `฿${row.maintenance_cost.toLocaleString()}` : '-'}
-                          </td>
-                          <td style={{ padding: '12px', textAlign: 'right', color: '#475569', fontWeight: 600 }}>
-                            {row.installment_cost > 0 ? `฿${row.installment_cost.toLocaleString()}` : '-'}
-                          </td>
-                          <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#dc2626' }}>
-                            ฿{row.total_cost.toLocaleString()}
-                          </td>
-                          <td style={{
-                            padding: '12px',
-                            textAlign: 'right',
-                            fontWeight: 900,
-                            fontSize: '14px',
-                            color: isProfit ? '#059669' : '#dc2626'
-                          }}>
-                            ฿{row.net_profit.toLocaleString()}
-                          </td>
-                          <td style={{ padding: '12px', textAlign: 'center' }}>
-                            <span style={{
-                              padding: '3px 8px',
-                              borderRadius: '6px',
-                              background: isProfit ? '#dcfce7' : '#fee2e2',
-                              color: isProfit ? '#15803d' : '#b91c1c',
-                              fontWeight: 800,
-                              fontSize: '11.5px'
-                            }}>
-                              {row.margin_pct}%
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {revenueData.rows.map((row, idx) => (
+                      <tr key={row.truck_no || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                        <td style={{ padding: '12px', textAlign: 'center', color: '#94a3b8', fontWeight: 600 }}>
+                          {idx + 1}
+                        </td>
+                        <td style={{ padding: '12px', fontWeight: 800, color: '#0f172a' }}>
+                          🚛 {row.truck_no}
+                        </td>
+                        <td style={{ padding: '12px', color: '#475569', fontWeight: 600 }}>
+                          {row.driver_name}
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center', fontWeight: 700, color: '#2563eb' }}>
+                          {row.count_20 > 0 ? row.count_20 : '-'}
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#2563eb' }}>
+                          {row.revenue_20 > 0 ? `฿${row.revenue_20.toLocaleString()}` : '-'}
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center', fontWeight: 700, color: '#7c3aed' }}>
+                          {row.count_40 > 0 ? row.count_40 : '-'}
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'right', fontWeight: 700, color: '#7c3aed' }}>
+                          {row.revenue_40 > 0 ? `฿${row.revenue_40.toLocaleString()}` : '-'}
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center', fontWeight: 800, color: '#0f172a' }}>
+                          {row.total_containers > 0 ? row.total_containers : '-'}
+                        </td>
+                        <td style={{
+                          padding: '12px',
+                          textAlign: 'right',
+                          fontWeight: 900,
+                          fontSize: '14.5px',
+                          color: row.total_port_revenue > 0 ? '#059669' : '#94a3b8'
+                        }}>
+                          ฿{row.total_port_revenue.toLocaleString()}
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center' }}>
+                          {row.total_containers > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedTruckDetail(row)}
+                              style={{
+                                padding: '4px 10px',
+                                borderRadius: '6px',
+                                border: '1px solid #93c5fd',
+                                background: '#eff6ff',
+                                color: '#1d4ed8',
+                                fontSize: '11.5px',
+                                fontWeight: 700,
+                                cursor: 'pointer'
+                              }}
+                            >
+                              🔍 ดูตู้ ({row.total_containers})
+                            </button>
+                          ) : (
+                            <span style={{ color: '#cbd5e1' }}>-</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
             )}
           </div>
         </>
+      )}
+
+      {/* 🔍 Drill-down Modal: รายละเอียดตู้ของรถคันนั้น */}
+      {selectedTruckDetail && (
+        <div
+          onClick={() => setSelectedTruckDetail(null)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(15, 23, 42, 0.65)',
+            backdropFilter: 'blur(4px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999
+          }}
+        >
+          <div
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#ffffff',
+              borderRadius: '16px',
+              padding: '24px',
+              width: '700px',
+              maxWidth: '92vw',
+              maxHeight: '85vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid #e2e8f0', paddingBottom: '12px' }}>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
+                  🚛 รายละเอียดตู้: รถ {selectedTruckDetail.truck_no}
+                </h3>
+                <p style={{ margin: '3px 0 0 0', fontSize: '12.5px', color: '#64748b' }}>
+                  คนขับ: {selectedTruckDetail.driver_name} | รวม {selectedTruckDetail.total_containers} ตู้ | รายรับรวม: ฿{selectedTruckDetail.total_port_revenue.toLocaleString()}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedTruckDetail(null)}
+                style={{ background: 'transparent', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#64748b' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ overflowY: 'auto', flex: 1 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
+                <thead>
+                  <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 700 }}>
+                    <th style={{ padding: '8px 10px', textAlign: 'left' }}>วันที่วิ่งงาน</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'left' }}>เลขตู้</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'center' }}>ขนาด</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'left' }}>ช่วงเรทท่าเรือ</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'right', color: '#059669' }}>ราคา (บาท)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {selectedTruckDetail.items.map((item, idx) => (
+                    <tr key={item.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      <td style={{ padding: '10px', color: '#334155', fontWeight: 600 }}>{item.date_job || '-'}</td>
+                      <td style={{ padding: '10px', fontWeight: 800, color: '#1e40af', fontFamily: 'monospace' }}>{item.container_no}</td>
+                      <td style={{ padding: '10px', textAlign: 'center' }}>
+                        <span style={{
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          background: item.size?.includes('40') ? '#f5f3ff' : '#eff6ff',
+                          color: item.size?.includes('40') ? '#7c3aed' : '#2563eb',
+                          fontWeight: 700,
+                          fontSize: '11.5px'
+                        }}>
+                          {item.size}
+                        </span>
+                      </td>
+                      <td style={{ padding: '10px', color: '#64748b' }}>🏷️ {item.period_name}</td>
+                      <td style={{ padding: '10px', textAlign: 'right', fontWeight: 800, color: '#059669', fontSize: '13.5px' }}>
+                        ฿{Number(item.unit_price).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setSelectedTruckDetail(null)}
+                style={{ padding: '8px 16px', borderRadius: '8px', border: 'none', background: '#2563eb', color: '#fff', fontWeight: 700, cursor: 'pointer' }}
+              >
+                ปิดหน้าต่าง
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
     </div>
