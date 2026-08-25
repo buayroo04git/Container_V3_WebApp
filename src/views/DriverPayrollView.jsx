@@ -21,8 +21,6 @@ import { fetchDrivers, updateDriver, createDriver, getDriverPayrollProfile } fro
 
 const TABS = [
   { id: 'trips', label: 'สรุปผลงานวิ่งตู้ & ค่ารอบ', icon: '📦' },
-  { id: 'salary_config', label: 'กำหนดฐานเงินเดือน & สปส./ภาษี', icon: '💵' },
-  { id: 'advances', label: 'บัญชีเบิกล่วงหน้า & เงินกู้ยืม', icon: '💸' },
   { id: 'rates', label: 'เรทราคา & เงินพิเศษ', icon: '⚙️' }
 ];
 
