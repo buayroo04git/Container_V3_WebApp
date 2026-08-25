@@ -7,13 +7,14 @@ export default function PortRatesView() {
   const [editingRate, setEditingRate] = useState(null);
   const [saving, setSaving] = useState(false);
 
+  const loadRates = async () => {
+    setLoading(true);
+    const { data } = await portBillingService.fetchPortRates();
+    if (data) setRates(data);
+    setLoading(false);
+  };
+
   useEffect(() => {
-    async function loadRates() {
-      setLoading(true);
-      const { data } = await portBillingService.fetchPortRates();
-      if (data) setRates(data);
-      setLoading(false);
-    }
     loadRates();
   }, []);
 
@@ -23,11 +24,16 @@ export default function PortRatesView() {
     setSaving(true);
     const { data } = await portBillingService.savePortRate(editingRate);
     if (data) {
-      const { data: updated } = await portBillingService.fetchPortRates();
-      if (updated) setRates(updated);
+      await loadRates();
       setEditingRate(null);
     }
     setSaving(false);
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm('คุณแน่ใจหรือไม่ว่าต้องการลบเรทช่วงเวลานี้?')) return;
+    await portBillingService.deletePortRate(id);
+    await loadRates();
   };
 
   return (
@@ -54,7 +60,7 @@ export default function PortRatesView() {
             </h1>
           </div>
           <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: '#64748b' }}>
-            กำหนดราคาค่ารอบที่ท่าเรือ/สายเรือจ่ายให้เราตามขนาดตู้ 20'/40'/45' เพื่อคำนวณเป็นรายรับของรถ
+            กำหนดราคาค่ารอบที่ท่าเรือจ่ายให้บริษัทตามช่วงวันที่และขนาดตู้ 20" / 40" เพื่อนำไปคิดเป็นรายรับของรถแต่ละคัน
           </p>
         </div>
 
@@ -62,192 +68,223 @@ export default function PortRatesView() {
           type="button"
           onClick={() => setEditingRate({
             id: `port_rate_${Date.now()}`,
-            port_name: '',
+            period_name: `ช่วงที่ ${rates.length + 1}`,
             start_date: new Date().toISOString().slice(0, 10),
-            end_date: null,
-            rate_20: 1200,
-            rate_40: 1600,
-            rate_45: 1800,
-            rate_default: 1400,
+            end_date: '',
+            rate_20: 721,
+            rate_40: 771,
+            rate_45: 771,
+            rate_default: 721,
+            port_name: 'ท่าเรือทั่วไป',
             is_active: true,
             remark: ''
           })}
           style={{
-            padding: '8px 16px',
+            padding: '8px 18px',
             borderRadius: '8px',
             border: 'none',
             background: 'linear-gradient(135deg, #059669 0%, #047857 100%)',
             color: '#ffffff',
-            fontWeight: 700,
+            fontWeight: 800,
             fontSize: '13px',
             cursor: 'pointer',
             boxShadow: '0 2px 6px rgba(5,150,105,0.2)'
           }}
         >
-          ➕ เพิ่มเรทท่าเรือใหม่
+          ➕ เพิ่มเรทช่วงเวลาใหม่
         </button>
       </div>
 
-      {/* Table */}
+      {/* Main Table */}
       <div style={{ background: '#ffffff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '20px', boxShadow: '0 1px 3px rgba(0,0,0,0.03)' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13px' }}>
-          <thead>
-            <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 700 }}>
-              <th style={{ padding: '10px 12px', textAlign: 'left' }}>ชื่อท่าเรือ / เส้นทาง</th>
-              <th style={{ padding: '10px 12px', textAlign: 'center' }}>ช่วงวันที่ใช้งาน</th>
-              <th style={{ padding: '10px 12px', textAlign: 'right' }}>เรทตู้ 20’</th>
-              <th style={{ padding: '10px 12px', textAlign: 'right' }}>เรทตู้ 40’</th>
-              <th style={{ padding: '10px 12px', textAlign: 'right' }}>เรทตู้ 45’</th>
-              <th style={{ padding: '10px 12px', textAlign: 'center' }}>สถานะ</th>
-              <th style={{ padding: '10px 12px', textAlign: 'center' }}>จัดการ</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rates.map(rate => (
-              <tr key={rate.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                <td style={{ padding: '12px', fontWeight: 700, color: '#1e40af' }}>{rate.port_name}</td>
-                <td style={{ padding: '12px', textAlign: 'center', color: '#64748b' }}>
-                  {rate.start_date} ถึง {rate.end_date || 'ปัจจุบัน (Ongoing)'}
-                </td>
-                <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, color: '#059669', fontSize: '14px' }}>
-                  ฿{Number(rate.rate_20).toLocaleString()}
-                </td>
-                <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, color: '#059669', fontSize: '14px' }}>
-                  ฿{Number(rate.rate_40).toLocaleString()}
-                </td>
-                <td style={{ padding: '12px', textAlign: 'right', fontWeight: 800, color: '#059669', fontSize: '14px' }}>
-                  ฿{Number(rate.rate_45).toLocaleString()}
-                </td>
-                <td style={{ padding: '12px', textAlign: 'center' }}>
-                  <span style={{
-                    padding: '3px 8px',
-                    borderRadius: '6px',
-                    background: rate.is_active ? '#dcfce7' : '#f1f5f9',
-                    color: rate.is_active ? '#15803d' : '#64748b',
-                    fontWeight: 700,
-                    fontSize: '11.5px'
-                  }}>
-                    {rate.is_active ? '🟢 ใช้งานอยู่' : '⚪ ปิดใช้งาน'}
-                  </span>
-                </td>
-                <td style={{ padding: '12px', textAlign: 'center' }}>
-                  <button
-                    type="button"
-                    onClick={() => setEditingRate(rate)}
-                    style={{
-                      padding: '5px 10px',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      background: '#ffffff',
-                      color: '#2563eb',
-                      fontWeight: 700,
-                      fontSize: '12px',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    ✏️ แก้ไข
-                  </button>
-                </td>
+        
+        {loading ? (
+          <div style={{ textAlign: 'center', padding: '40px', color: '#64748b' }}>กำลังโหลดเรทราคา...</div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px' }}>
+            <thead>
+              <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 800 }}>
+                <th style={{ padding: '12px 14px', textAlign: 'left' }}>ช่วงที่</th>
+                <th style={{ padding: '12px 14px', textAlign: 'center' }}>วันที่เริ่มต้น</th>
+                <th style={{ padding: '12px 14px', textAlign: 'center' }}>วันที่สิ้นสุด</th>
+                <th style={{ padding: '12px 14px', textAlign: 'right', color: '#059669' }}>ราคาตู้ 20"</th>
+                <th style={{ padding: '12px 14px', textAlign: 'right', color: '#059669' }}>ราคาตู้ 40"</th>
+                <th style={{ padding: '12px 14px', textAlign: 'center' }}>สถานะ</th>
+                <th style={{ padding: '12px 14px', textAlign: 'center' }}>จัดการ</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rates.map((rate, idx) => (
+                <tr key={rate.id || idx} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '14px', fontWeight: 800, color: '#1e40af' }}>
+                    🏷️ {rate.period_name || `ช่วงที่ ${idx + 1}`}
+                  </td>
+                  <td style={{ padding: '14px', textAlign: 'center', color: '#334155', fontWeight: 600 }}>
+                    {rate.start_date}
+                  </td>
+                  <td style={{ padding: '14px', textAlign: 'center', color: '#334155', fontWeight: 600 }}>
+                    {rate.end_date || 'ปัจจุบัน (Ongoing)'}
+                  </td>
+                  <td style={{ padding: '14px', textAlign: 'right', fontWeight: 900, color: '#059669', fontSize: '15px' }}>
+                    ฿{Number(rate.rate_20).toLocaleString()}
+                  </td>
+                  <td style={{ padding: '14px', textAlign: 'right', fontWeight: 900, color: '#059669', fontSize: '15px' }}>
+                    ฿{Number(rate.rate_40).toLocaleString()}
+                  </td>
+                  <td style={{ padding: '14px', textAlign: 'center' }}>
+                    <span style={{
+                      padding: '3px 8px',
+                      borderRadius: '6px',
+                      background: rate.is_active ? '#dcfce7' : '#f1f5f9',
+                      color: rate.is_active ? '#15803d' : '#64748b',
+                      fontWeight: 700,
+                      fontSize: '11.5px'
+                    }}>
+                      {rate.is_active ? '🟢 ใช้งานอยู่' : '⚪ ปิดใช้งาน'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '14px', textAlign: 'center' }}>
+                    <div style={{ display: 'flex', gap: '6px', justifyContent: 'center' }}>
+                      <button
+                        type="button"
+                        onClick={() => setEditingRate(rate)}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          border: '1px solid #cbd5e1',
+                          background: '#ffffff',
+                          color: '#2563eb',
+                          fontWeight: 700,
+                          fontSize: '12px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        ✏️ แก้ไข
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(rate.id)}
+                        style={{
+                          padding: '4px 8px',
+                          borderRadius: '6px',
+                          border: '1px solid #fecaca',
+                          background: '#ffffff',
+                          color: '#dc2626',
+                          fontWeight: 700,
+                          fontSize: '12px',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
       </div>
 
-      {/* Edit Modal */}
+      {/* Edit / Create Modal */}
       {editingRate && (
         <div style={{
           position: 'fixed',
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: 'rgba(15, 23, 42, 0.5)',
+          inset: 0,
+          background: 'rgba(15, 23, 42, 0.65)',
+          backdropFilter: 'blur(4px)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          zIndex: 9999
+          zIndex: 99999
         }}>
-          <div style={{ background: '#fff', borderRadius: '16px', padding: '24px', width: '480px', maxWidth: '90vw' }}>
-            <h3 style={{ margin: '0 0 16px 0', fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
-              💵 กำหนดเรทราคาที่ท่าเรือจ่ายเรา
-            </h3>
+          <div style={{ background: '#ffffff', borderRadius: '16px', padding: '24px', width: '480px', maxWidth: '90vw', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
+                💵 กำหนดเรทราคาที่ท่าเรือจ่ายเรา
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingRate(null)}
+                style={{ background: 'transparent', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#64748b' }}
+              >
+                ✕
+              </button>
+            </div>
             
-            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <form onSubmit={handleSave} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>ชื่อท่าเรือ / เส้นทาง:</label>
+                <label style={{ fontSize: '12.5px', fontWeight: 700, color: '#475569' }}>ชื่อช่วงเวลา (เช่น ช่วงที่ 1, ช่วงที่ 2):</label>
                 <input
                   type="text"
                   required
-                  value={editingRate.port_name}
-                  onChange={e => setEditingRate({ ...editingRate, port_name: e.target.value })}
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '13px' }}
+                  placeholder="เช่น ช่วงที่ 1"
+                  value={editingRate.period_name || ''}
+                  onChange={e => setEditingRate({ ...editingRate, period_name: e.target.value })}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '13px', boxSizing: 'border-box' }}
                 />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>วันที่เริ่มใช้:</label>
+                  <label style={{ fontSize: '12.5px', fontWeight: 700, color: '#475569' }}>วันที่เริ่มต้น:</label>
                   <input
                     type="date"
                     required
-                    value={editingRate.start_date}
+                    value={editingRate.start_date || ''}
                     onChange={e => setEditingRate({ ...editingRate, start_date: e.target.value })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '13px' }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '13px', boxSizing: 'border-box' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>วันที่สิ้นสุด (เว้นว่างได้):</label>
+                  <label style={{ fontSize: '12.5px', fontWeight: 700, color: '#475569' }}>วันที่สิ้นสุด:</label>
                   <input
                     type="date"
                     value={editingRate.end_date || ''}
                     onChange={e => setEditingRate({ ...editingRate, end_date: e.target.value || null })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '13px' }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '13px', boxSizing: 'border-box' }}
                   />
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>เรทตู้ 20’ (฿):</label>
+                  <label style={{ fontSize: '12.5px', fontWeight: 700, color: '#059669' }}>ราคาตู้ 20" (บาท):</label>
                   <input
                     type="number"
                     required
+                    placeholder="เช่น 734"
                     value={editingRate.rate_20}
                     onChange={e => setEditingRate({ ...editingRate, rate_20: Number(e.target.value) })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '13px', fontWeight: 700 }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '14px', fontWeight: 800, color: '#059669', boxSizing: 'border-box' }}
                   />
                 </div>
                 <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>เรทตู้ 40’ (฿):</label>
+                  <label style={{ fontSize: '12.5px', fontWeight: 700, color: '#059669' }}>ราคาตู้ 40" (บาท):</label>
                   <input
                     type="number"
                     required
+                    placeholder="เช่น 784"
                     value={editingRate.rate_40}
                     onChange={e => setEditingRate({ ...editingRate, rate_40: Number(e.target.value) })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '13px', fontWeight: 700 }}
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>เรทตู้ 45’ (฿):</label>
-                  <input
-                    type="number"
-                    required
-                    value={editingRate.rate_45}
-                    onChange={e => setEditingRate({ ...editingRate, rate_45: Number(e.target.value) })}
-                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '13px', fontWeight: 700 }}
+                    style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '14px', fontWeight: 800, color: '#059669', boxSizing: 'border-box' }}
                   />
                 </div>
               </div>
 
               <div>
-                <label style={{ fontSize: '12px', fontWeight: 700, color: '#475569' }}>หมายเหตุ:</label>
+                <label style={{ fontSize: '12.5px', fontWeight: 700, color: '#475569' }}>หมายเหตุ:</label>
                 <input
                   type="text"
+                  placeholder="เช่น เรทท่าเรือต้นเดือน พ.ค. 2026"
                   value={editingRate.remark || ''}
                   onChange={e => setEditingRate({ ...editingRate, remark: e.target.value })}
-                  style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '13px' }}
+                  style={{ width: '100%', padding: '8px 10px', borderRadius: '8px', border: '1px solid #cbd5e1', marginTop: '4px', fontSize: '13px', boxSizing: 'border-box' }}
                 />
               </div>
 
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '12px' }}>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px' }}>
                 <button
                   type="button"
                   onClick={() => setEditingRate(null)}

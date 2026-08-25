@@ -105,7 +105,8 @@ export default function TruckPnlView() {
       const tNo = item.job_sheets?.truck_no || 'ไม่ระบุ';
       const dName = item.job_sheets?.driver_name || '-';
       const size = item.size || '20';
-      const price = portBillingService.calculatePortUnitPrice(size, portRates);
+      const jobDate = item.date_job_parsed || item.job_sheets?.date_job_parsed || '';
+      const price = portBillingService.calculatePortUnitPrice(size, jobDate, portRates);
 
       if (!truckMap[tNo]) {
         truckMap[tNo] = {

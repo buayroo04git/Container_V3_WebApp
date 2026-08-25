@@ -92,7 +92,8 @@ export default function ExecutiveDashboardView({ setActiveTab }) {
       const truckNo = item.job_sheets?.truck_no || 'ไม่ระบุ';
       const driverName = item.job_sheets?.driver_name || '-';
       const size = item.size || '20';
-      const unitPrice = portBillingService.calculatePortUnitPrice(size, portRates);
+      const jobDate = item.date_job_parsed || item.job_sheets?.date_job_parsed || '';
+      const unitPrice = portBillingService.calculatePortUnitPrice(size, jobDate, portRates);
 
       totalPortRevenue += unitPrice;
 

@@ -1,31 +1,47 @@
 import { supabase } from '../supabaseClient.js';
+import { normalizeExcelDate } from '../utils/matchingLogic.js';
 
-const LOCAL_STORAGE_PORT_RATES_KEY = 'port_billing_rates_cache_v1';
+const LOCAL_STORAGE_PORT_RATES_KEY = 'port_billing_rates_cache_v2';
 
 export const DEFAULT_PORT_RATES = [
   {
-    id: 'port_rate_lcb_standard',
-    port_name: 'ท่าเรือแหลมฉบัง (LCB - B5, C1, C2)',
-    start_date: '2026-01-01',
-    end_date: null,
-    rate_20: 1200,
-    rate_40: 1600,
-    rate_45: 1800,
-    rate_default: 1400,
+    id: 'port_rate_2026_05_p1',
+    period_name: 'ช่วงที่ 1',
+    start_date: '2026-05-01',
+    end_date: '2026-05-02',
+    rate_20: 734,
+    rate_40: 784,
+    rate_45: 784,
+    rate_default: 734,
+    port_name: 'ท่าเรือทั่วไป',
     is_active: true,
-    remark: 'เรทมาตรฐานท่าเรือแหลมฉบัง'
+    remark: 'เรทท่าเรือ 01/May/2026 - 02/May/2026'
   },
   {
-    id: 'port_rate_bkk_standard',
-    port_name: 'ท่าเรือกรุงเทพ (BKK - คลองเตย)',
-    start_date: '2026-01-01',
-    end_date: null,
-    rate_20: 1400,
-    rate_40: 1900,
-    rate_45: 2100,
-    rate_default: 1600,
+    id: 'port_rate_2026_05_p2',
+    period_name: 'ช่วงที่ 2',
+    start_date: '2026-05-03',
+    end_date: '2026-05-09',
+    rate_20: 721,
+    rate_40: 771,
+    rate_45: 771,
+    rate_default: 721,
+    port_name: 'ท่าเรือทั่วไป',
     is_active: true,
-    remark: 'เรทมาตรฐานท่าเรือกรุงเทพ'
+    remark: 'เรทท่าเรือ 03/May/2026 - 09/May/2026'
+  },
+  {
+    id: 'port_rate_2026_05_p3',
+    period_name: 'ช่วงที่ 3',
+    start_date: '2026-05-10',
+    end_date: '2026-05-15',
+    rate_20: 721,
+    rate_40: 771,
+    rate_45: 771,
+    rate_default: 721,
+    port_name: 'ท่าเรือทั่วไป',
+    is_active: true,
+    remark: 'เรทท่าเรือ 10/May/2026 - 15/May/2026'
   }
 ];
 
@@ -59,14 +75,14 @@ export const portBillingService = {
         const { data, error } = await supabase
           .from('port_billing_rates')
           .select('*')
-          .order('start_date', { ascending: false });
+          .order('start_date', { ascending: true });
 
         if (!error && Array.isArray(data) && data.length > 0) {
           safeSetStorage(LOCAL_STORAGE_PORT_RATES_KEY, JSON.stringify(data));
           return { data, error: null };
         }
       } catch (err) {
-        // Table might not exist yet on Supabase
+        // Table might not exist yet on Supabase, fallback to local
       }
 
       return { data: localRates, error: null };
@@ -77,7 +93,7 @@ export const portBillingService = {
   },
 
   /**
-   * บันทึกหรืออัปเดตเรทราคา
+   * บันทึกหรืออัปเดตเรทราคาช่วงเวลา
    */
   async savePortRate(rateRecord) {
     try {
@@ -86,13 +102,14 @@ export const portBillingService = {
 
       const recordToSave = {
         id: rateRecord.id || `port_rate_${Date.now()}`,
-        port_name: rateRecord.port_name || 'ทั่วไป',
+        period_name: rateRecord.period_name || `ช่วงที่ ${updatedList.length + 1}`,
+        port_name: rateRecord.port_name || 'ท่าเรือทั่วไป',
         start_date: rateRecord.start_date || new Date().toISOString().slice(0, 10),
         end_date: rateRecord.end_date || null,
-        rate_20: Number(rateRecord.rate_20) || 1200,
-        rate_40: Number(rateRecord.rate_40) || 1600,
-        rate_45: Number(rateRecord.rate_45) || 1800,
-        rate_default: Number(rateRecord.rate_default) || 1400,
+        rate_20: Number(rateRecord.rate_20) || 721,
+        rate_40: Number(rateRecord.rate_40) || 771,
+        rate_45: Number(rateRecord.rate_45) || 771,
+        rate_default: Number(rateRecord.rate_default) || Number(rateRecord.rate_20) || 721,
         is_active: rateRecord.is_active !== undefined ? rateRecord.is_active : true,
         remark: rateRecord.remark || '-',
         updated_at: new Date().toISOString()
@@ -102,9 +119,11 @@ export const portBillingService = {
       if (existingIndex >= 0) {
         updatedList[existingIndex] = recordToSave;
       } else {
-        updatedList.unshift(recordToSave);
+        updatedList.push(recordToSave);
       }
 
+      // Sort by start_date ascending
+      updatedList.sort((a, b) => (a.start_date || '').localeCompare(b.start_date || ''));
       safeSetStorage(LOCAL_STORAGE_PORT_RATES_KEY, JSON.stringify(updatedList));
 
       try {
@@ -119,18 +138,64 @@ export const portBillingService = {
   },
 
   /**
-   * คำนวณราคาตู้จากเรทท่าเรือ
+   * ลบเรทราคา
    */
-  calculatePortUnitPrice(size, portRates = DEFAULT_PORT_RATES) {
-    const activeRate = (portRates && portRates.length > 0) 
-      ? (portRates.find(r => r.is_active) || portRates[0])
-      : DEFAULT_PORT_RATES[0];
+  async deletePortRate(id) {
+    try {
+      const { data: currentRates } = await this.fetchPortRates();
+      const updatedList = (currentRates || []).filter(r => r.id !== id);
+      safeSetStorage(LOCAL_STORAGE_PORT_RATES_KEY, JSON.stringify(updatedList));
 
+      try {
+        await supabase.from('port_billing_rates').delete().eq('id', id);
+      } catch (err) {}
+
+      return { success: true };
+    } catch (error) {
+      console.error('deletePortRate error:', error);
+      return { success: false, error };
+    }
+  },
+
+  /**
+   * ค้นหาเรทราคาที่มีผลตามวันที่วิ่งงานจริง
+   */
+  findEffectivePortRate(jobDateStr, portRates = DEFAULT_PORT_RATES) {
+    const list = Array.isArray(portRates) && portRates.length > 0 ? portRates : DEFAULT_PORT_RATES;
+    if (!jobDateStr || jobDateStr === '-') {
+      return list.find(r => r.is_active) || list[0];
+    }
+
+    let isoDate = jobDateStr;
+    if (typeof normalizeExcelDate === 'function') {
+      const norm = normalizeExcelDate(jobDateStr);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(norm)) isoDate = norm;
+    }
+
+    // Match exact period where start_date <= isoDate <= end_date
+    const matched = list.find(r => {
+      if (!r.is_active) return false;
+      const start = r.start_date;
+      const end = r.end_date;
+      if (start && isoDate < start) return false;
+      if (end && isoDate > end) return false;
+      return true;
+    });
+
+    return matched || list.find(r => r.is_active) || list[0];
+  },
+
+  /**
+   * คำนวณราคาตู้จากเรทท่าเรือตามขนาดและวันที่
+   */
+  calculatePortUnitPrice(size, jobDateStr = null, portRates = DEFAULT_PORT_RATES) {
+    const effectiveRate = this.findEffectivePortRate(jobDateStr, portRates);
     const cleanSize = String(size || '').trim();
-    if (cleanSize.includes('45')) return Number(activeRate.rate_45) || 1800;
-    if (cleanSize.includes('40')) return Number(activeRate.rate_40) || 1600;
-    if (cleanSize.includes('20')) return Number(activeRate.rate_20) || 1200;
-    return Number(activeRate.rate_default) || 1400;
+
+    if (cleanSize.includes('45')) return Number(effectiveRate.rate_45) || Number(effectiveRate.rate_40) || 771;
+    if (cleanSize.includes('40')) return Number(effectiveRate.rate_40) || 771;
+    if (cleanSize.includes('20')) return Number(effectiveRate.rate_20) || 721;
+    return Number(effectiveRate.rate_default) || Number(effectiveRate.rate_20) || 721;
   }
 };
 
