@@ -44,6 +44,26 @@ export default function ExecutiveDashboardView({ setActiveTab }) {
     loadDashboardData();
   }, []);
 
+  const handlePrevMonth = () => {
+    const parts = (selectedMonth || '').split('-');
+    if (parts.length === 2) {
+      const d = new Date(Number(parts[0]), Number(parts[1]) - 2, 1);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      setSelectedMonth(`${y}-${m}`);
+    }
+  };
+
+  const handleNextMonth = () => {
+    const parts = (selectedMonth || '').split('-');
+    if (parts.length === 2) {
+      const d = new Date(Number(parts[0]), Number(parts[1]), 1);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      setSelectedMonth(`${y}-${m}`);
+    }
+  };
+
   // กรองและรวมยอดตามงวดเดือนที่เลือก
   const metrics = useMemo(() => {
     const startOfMonth = `${selectedMonth}-01`;
@@ -193,22 +213,63 @@ export default function ExecutiveDashboardView({ setActiveTab }) {
           </p>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-          <span style={{ fontSize: '13px', fontWeight: 600, color: '#475569' }}>📅 งวดเดือน:</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', background: '#f8fafc', padding: '4px 8px', borderRadius: '10px', border: '1px solid #cbd5e1' }}>
+          <span style={{ fontSize: '13px', fontWeight: 700, color: '#475569', marginRight: '4px' }}>📅 งวดเดือน:</span>
+          
+          <button
+            type="button"
+            onClick={handlePrevMonth}
+            title="เดือนก่อนหน้า"
+            style={{
+              padding: '4px 8px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#334155',
+              cursor: 'pointer',
+              fontWeight: 700,
+              fontSize: '12px'
+            }}
+          >
+            ◀
+          </button>
+
           <input
             type="month"
             value={selectedMonth}
             onChange={e => setSelectedMonth(e.target.value)}
+            onClick={(e) => {
+              try { if (typeof e.target.showPicker === 'function') e.target.showPicker(); } catch(err){}
+            }}
             style={{
-              padding: '6px 12px',
-              borderRadius: '8px',
+              padding: '4px 8px',
+              borderRadius: '6px',
               border: '1px solid #cbd5e1',
               fontSize: '13px',
-              fontWeight: 700,
+              fontWeight: 800,
               color: '#0f172a',
-              background: '#f8fafc'
+              background: '#ffffff',
+              cursor: 'pointer'
             }}
           />
+
+          <button
+            type="button"
+            onClick={handleNextMonth}
+            title="เดือนถัดไป"
+            style={{
+              padding: '4px 8px',
+              borderRadius: '6px',
+              border: '1px solid #cbd5e1',
+              background: '#ffffff',
+              color: '#334155',
+              cursor: 'pointer',
+              fontWeight: 700,
+              fontSize: '12px'
+            }}
+          >
+            ▶
+          </button>
         </div>
       </div>
 

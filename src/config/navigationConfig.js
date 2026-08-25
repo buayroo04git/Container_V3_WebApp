@@ -47,7 +47,7 @@ export const NAVIGATION_SECTIONS = [
       },
       {
         id: 'jobsheet-completed',
-        label: 'จัดการรอบงาน (Batch)',
+        label: 'Completed Job Sheets',
         icon: '✅',
         description: 'ประวัติใบงานที่บันทึกแล้ว',
         component: BatchManagerView,
@@ -62,7 +62,7 @@ export const NAVIGATION_SECTIONS = [
       },
       {
         id: 'jobsheet-history',
-        label: 'ประวัติตู้ทั้งหมด',
+        label: 'OCR Container History',
         icon: '📋',
         description: 'ประวัติตู้ทั้งหมดจากใบงาน (Completed & Pending)',
         component: OcrContainerHistoryView,
