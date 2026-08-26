@@ -10,6 +10,7 @@ import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown'
 import UniversalTableContainer from '../components/ui/UniversalTableContainer';
 import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import MonthPicker from '../components/ui/MonthPicker';
+import useActiveMonth from '../hooks/useActiveMonth';
 import RateConfigModal from '../components/payroll/RateConfigModal';
 import DriverPayrollDetailModal from '../components/payroll/DriverPayrollDetailModal';
 import PaymentSettlementModal from '../components/payroll/PaymentSettlementModal';
@@ -386,7 +387,7 @@ export default function DriverPayrollView({ defaultTab, defaultSubTab } = {}) {
 
   // 🔍 Filters for Tab 1 (Trips)
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [selectedMonth, setSelectedMonth] = useActiveMonth();
   const [datePreset, setDatePreset] = useState('ALL'); 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');

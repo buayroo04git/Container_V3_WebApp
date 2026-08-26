@@ -7,6 +7,7 @@ import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown'
 import UniversalTableContainer from '../components/ui/UniversalTableContainer';
 import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import MonthPicker from '../components/ui/MonthPicker';
+import useActiveMonth from '../hooks/useActiveMonth';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 function getPageNumbers(current, total) {
@@ -90,7 +91,7 @@ export default function BatchManagerView() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedBatchFilter, setSelectedBatchFilter] = useState('ALL');
   const [selectedTruckFilter, setSelectedTruckFilter] = useState('ALL');
-  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedMonth, setSelectedMonth] = useActiveMonth();
   const [activeDetailSheet, setActiveDetailSheet] = useState(null);
   
   // State สำหรับหน้าต่างแก้ไขเฉพาะตู้ที่ยังไม่พบ (Red Containers Editor)

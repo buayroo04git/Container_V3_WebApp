@@ -11,6 +11,7 @@ import ContainerMasterTable from '../components/containers/ContainerMasterTable'
 import ContainerContextMenu from '../components/containers/ContainerContextMenu';
 import ContainerImageModal from '../components/containers/ContainerImageModal';
 import RenameColumnModal from '../components/ui/RenameColumnModal';
+import useActiveMonth from '../hooks/useActiveMonth';
 
 export default function DatabaseView({ activeFilter = 'all' }) {
   const [currentTab, setCurrentTab] = useState(activeFilter);
@@ -24,7 +25,7 @@ export default function DatabaseView({ activeFilter = 'all' }) {
   const [selectedJobTypeFilter, setSelectedJobTypeFilter] = useState('ALL');
   const [selectedPortFilter, setSelectedPortFilter] = useState('ALL');
   const [selectedSizeFilter, setSelectedSizeFilter] = useState('ALL');
-  const [selectedMonth, setSelectedMonth] = useState('ALL');
+  const [selectedMonth, setSelectedMonth] = useActiveMonth();
   
   // Aliases & Columns
   const [aliases, setAliases] = useState(() => {

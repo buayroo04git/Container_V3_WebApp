@@ -13,6 +13,7 @@ import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown'
 import UniversalTableContainer from '../components/ui/UniversalTableContainer';
 import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import MonthPicker from '../components/ui/MonthPicker';
+import useActiveMonth from '../hooks/useActiveMonth';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 const DEFAULT_MAINTENANCE_COLUMNS = [
@@ -97,7 +98,7 @@ export default function TruckMaintenanceView() {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
   const [truckFilter, setTruckFilter] = useState('ALL');
-  const [selectedMonth, setSelectedMonth] = useState('ALL');
+  const [selectedMonth, setSelectedMonth] = useActiveMonth();
 
   // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);

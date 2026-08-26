@@ -8,6 +8,7 @@ import UniversalTableHeader from '../components/ui/UniversalTableHeader.jsx';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown.jsx';
 import KpiCard from '../components/ui/KpiCard.jsx';
 import MonthPicker from '../components/ui/MonthPicker.jsx';
+import useActiveMonth from '../hooks/useActiveMonth.js';
 import DriverMonthlyPayslipModal from '../components/payroll/DriverMonthlyPayslipModal.jsx';
 
 // =========================================================================
@@ -82,7 +83,7 @@ const INCOME_ALIGN_MAP = {
 };
 
 export default function DriverIncomeSummaryView() {
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [selectedMonth, setSelectedMonth] = useActiveMonth();
   const [loading, setLoading] = useState(true);
   const [payrollData, setPayrollData] = useState({
     drivers: [],

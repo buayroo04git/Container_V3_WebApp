@@ -11,6 +11,7 @@ import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown'
 import UniversalTableContainer from '../components/ui/UniversalTableContainer';
 import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import MonthPicker from '../components/ui/MonthPicker';
+import useActiveMonth from '../hooks/useActiveMonth';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 function getPageNumbers(current, total) {
@@ -108,7 +109,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'COMPLETED' | 'PENDING' | 'MATCHED' | 'UNMATCHED'
   const [selectedBatchFilter, setSelectedBatchFilter] = useState('ALL');
   const [selectedTruckFilter, setSelectedTruckFilter] = useState('ALL');
-  const [selectedMonth, setSelectedMonth] = useState('');
+  const [selectedMonth, setSelectedMonth] = useActiveMonth();
   const [previewImage, setPreviewImage] = useState(null);
   const [editingContainer, setEditingContainer] = useState(null);
 

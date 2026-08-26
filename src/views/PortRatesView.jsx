@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { portBillingService, DEFAULT_PORT_RATES } from '../services/portBillingService.js';
 import MonthPicker from '../components/ui/MonthPicker.jsx';
+import useActiveMonth from '../hooks/useActiveMonth.js';
 
 export default function PortRatesView({
   selectedMonth: propMonth,
@@ -9,7 +10,7 @@ export default function PortRatesView({
   isSubTab = false
 }) {
   const [rates, setRates] = useState(DEFAULT_PORT_RATES);
-  const [internalMonth, setInternalMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [internalMonth, setInternalMonth] = useActiveMonth();
   const selectedMonth = propMonth || internalMonth;
   const setSelectedMonth = propSetMonth || setInternalMonth;
 

@@ -7,6 +7,7 @@ import UniversalTableContainer from '../components/ui/UniversalTableContainer';
 import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
 import MonthPicker from '../components/ui/MonthPicker';
+import useActiveMonth from '../hooks/useActiveMonth';
 import ExpenseModal from '../components/expenses/ExpenseModal';
 import ExpenseImportModal from '../components/expenses/ExpenseImportModal';
 
@@ -82,7 +83,7 @@ export default function TruckExpensesView() {
   const [refreshing, setRefreshing] = useState(false);
 
   // Filters
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [selectedMonth, setSelectedMonth] = useActiveMonth();
   const [truckFilter, setTruckFilter] = useState('ALL');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');

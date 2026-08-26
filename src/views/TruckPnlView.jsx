@@ -5,12 +5,13 @@ import { fetchTrucks } from '../services/truckDriverService.js';
 import PortRatesView from './PortRatesView.jsx';
 import KpiCard from '../components/ui/KpiCard.jsx';
 import MonthPicker from '../components/ui/MonthPicker.jsx';
+import useActiveMonth from '../hooks/useActiveMonth.js';
 import { normalizeExcelDate } from '../utils/matchingLogic.js';
 import * as XLSX from 'xlsx';
 
 export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
   const [activeSubTab, setActiveSubTab] = useState(defaultSubTab);
-  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
+  const [selectedMonth, setSelectedMonth] = useActiveMonth();
   const [cycleFilter, setCycleFilter] = useState('ALL'); // 'ALL', 'H1' (1-15), 'H2' (16-สิ้นเดือน)
   const [loading, setLoading] = useState(true);
   const [containers, setContainers] = useState([]);

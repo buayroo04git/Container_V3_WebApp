@@ -17,6 +17,7 @@ import KpiCard from '../components/ui/KpiCard';
 import UniversalTableContainer from '../components/ui/UniversalTableContainer';
 import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import MonthPicker from '../components/ui/MonthPicker';
+import useActiveMonth from '../hooks/useActiveMonth';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 const DEFAULT_OPERATION_COLUMNS = [
@@ -85,7 +86,7 @@ export default function TruckOperationsView() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [truckFilter, setTruckFilter] = useState('ALL');
   const [typeFilter, setTypeFilter] = useState('ALL');
-  const [selectedMonth, setSelectedMonth] = useState('ALL');
+  const [selectedMonth, setSelectedMonth] = useActiveMonth();
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
