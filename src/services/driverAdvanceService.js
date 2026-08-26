@@ -239,11 +239,33 @@ export const driverAdvanceService = {
    */
   async saveAdvance(advanceData) {
     try {
+      const isNew = !advanceData.id;
       const id = advanceData.id || `adv_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
       const isLoan = advanceData.category === 'installment_loan' || advanceData.advance_type === 'loan_installment';
       const category = isLoan ? 'installment_loan' : 'single_advance';
       const advance_type = advanceData.advance_type || (isLoan ? 'loan_installment' : 'salary_advance');
       const amount = Number(advanceData.amount || 0);
+
+      // ป้องกันการกดบันทึกซ้ำ (Duplicate Prevention) สำหรับรายการใหม่
+      if (isNew) {
+        const cachedCheck = safeGetStorage(STORAGE_KEY);
+        const listCheck = cachedCheck ? JSON.parse(cachedCheck) : [];
+        const checkDate = advanceData.advance_date ? String(advanceData.advance_date).slice(0, 10) : new Date().toISOString().slice(0, 10);
+        const checkDriver = String(advanceData.driver_name || '').trim();
+        
+        const existingDup = listCheck.find(r => 
+          String(r.driver_name || '').trim() === checkDriver &&
+          String(r.advance_date || '').slice(0, 10) === checkDate &&
+          Number(r.amount) === amount &&
+          r.category === category &&
+          r.status === 'pending'
+        );
+
+        if (existingDup) {
+          console.warn('driverAdvanceService: Duplicate pending advance detected, returning existing record.');
+          return { data: this.normalizeAdvanceItem(existingDup), error: null, isDuplicate: true };
+        }
+      }
       const installments_total = isLoan ? Math.max(1, Number(advanceData.installments_total || 1)) : 1;
       const installments_paid = isLoan ? Math.max(0, Number(advanceData.installments_paid || 0)) : (advanceData.status === 'settled' ? 1 : 0);
       const installment_amount = isLoan

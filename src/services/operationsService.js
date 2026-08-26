@@ -759,3 +759,107 @@ export function getDriverForTruckOnDate(truckNo, dateStr) {
   return matched ? matched.driver_name : null;
 }
 
+/**
+ * 🩺 ตรวจสอบความสอดคล้องของข้อมูลการจับคู่รถ-คนขับ (Fleet Integrity Diagnostic)
+ */
+export async function checkFleetIntegrity() {
+  try {
+    const [trucksRes, driversRes, opsRes] = await Promise.all([
+      supabase.from('truck_records').select('id, truck_no, assigned_driver_name'),
+      supabase.from('driver_records').select('id, driver_name, assigned_truck_no'),
+      supabase.from('truck_operations').select('*').eq('status', 'active')
+    ]);
+
+    const trucks = trucksRes.data || [];
+    const drivers = driversRes.data || [];
+    const activeOps = (opsRes.data || []).filter(o => !o.end_date || o.status === 'active');
+
+    const issues = [];
+
+    // 1. ตรวจสอบความตรงกันระหว่าง truck_records กับ active truck_operations
+    trucks.forEach(t => {
+      const tNo = String(t.truck_no || '').trim();
+      const assigned = String(t.assigned_driver_name || '').trim();
+      const activeOp = activeOps.find(o => String(o.truck_no || '').trim() === tNo);
+      const expectedDriver = activeOp ? String(activeOp.driver_name || '').trim() : '-';
+
+      if (assigned !== expectedDriver && !(assigned === '-' && expectedDriver === '-')) {
+        issues.push({
+          type: 'TRUCK_MISMATCH',
+          truck_no: tNo,
+          current_value: assigned,
+          expected_value: expectedDriver,
+          message: `รถเบอร์ ${tNo} มีคนขับประจำ '${assigned}' แต่ในงวดที่ Active คือ '${expectedDriver}'`
+        });
+      }
+    });
+
+    // 2. ตรวจสอบความตรงกันระหว่าง driver_records กับ active truck_operations
+    drivers.forEach(d => {
+      const dName = String(d.driver_name || '').trim();
+      const assigned = String(d.assigned_truck_no || '').trim();
+      const activeOp = activeOps.find(o => String(o.driver_name || '').trim() === dName);
+      const expectedTruck = activeOp ? String(activeOp.truck_no || '').trim() : '-';
+
+      if (assigned !== expectedTruck && !(assigned === '-' && expectedTruck === '-')) {
+        issues.push({
+          type: 'DRIVER_MISMATCH',
+          driver_name: dName,
+          current_value: assigned,
+          expected_value: expectedTruck,
+          message: `คนขับ '${dName}' ประจำรถเบอร์ '${assigned}' แต่ในงวดที่ Active คือ '${expectedTruck}'`
+        });
+      }
+    });
+
+    return {
+      status: issues.length === 0 ? 'HEALTHY' : 'NEEDS_SYNC',
+      issue_count: issues.length,
+      issues,
+      checked_at: new Date().toISOString()
+    };
+  } catch (err) {
+    console.error('checkFleetIntegrity error:', err);
+    return { status: 'ERROR', issue_count: 0, issues: [], error: err.message };
+  }
+}
+
+/**
+ * ⚡ ซ่อมแซมและซิงค์ข้อมูลให้ตรงกัน 100% (Auto-Heal Fleet Integrity)
+ */
+export async function healFleetIntegrity() {
+  try {
+    const { issues } = await checkFleetIntegrity();
+    if (!issues || issues.length === 0) {
+      return { success: true, fixed_count: 0, message: 'ข้อมูลทั้งหมดสอดคล้องกันสมบูรณ์แล้ว ไม่จำเป็นต้องซ่อมแซม' };
+    }
+
+    let fixedCount = 0;
+
+    for (const issue of issues) {
+      if (issue.type === 'TRUCK_MISMATCH') {
+        await supabase
+          .from('truck_records')
+          .update({ assigned_driver_name: issue.expected_value, updated_at: new Date().toISOString() })
+          .eq('truck_no', issue.truck_no);
+        fixedCount++;
+      } else if (issue.type === 'DRIVER_MISMATCH') {
+        await supabase
+          .from('driver_records')
+          .update({ assigned_truck_no: issue.expected_value, updated_at: new Date().toISOString() })
+          .eq('driver_name', issue.driver_name);
+        fixedCount++;
+      }
+    }
+
+    return {
+      success: true,
+      fixed_count: fixedCount,
+      message: `ซ่อมแซมและซิงค์ข้อมูลสำเร็จแล้ว ${fixedCount} รายการ`
+    };
+  } catch (err) {
+    console.error('healFleetIntegrity error:', err);
+    return { success: false, fixed_count: 0, error: err.message };
+  }
+}
+

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
+import { checkFleetIntegrity, healFleetIntegrity } from '../services/operationsService';
 
 export default function SettingsView() {
   const [geminiKey, setGeminiKey] = useState('');
@@ -288,9 +289,160 @@ export default function SettingsView() {
           </button>
         </div>
 
+        {/* System Health & Data Integrity Card */}
+        <SystemIntegrityCard />
+
       </div>
       
       </div>
+    </div>
+  );
+}
+
+function SystemIntegrityCard() {
+  const [checking, setChecking] = useState(false);
+  const [healing, setHealing] = useState(false);
+  const [diagnostic, setDiagnostic] = useState(null);
+  const [healResult, setHealResult] = useState(null);
+
+  const runDiagnostic = async () => {
+    setChecking(true);
+    setHealResult(null);
+    try {
+      const res = await checkFleetIntegrity();
+      setDiagnostic(res);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleHeal = async () => {
+    setHealing(true);
+    try {
+      const res = await healFleetIntegrity();
+      setHealResult(res);
+      await runDiagnostic();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setHealing(false);
+    }
+  };
+
+  return (
+    <div style={{
+      background: '#ffffff',
+      border: '1px solid #e2e8f0',
+      borderRadius: '12px',
+      padding: '24px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: '16px',
+      boxShadow: '0 2px 6px rgba(0,0,0,0.02)'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
+        <div>
+          <h3 style={{ margin: '0 0 4px 0', fontSize: '15px', fontWeight: 800, color: '#0f172a', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span>🩺 ตรวจสอบความถูกต้องของข้อมูลระบบ (System Health & Integrity)</span>
+            {diagnostic && (
+              <span style={{
+                fontSize: '11px',
+                padding: '2px 8px',
+                borderRadius: '12px',
+                fontWeight: 700,
+                background: diagnostic.status === 'HEALTHY' ? '#dcfce7' : '#fee2e2',
+                color: diagnostic.status === 'HEALTHY' ? '#15803d' : '#b91c1c',
+                border: `1px solid ${diagnostic.status === 'HEALTHY' ? '#86efac' : '#fca5a5'}`
+              }}>
+                {diagnostic.status === 'HEALTHY' ? '✅ สมบูรณ์ 100%' : `⚠️ พบข้อไม่ตรงกัน ${diagnostic.issue_count} รายการ`}
+              </span>
+            )}
+          </h3>
+          <p style={{ margin: 0, fontSize: '12.5px', color: '#64748b' }}>
+            ตรวจสอบความสอดคล้องระหว่างทะเบียนรถ คนขับประจำ และประวัติงวดการขับขี่ที่ Active ป้องกันข้อมูลค้างหรือหลุดการซิงค์
+          </p>
+        </div>
+
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={runDiagnostic}
+            disabled={checking || healing}
+            style={{
+              padding: '8px 14px',
+              borderRadius: '7px',
+              border: '1px solid #cbd5e1',
+              background: '#f8fafc',
+              color: '#334155',
+              fontSize: '13px',
+              fontWeight: 700,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease'
+            }}
+          >
+            {checking ? '⏳ กำลังตรวจสอบ...' : '🔍 ตรวจสอบความสอดคล้อง'}
+          </button>
+
+          {diagnostic && diagnostic.issue_count > 0 && (
+            <button
+              onClick={handleHeal}
+              disabled={healing || checking}
+              style={{
+                padding: '8px 14px',
+                borderRadius: '7px',
+                border: '1px solid #86efac',
+                background: '#15803d',
+                color: '#ffffff',
+                fontSize: '13px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                boxShadow: '0 2px 4px rgba(21, 128, 61, 0.2)',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {healing ? '⏳ กำลังซ่อมแซม...' : '⚡ ซ่อมแซมและซิงค์อัตโนมัติ'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {healResult && (
+        <div style={{
+          padding: '10px 14px',
+          borderRadius: '7px',
+          background: healResult.success ? '#f0fdf4' : '#fef2f2',
+          border: `1px solid ${healResult.success ? '#bbf7d0' : '#fecaca'}`,
+          color: healResult.success ? '#166534' : '#991b1b',
+          fontSize: '12.5px',
+          fontWeight: 600
+        }}>
+          {healResult.success ? '✅ ' : '❌ '} {healResult.message || healResult.error}
+        </div>
+      )}
+
+      {diagnostic && diagnostic.issues && diagnostic.issues.length > 0 && (
+        <div style={{
+          background: '#fff7ed',
+          border: '1px solid #fed7aa',
+          borderRadius: '8px',
+          padding: '12px 16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '6px'
+        }}>
+          <span style={{ fontSize: '12.5px', fontWeight: 700, color: '#9a3412' }}>
+            รายการที่ตรวจพบความไม่ตรงกัน:
+          </span>
+          <ul style={{ margin: 0, paddingLeft: '18px', fontSize: '12px', color: '#c2410c' }}>
+            {diagnostic.issues.map((issue, idx) => (
+              <li key={idx} style={{ marginBottom: '2px' }}>
+                {issue.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
