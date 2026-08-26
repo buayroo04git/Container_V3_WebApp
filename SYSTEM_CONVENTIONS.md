@@ -49,43 +49,41 @@
 ## 📝 3. บันทึกประวัติการปรับปรุง (Changelog Summary)
 
 ### 🗓️ 2026-08-26
+* 🚀 **อัปเกรดแบรนด์ระบบเป็น `Container V3 PRO MAX`:**
+  * ปรับ Badge ส่วนหัวเมนูบาร์เป็น **`Container V3` `PRO MAX`** พร้อมดีไซน์ Gradient และขอบสีน้ำเงินพรีเมียม
+  * อัปเดตชื่อ Title บน Browser Tab เป็น `<title>Container V3 Pro MAX</title>`
+* 💾 **ระบบจดจำงวดเดือนข้ามเมนูอัตโนมัติ (Persistent & Synchronized Month Filtering):**
+  * พัฒนา Hook `useActiveMonth.js` จัดเก็บเดือนที่เลือกลง `localStorage` (`app_selected_month`) พร้อมระบบ Event Bus `app_month_changed` ซิงค์ข้อมูลแบบ Real-time
+  * เมื่อผู้ใช้เลือกดูเดือนใดก็ตาม (เช่น เมษายน `2026-04`) ในหน้าใดก็ตาม แล้วสลับไปเมนูอื่น หรือกลับมาใหม่ ระบบจะยังคงจดจำและแสดงผลเดือนเมษายนต่อเนื่องทันที ไม่ต้องเลือกใหม่ซ้ำซ้อน
+* 🔄 **ระบบฟิลเตอร์งวดเดือนมาตรฐาน (Unified MonthPicker Date Period Filtering):**
+  * นำ `MonthPicker` (ปุ่มเลื่อนเดือน ◀ ▶ + เมนูดรอปดาวน์เลือกปี-เดือนภาษาไทย + ปุ่ม 'ทุกเดือน') มาใช้งานเป็นมาตรฐานเดียวกันทุกเมนูในระบบ:
+    * `DatabaseView.jsx` (Containers / Master DB ใบวางบิล) & `ContainerTableToolbar.jsx`: กรองตู้ตามเดือนทำงาน (`date_job_parsed`, `date_job`, `batch_name`)
+    * `TruckExpensesView.jsx` (ค่าใช้จ่ายรถ & น้ำมัน): เปลี่ยนจาก Date Input คู่เป็น `MonthPicker` ที่เชื่อมโยงกับฐานข้อมูล Supabase ตามช่วงเดือนอัตโนมัติ
+    * `DriverPayrollView.jsx` (ผลงานคนขับ Tab 1): กรองงวดรอบวิ่งตู้และคำนวณค่าตอบแทนตามงวดเดือนที่เลือก
+    * `BatchManagerView.jsx` (Completed Job Sheets): กรองใบงานตามงวดเดือน และนำช่อง `<input type="month">` เดิมที่ซ้ำซ้อนออก
+    * `OcrContainerHistoryView.jsx` (ประวัติตู้ OCR): กรองประวัติตู้ตามงวดเดือน
+    * `TruckOperationsView.jsx` (ประวัติการขับขี่รถ/คนขับ): กรองงวดการขับขี่ตามงวดเดือน
+    * `TruckMaintenanceView.jsx` (ประวัติการซ่อมบำรุง): กรองประวัติการเข้าซ่อมตามงวดเดือน
+    * `DriverLeavesView.jsx` (ประวัติการลางานคนขับ): กรองประวัติการลาตามงวดเดือน
+    * `ExecutiveDashboardView.jsx` (ผลประกอบการรถ) & `DriverIncomeSummaryView.jsx` (สรุปรายได้คนขับ): ซิงค์งวดเดือนอัตโนมัติ
+* 📐 **ปรับปรุง Responsive Layout และแก้ไขปัญหาการเว้นช่องว่างด้านบนหัวตาราง:**
+  * ล็อกการ์ด KPI ให้เป็นแบบ Fixed 4 คอลัมน์ (`repeat(4, minmax(0, 1fr))`) ใน `BatchManagerView` เพื่อป้องกันการแตกแถวเป็น 2 ชั้นเมื่อหน้าจอไม่ได้เปิดแบบ Full Screen
+  * ปรับโครงสร้าง Table Toolbar ให้ลื่นไหลเป็นธรรมชาติ (Natural Flow) ป้องกันการเกิดช่องว่างด้านหน้าตัวกรอง
+  * ปรับขนาดช่องค้นหาให้กะทัดรัด (180px) พอดีกับแถบเครื่องมือ
+* ⚡ **Fleet Data Integrity Diagnostics & Auto-Heal:**
+  * เพิ่มเครื่องมือตรวจสอบความสอดคล้องของข้อมูลรถ-คนขับ-งวดการขับขี่แบบเรียลไทม์ และระบบซ่อมแซมความสอดคล้องอัตโนมัติ (Auto-Heal) ในหน้า `SettingsView`
+* 🛡️ **Loan Installment Metadata Fallback:**
+  * รองรับการจัดเก็บ metadata ค่างวดเงินกู้ (`installments_total`, `installments_paid`, `installment_amount`) ใน Supabase Columns และ embedded fallback ใน `remark`
 * 🧭 **ปรับปรุงโครงสร้างเมนูแดชบอร์ด & ปรับคำศัพท์มาตรฐาน (Dashboard Structure & Wording Refresh):**
   * เปลี่ยนชื่อหมวดหมู่หลัก: `ภาพรวมบริหาร` ➔ `แดชบอร์ด`
   * เปลี่ยนชื่อเมนูย่อยหลัก: `แดชบอร์ดภาพรวม` ➔ `ผลประกอบการรถ`
   * เพิ่มเมนูย่อยใหม่ในหมวดแดชบอร์ด: `สรุปรายได้คนขับ`
-  * ปรับคำศัพท์แสดงผลทั่วทั้งระบบ:
-    * `เรทท่าเรือ` ➔ `ค่าเที่ยวท่าเรือ`
-    * `ค่ารอบ (ค่าเที่ยว)` ➔ `ค่ารอบคนขับ`
-  * แก้ไขการแสดงผลจำนวนตู้ในรายการต้นทุนค่ารอบคนขับ: ดึงเฉพาะ **จำนวนตู้ที่ตรวจสอบแล้ว (Verified Completed)** แทนการแสดงจำนวนตู้รวมทั้งหมดในใบวางบิล ทำให้ตัวเลขจำนวนตู้สอดคล้องกับยอดเงินค่ารอบจริง (เช่น 25 ตู้ที่ตรวจสอบแล้ว จากทั้งหมด 65 ตู้ในใบวางบิล)
-  * 💵 **ออกแบบหน้า `สรุปรายได้คนขับ` ใหม่ (DriverIncomeSummaryView):**
-    * รวม **ฝั่งรายรับ (Earnings)**: เงินเดือนฐาน + ค่ารอบตู้ที่ตรวจผ่าน + เงินพิเศษขั้นบันได
-    * รวม **ฝั่งรายการหัก (Deductions)**: ประกันสังคม (875฿), ภาษีหัก ณ ที่จ่าย 3%, ยอดเบิกค่าเที่ยว/เบิกล่วงหน้า, ยอดผ่อนชำระเงินยืมก้อน
-    * **ยอดโอนสุทธิ (Net Payout)** = รายรับรวม - รายการหักทั้งหมด
-    * รองรับ Universal Table, ตัวกรองรายการหัก, ค้นหา, ส่งออก Excel และกดดู/พิมพ์สลิปเงินเดือนรายคน (`DriverMonthlyPayslipModal`)
-  * 🔧 **แก้ไขปุ่มแก้ไข (✏️) ในหน้าบัญชีเบิกล่วงหน้า & เงินกู้ยืม (`DriverAdvancesView` & `DriverAdvanceModal`):**
-    * แก้ไข Prop Mismatch (`advance` vs `advanceRecord`) ทำให้เมื่อกดปุ่มแก้ไข Modal โหลดข้อมูลรายการเดิมขึ้นมาแก้ไขอย่างถูกต้อง พร้อมบันทึกทับ ID เดิมแทนการสร้างรายการใหม่
-  * 🏷️ **ปรับคำศัพท์ในหน้าสรุปจ่ายคนขับให้เป็นมุมมองการจ่ายเงินของบริษัท (Employer Payroll Disbursal Perspective):**
-    * `รวมรายรับทั้งหมด (Gross Income)` ➔ `รวมยอดตั้งจ่ายก่อนหัก (Gross Payroll)`
-    * `รวมยอดโอนสุทธิ (Net Payout)` ➔ `รวมยอดโอนจ่ายจริงสุทธิ (Total Net Payable)`
-    * `รวมรายรับ (Gross)` ➔ `รวมตั้งจ่ายก่อนหัก (Gross)`
-    * `ยอดรับสุทธิ (Net)` ➔ `ยอดโอนจ่ายจริง (Net)`
-  * 🧭 **ปรับชื่อเมนูและหมวดหมู่ในแถบนำทาง (Sidebar Navigation Menu Labels Update):**
-    * `ผลงานคนขับ & ค่าเที่ยว` ➔ `ผลงานคนขับ`
-    * `ทะเบียนคนขับ & ฐานเงินเดือน` ➔ `ทะเบียนคนขับ`
-    * `3. รถ & ผลประกอบการ` ➔ `3. การดำเนินงานรถ`
-    * `ค่าใช้จ่ายรถ & น้ำมัน` ➔ `ค่าใช้จ่ายรถ`
-  * 🎨 **ปรับปรุงส่วนหัวแบรนด์ใน Sidebar (Modern Brand Header):**
-    * เปลี่ยนชื่อแบรนด์จาก `JWD Transport` ➔ **`Container V3 WebApp`**
-    * ออกแบบไอคอน 3D Badge พร้อมป้าย `PRO` และไฟสถานะระบบสีเขียว 🟢 ให้ดูพรีเมียม สวยงาม ทันสมัย
-  * ⚡ **เพิ่มประสิทธิภาพฐานข้อมูล & การโหลดข้อมูลแดชบอร์ด (Database & Dashboard Performance Boost):**
-    * สร้าง Database Indexes สำหรับ 4 ตารางหลัก (`container_records`, `truck_expenses`, `job_sheet_items`, `driver_advances`)
-    * เคลียร์ข้อมูลเรทราคาซ้ำซ้อนและสร้าง Unique Index สำหรับ `port_billing_rates` ป้องกันการบันทึกเรทซ้ำ
-    * เพิ่มคอลัมน์ `year_month` ใน `truck_expenses` พร้อม Index เพื่อให้ Group By ประจำเดือนรวดเร็ว
-    * ปรับปรุง [`ExecutiveDashboardView.jsx`](file:///C:/Users/AMD/Desktop/Container_V3_WebApp/src/views/ExecutiveDashboardView.jsx) และ [`TruckPnlView.jsx`](file:///C:/Users/AMD/Desktop/Container_V3_WebApp/src/views/TruckPnlView.jsx) ให้ใช้ **Server-Side Date Filtering** กรองข้อมูลเฉพาะงวดเดือนที่เลือก ลดขนาด Payload ข้าม Network ลงกว่า 90% โหลดแดชบอร์ดได้เร็วขึ้นอย่างมาก
-  * 🩺 **เพิ่มระบบตรวจสอบความสอดคล้องของข้อมูล & ป้องกันรายการซ้ำ (System Health Diagnostic & Duplicate Prevention):**
-    * เพิ่มเครื่องมือ **"🩺 ตรวจสอบความถูกต้องของข้อมูลระบบ"** ในหน้า [`SettingsView.jsx`](file:///C:/Users/AMD/Desktop/Container_V3_WebApp/src/views/SettingsView.jsx) สำหรับตรวจสอบความสอดคล้องของทะเบียนรถ-คนขับประจำกับงวดงาน Active
-    * เพิ่มปุ่ม **"⚡ ซ่อมแซมและซิงค์ข้อมูลอัตโนมัติ (Auto-Heal & Sync)"** ซ่อมแซมข้อมูล Denormalized ที่ไม่ตรงกันให้เข้าสู่ Source of Truth ทันที
-    * เพิ่มระบบ **Duplicate Advance Prevention** ใน [`driverAdvanceService.js`](file:///C:/Users/AMD/Desktop/Container_V3_WebApp/src/services/driverAdvanceService.js) ป้องกันการกดสร้างรายการเบิกล่วงหน้าซ้ำซ้อนในวันเดียวกันและยอดเดียวกัน
+  * ปรับคำศัพท์แสดงผลทั่วทั้งระบบ: `เรทท่าเรือ` ➔ `ค่าเที่ยวท่าเรือ`, `ค่ารอบ (ค่าเที่ยว)` ➔ `ค่ารอบคนขับ`
+  * ปรับมุมมองการจ่ายเงินในหน้าสรุปจ่ายคนขับ: `รวมรายรับทั้งหมด` ➔ `รวมยอดตั้งจ่ายก่อนหัก (Gross Payroll)`, `รวมยอดโอนสุทธิ` ➔ `รวมยอดโอนจ่ายจริงสุทธิ (Total Net Payable)`
+* ⚡ **เพิ่มประสิทธิภาพฐานข้อมูล & การโหลดข้อมูลแดชบอร์ด (Database & Dashboard Performance Boost):**
+  * สร้าง Database Indexes สำหรับ 4 ตารางหลัก (`container_records`, `truck_expenses`, `job_sheet_items`, `driver_advances`)
+  * เคลียร์ข้อมูลเรทราคาซ้ำซ้อนและสร้าง Unique Index สำหรับ `port_billing_rates` ป้องกันการบันทึกเรทซ้ำ
+  * ปรับปรุง Server-Side Date Filtering กรองข้อมูลเฉพาะงวดเดือนที่เลือก ลดขนาด Payload ข้าม Network ลงกว่า 90% โหลดแดชบอร์ดได้เร็วขึ้นอย่างมาก
 
 ### 🗓️ 2026-08-25
 * 💵 **ศูนย์รวมรายได้คนขับแบบครบวงจร (Driver Payroll & Compensation Hub 5 Tabs):**
@@ -111,25 +109,6 @@
   * เรทราคาตามขนาดตู้ (20/40/45) และช่วงเวลา (`start_date` ถึง `end_date`)
   * กฎ Strict Verified Completed Matching และ Date Lag Override
 * 1️⃣ **1 Job Sheet = 1 Driver Consensus:** สิทธิ์ความเป็นเจ้าของงานยึดตามใบงานเป็นหลัก 100%
-
-### 🗓️ 2026-08-26
-* 🔄 **ระบบฟิลเตอร์งวดเดือนมาตรฐาน (Unified MonthPicker Date Period Filtering):**
-  * นำ `MonthPicker` (ปุ่มเลื่อนเดือน ◀ ▶ + เมนูดรอปดาวน์เลือกปี-เดือนภาษาไทย + ปุ่ม 'ทุกงวด') มาใช้งานเป็นมาตรฐานเดียวกันทุกเมนูในระบบ:
-    * `DatabaseView.jsx` (Containers / Master DB ใบวางบิล) & `ContainerTableToolbar.jsx`: กรองตู้ตามเดือนทำงาน (`date_job_parsed`, `date_job`, `batch_name`)
-    * `TruckExpensesView.jsx` (ค่าใช้จ่ายรถ & น้ำมัน): เปลี่ยนจาก Date Input คู่เป็น `MonthPicker` ที่เชื่อมโยงกับฐานข้อมูล Supabase ตามช่วงเดือนอัตโนมัติ
-    * `DriverPayrollView.jsx` (ผลงานคนขับ Tab 1): กรองงวดรอบวิ่งตู้และคำนวณค่าตอบแทนตามงวดเดือนที่เลือก
-    * `BatchManagerView.jsx` (ประวัติใบงานที่บันทึกแล้ว): กรองใบงานตามงวดเดือน
-    * `OcrContainerHistoryView.jsx` (ประวัติตู้ OCR): กรองประวัติตู้ตามงวดเดือน
-    * `TruckOperationsView.jsx` (ประวัติการขับขี่รถ/คนขับ): กรองงวดการขับขี่ตามงวดเดือน
-    * `TruckMaintenanceView.jsx` (ประวัติการซ่อมบำรุง): กรองประวัติการเข้าซ่อมตามงวดเดือน
-    * `DriverLeavesView.jsx` (ประวัติการลางานคนขับ): กรองประวัติการลาตามงวดเดือน
-* 💾 **ระบบจดจำงวดเดือนข้ามเมนูอัตโนมัติ (Persistent & Synchronized Month Filtering):**
-  * พัฒนา Hook `useActiveMonth.js` จัดเก็บเดือนที่เลือกลง `localStorage` (`app_selected_month`) พร้อมระบบ Event Bus `app_month_changed` ซิงค์ข้อมูลแบบ Real-time
-  * เมื่อผู้ใช้เลือกดูเดือนใดก็ตาม (เช่น เมษายน `2026-04`) ในหน้าแดชบอร์ด แล้วสลับไปเมนูอื่น (สรุปรายได้คนขับ, ค่าใช้จ่ายรถ, ประวัติใบงาน, Master DB) หรือกลับมาใหม่ ระบบจะยังคงจดจำและแสดงผลเดือนเมษายนต่อเนื่องทันที ไม่ต้องเลือกใหม่ซ้ำซ้อน
-* ⚡ **Fleet Data Integrity Diagnostics & Auto-Heal:**
-  * เพิ่มเครื่องมือตรวจสอบความสอดคล้องของข้อมูลรถ-คนขับ-งวดการขับขี่แบบเรียลไทม์ และระบบซ่อมแซมความสอดคล้องอัตโนมัติ (Auto-Heal) ในหน้า `SettingsView`
-* 🛡️ **Loan Installment Metadata Fallback:**
-  * รองรับการจัดเก็บ metadata ค่างวดเงินกู้ (`installments_total`, `installments_paid`, `installment_amount`) ใน Supabase Columns และ embedded fallback ใน `remark`
 
 ### 🗓️ 2026-08-22
 * 🔄 **ระบบมอบหมายงานรถ/คนขับด่วนผ่านหน้าตาราง (Quick Operation Assignment):**
