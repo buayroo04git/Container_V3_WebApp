@@ -57,16 +57,17 @@ export default function Sidebar({ activeTab, setActiveTab }) {
               Container V3
             </h2>
             <span style={{
-              padding: '1px 5px',
+              padding: '1.5px 6px',
               borderRadius: '4px',
-              background: '#eff6ff',
-              color: '#2563eb',
-              fontSize: '9.5px',
-              fontWeight: 800,
-              border: '1px solid #bfdbfe',
-              letterSpacing: '0.2px'
+              background: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)',
+              color: '#1d4ed8',
+              fontSize: '9px',
+              fontWeight: 900,
+              border: '1px solid #93c5fd',
+              letterSpacing: '0.3px',
+              textTransform: 'uppercase'
             }}>
-              PRO
+              PRO MAX
             </span>
           </div>
           <p style={{ 
