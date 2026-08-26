@@ -82,6 +82,10 @@
     * เคลียร์ข้อมูลเรทราคาซ้ำซ้อนและสร้าง Unique Index สำหรับ `port_billing_rates` ป้องกันการบันทึกเรทซ้ำ
     * เพิ่มคอลัมน์ `year_month` ใน `truck_expenses` พร้อม Index เพื่อให้ Group By ประจำเดือนรวดเร็ว
     * ปรับปรุง [`ExecutiveDashboardView.jsx`](file:///C:/Users/AMD/Desktop/Container_V3_WebApp/src/views/ExecutiveDashboardView.jsx) และ [`TruckPnlView.jsx`](file:///C:/Users/AMD/Desktop/Container_V3_WebApp/src/views/TruckPnlView.jsx) ให้ใช้ **Server-Side Date Filtering** กรองข้อมูลเฉพาะงวดเดือนที่เลือก ลดขนาด Payload ข้าม Network ลงกว่า 90% โหลดแดชบอร์ดได้เร็วขึ้นอย่างมาก
+  * 🩺 **เพิ่มระบบตรวจสอบความสอดคล้องของข้อมูล & ป้องกันรายการซ้ำ (System Health Diagnostic & Duplicate Prevention):**
+    * เพิ่มเครื่องมือ **"🩺 ตรวจสอบความถูกต้องของข้อมูลระบบ"** ในหน้า [`SettingsView.jsx`](file:///C:/Users/AMD/Desktop/Container_V3_WebApp/src/views/SettingsView.jsx) สำหรับตรวจสอบความสอดคล้องของทะเบียนรถ-คนขับประจำกับงวดงาน Active
+    * เพิ่มปุ่ม **"⚡ ซ่อมแซมและซิงค์ข้อมูลอัตโนมัติ (Auto-Heal & Sync)"** ซ่อมแซมข้อมูล Denormalized ที่ไม่ตรงกันให้เข้าสู่ Source of Truth ทันที
+    * เพิ่มระบบ **Duplicate Advance Prevention** ใน [`driverAdvanceService.js`](file:///C:/Users/AMD/Desktop/Container_V3_WebApp/src/services/driverAdvanceService.js) ป้องกันการกดสร้างรายการเบิกล่วงหน้าซ้ำซ้อนในวันเดียวกันและยอดเดียวกัน
 
 ### 🗓️ 2026-08-25
 * 💵 **ศูนย์รวมรายได้คนขับแบบครบวงจร (Driver Payroll & Compensation Hub 5 Tabs):**
