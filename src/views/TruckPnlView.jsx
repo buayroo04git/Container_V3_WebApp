@@ -22,6 +22,11 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      const [year, month] = (selectedMonth || new Date().toISOString().slice(0, 7)).split('-');
+      const lastDay = new Date(Number(year), Number(month), 0).getDate();
+      const startOfMonth = `${selectedMonth}-01`;
+      const endOfMonth = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+
       const [
         ratesRes,
         trucksRes,
@@ -29,12 +34,26 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
       ] = await Promise.all([
         portBillingService.fetchPortRates(),
         fetchTrucks(),
-        supabase.from('container_records').select('id, container_no, truck_no, port, size, date_job, date_job_parsed, batch_name').limit(20000)
+        supabase
+          .from('container_records')
+          .select('id, container_no, truck_no, port, size, date_job, date_job_parsed, batch_name')
+          .or(`and(date_job_parsed.gte.${startOfMonth},date_job_parsed.lte.${endOfMonth}),batch_name.ilike.%${selectedMonth}%,date_job.ilike.%${selectedMonth}%`)
+          .limit(10000)
       ]);
 
       const ratesList = Array.isArray(ratesRes) ? ratesRes : (ratesRes?.data || []);
       const trucksList = Array.isArray(trucksRes) ? trucksRes : (trucksRes?.data || []);
-      const masterList = Array.isArray(masterRes?.data) ? masterRes.data : (Array.isArray(masterRes) ? masterRes : []);
+      let masterList = Array.isArray(masterRes?.data) ? masterRes.data : (Array.isArray(masterRes) ? masterRes : []);
+
+      if (masterList.length === 0) {
+        const fallbackRes = await supabase
+          .from('container_records')
+          .select('id, container_no, truck_no, port, size, date_job, date_job_parsed, batch_name')
+          .limit(5000);
+        if (Array.isArray(fallbackRes?.data) && fallbackRes.data.length > 0) {
+          masterList = fallbackRes.data;
+        }
+      }
 
       setPortRates(ratesList);
       setTrucks(trucksList);
@@ -44,7 +63,7 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [selectedMonth]);
 
   useEffect(() => {
     loadData();

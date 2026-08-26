@@ -142,6 +142,7 @@ export const truckExpenseService = {
       const {
         dateFrom,
         dateTo,
+        yearMonth,
         truckNo,
         driverName,
         category,
@@ -154,6 +155,7 @@ export const truckExpenseService = {
         .select('*')
         .order('expense_date', { ascending: false });
 
+      if (yearMonth && yearMonth !== 'ALL') query = query.eq('year_month', yearMonth);
       if (dateFrom) query = query.gte('expense_date', dateFrom);
       if (dateTo) query = query.lte('expense_date', dateTo);
       if (truckNo && truckNo !== 'ALL') query = query.eq('truck_no', truckNo);
@@ -262,9 +264,11 @@ export const truckExpenseService = {
         ? Number(recordData.amount_total)
         : 0;
 
+      const expenseDate = recordData.expense_date ? String(recordData.expense_date).slice(0, 10) : new Date().toISOString().slice(0, 10);
       const payload = {
         id,
-        expense_date: recordData.expense_date ? String(recordData.expense_date).slice(0, 10) : new Date().toISOString().slice(0, 10),
+        expense_date: expenseDate,
+        year_month: expenseDate.slice(0, 7),
         truck_no: String(recordData.truck_no || 'FLEET_SHARED').trim(),
         driver_name: recordData.driver_name?.trim() || '-',
         batch_name: recordData.batch_name?.trim() || '-',

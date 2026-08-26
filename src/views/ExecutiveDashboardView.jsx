@@ -136,9 +136,13 @@ export default function ExecutiveDashboardView() {
           payrollRes
         ] = await Promise.all([
           portBillingService.fetchPortRates(),
-          truckExpenseService.fetchExpenses(),
+          truckExpenseService.fetchExpenses({ dateFrom: startOfMonth, dateTo: endOfMonth }),
           fetchTrucks(),
-          supabase.from('container_records').select('id, container_no, truck_no, port, size, date_job, date_job_parsed, batch_name').limit(20000),
+          supabase
+            .from('container_records')
+            .select('id, container_no, truck_no, port, size, date_job, date_job_parsed, batch_name')
+            .or(`and(date_job_parsed.gte.${startOfMonth},date_job_parsed.lte.${endOfMonth}),batch_name.ilike.%${selectedMonth}%,date_job.ilike.%${selectedMonth}%`)
+            .limit(10000),
           driverPayrollService.calculatePayrollSummary({
             dateFrom: startOfMonth,
             dateTo: endOfMonth,
@@ -149,7 +153,19 @@ export default function ExecutiveDashboardView() {
         const ratesList = Array.isArray(ratesRes) ? ratesRes : (ratesRes?.data || []);
         const expensesList = Array.isArray(expensesRes) ? expensesRes : (expensesRes?.data || []);
         const trucksList = Array.isArray(trucksRes) ? trucksRes : (trucksRes?.data || []);
-        const masterList = Array.isArray(masterRes?.data) ? masterRes.data : (Array.isArray(masterRes) ? masterRes : []);
+        let masterList = Array.isArray(masterRes?.data) ? masterRes.data : (Array.isArray(masterRes) ? masterRes : []);
+        
+        // Graceful fallback: If filtered master list is empty, fetch general limit to support legacy/unparsed date records
+        if (masterList.length === 0) {
+          const fallbackRes = await supabase
+            .from('container_records')
+            .select('id, container_no, truck_no, port, size, date_job, date_job_parsed, batch_name')
+            .limit(5000);
+          if (Array.isArray(fallbackRes?.data) && fallbackRes.data.length > 0) {
+            masterList = fallbackRes.data;
+          }
+        }
+
         const driversList = Array.isArray(payrollRes?.data?.drivers) ? payrollRes.data.drivers : [];
 
         setPortRates(ratesList);
