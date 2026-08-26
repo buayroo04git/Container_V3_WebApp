@@ -218,7 +218,7 @@ export default function DriverAdvanceModal({
         status: currentRecord.status || 'pending',
         payment_method: currentRecord.payment_method || 'transfer',
         slip_url: existingSlip,
-        remark: currentRecord.remark && currentRecord.remark !== '-' ? currentRecord.remark : ''
+        remark: currentRecord.remark && currentRecord.remark !== '-' ? String(currentRecord.remark).replace(/\s*\[LOAN:[^\]]+\]/g, '').trim() : ''
       });
     } else {
       const initialDriver = defaultDriverName || (safeDriverList.length > 0 ? safeDriverList[0].driver_name : '');

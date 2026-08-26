@@ -93,25 +93,55 @@ export const driverAdvanceService = {
    */
   normalizeAdvanceItem(item) {
     if (!item) return item;
-    const totalInst = Number(item.installments_total || 1);
+    
+    // พยายามดึง metadata ค่างวดจาก remark หาก Supabase ยังไม่มี column แยก
+    let parsedInstTotal = Number(item.installments_total);
+    let parsedInstPaid = Number(item.installments_paid);
+    let parsedInstAmt = Number(item.installment_amount);
+    let parsedRemaining = Number(item.remaining_amount);
+    let parsedStartPeriod = item.start_period;
+
+    const rawRemark = String(item.remark || '');
+    const metaMatch = rawRemark.match(/\[LOAN:(\d+):(\d+):(\d+):(\d+):([^\]]+)\]/);
+    if (metaMatch) {
+      if (!parsedInstTotal || isNaN(parsedInstTotal) || parsedInstTotal <= 1) parsedInstTotal = Number(metaMatch[1]);
+      if (isNaN(parsedInstPaid)) parsedInstPaid = Number(metaMatch[2]);
+      if (!parsedInstAmt || isNaN(parsedInstAmt)) parsedInstAmt = Number(metaMatch[3]);
+      if (isNaN(parsedRemaining)) parsedRemaining = Number(metaMatch[4]);
+      if (!parsedStartPeriod) parsedStartPeriod = metaMatch[5];
+    } else {
+      // ลองตรวจจับข้อความ เช่น "10 งวด" หรือ "ผ่อน 10 งวด"
+      const textMatch = rawRemark.match(/(\d+)\s*(?:งวด|เดือน)/i);
+      if (textMatch && (!parsedInstTotal || isNaN(parsedInstTotal) || parsedInstTotal <= 1)) {
+        const foundTotal = parseInt(textMatch[1], 10);
+        if (foundTotal > 1) {
+          parsedInstTotal = foundTotal;
+        }
+      }
+    }
+
+    const totalInst = (!isNaN(parsedInstTotal) && parsedInstTotal > 1) ? parsedInstTotal : Number(item.installments_total || 1);
     const hasMultipleInst = totalInst > 1;
     const isLoan = item.category === 'installment_loan' || 
                    item.advance_type === 'loan_installment' || 
                    hasMultipleInst ||
-                   (Number(item.installment_amount || 0) > 0 && Number(item.installment_amount) < Number(item.amount || 0));
+                   (Number(item.installment_amount || 0) > 0 && Number(item.installment_amount) < Number(item.amount || 0)) ||
+                   !!metaMatch;
 
     const category = isLoan ? 'installment_loan' : 'single_advance';
     const advance_type = isLoan ? 'loan_installment' : (item.advance_type || 'salary_advance');
     const amount = Number(item.amount || 0);
     const installments_total = isLoan ? Math.max(1, totalInst) : 1;
-    const installments_paid = isLoan ? Math.max(0, Number(item.installments_paid || 0)) : (item.status === 'settled' ? 1 : 0);
+    const installments_paid = isLoan ? Math.max(0, (!isNaN(parsedInstPaid) ? parsedInstPaid : Number(item.installments_paid || 0))) : (item.status === 'settled' ? 1 : 0);
     const installment_amount = isLoan 
-      ? (Number(item.installment_amount) || Math.round(amount / installments_total))
+      ? (parsedInstAmt || Number(item.installment_amount) || Math.round(amount / installments_total))
       : amount;
     const remaining_amount = isLoan
-      ? (item.remaining_amount !== undefined && item.remaining_amount !== null && !isNaN(Number(item.remaining_amount))
-          ? Number(item.remaining_amount) 
-          : Math.max(0, amount - (installments_paid * installment_amount)))
+      ? (!isNaN(parsedRemaining) && parsedRemaining >= 0
+          ? parsedRemaining
+          : (item.remaining_amount !== undefined && item.remaining_amount !== null && !isNaN(Number(item.remaining_amount))
+              ? Number(item.remaining_amount) 
+              : Math.max(0, amount - (installments_paid * installment_amount))))
       : (item.status === 'settled' ? 0 : amount);
 
     let status = item.status || 'pending';
@@ -135,7 +165,7 @@ export const driverAdvanceService = {
       installments_paid,
       installment_amount,
       remaining_amount,
-      start_period: item.start_period || (item.advance_date ? String(item.advance_date).slice(0, 7) : ''),
+      start_period: parsedStartPeriod || item.start_period || (item.advance_date ? String(item.advance_date).slice(0, 7) : ''),
       status,
       slip_url: item.slip_url && item.slip_url !== '-' ? item.slip_url : '-'
     };
@@ -291,6 +321,14 @@ export const driverAdvanceService = {
       const advance_date = advanceData.advance_date ? String(advanceData.advance_date).slice(0, 10) : new Date().toISOString().slice(0, 10);
       const start_period = advanceData.start_period || advance_date.slice(0, 7);
 
+      // ฝัง loan metadata ลงใน remark เพื่อป้องกันข้อมูลหายกรณี Supabase schema ยังไม่มี column
+      let finalRemark = advanceData.remark && advanceData.remark !== '-' ? String(advanceData.remark).trim() : '';
+      if (isLoan) {
+        finalRemark = finalRemark.replace(/\s*\[LOAN:[^\]]+\]/g, '').trim();
+        const metaTag = `[LOAN:${installments_total}:${installments_paid}:${installment_amount}:${remaining_amount}:${start_period}]`;
+        finalRemark = finalRemark ? `${finalRemark} ${metaTag}` : metaTag;
+      }
+
       const payload = {
         id,
         advance_date,
@@ -310,7 +348,7 @@ export const driverAdvanceService = {
         settlement_batch_id: advanceData.settlement_batch_id || null,
         payment_method: advanceData.payment_method || 'transfer',
         slip_url: advanceData.slip_url || '-',
-        remark: advanceData.remark || '-',
+        remark: finalRemark || '-',
         created_by: advanceData.created_by || 'Admin',
         updated_at: new Date().toISOString()
       };
@@ -333,7 +371,7 @@ export const driverAdvanceService = {
 
         if (error) {
           console.warn('driverAdvanceService.saveAdvance Supabase upsert full fallback:', error.message);
-          // หากติดเรื่อง column ใหม่ ให้ลองบันทึกเฉพาะ column มาตรฐาน
+          // หากติดเรื่อง column ใหม่ ให้ลองบันทึกเฉพาะ column มาตรฐาน (มี remark ที่ฝัง metadata ไว้แล้ว)
           const basePayload = {
             id,
             advance_date,
@@ -347,7 +385,7 @@ export const driverAdvanceService = {
             settlement_batch_id: advanceData.settlement_batch_id || null,
             payment_method: advanceData.payment_method || 'transfer',
             slip_url: advanceData.slip_url || '-',
-            remark: advanceData.remark || '-',
+            remark: finalRemark || '-',
             created_by: advanceData.created_by || 'Admin',
             updated_at: new Date().toISOString()
           };
