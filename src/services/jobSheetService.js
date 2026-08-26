@@ -847,6 +847,7 @@ export const jobSheetService = {
     statusFilter = 'ALL',
     batchFilter = 'ALL',
     truckFilter = 'ALL',
+    monthFilter = '',
     sortConfig = { key: 'created_at', direction: 'desc' }
   } = {}) {
     try {
@@ -858,6 +859,15 @@ export const jobSheetService = {
       if (searchTerm && searchTerm.trim()) {
         const cleanTerm = searchTerm.trim();
         query = query.or(`container_no.ilike.%${cleanTerm}%,truck_no.ilike.%${cleanTerm}%,batch_name.ilike.%${cleanTerm}%`);
+      }
+
+      // 📅 Month Filter
+      if (monthFilter && monthFilter !== 'ALL') {
+        const [year, month] = monthFilter.split('-');
+        const lastDay = new Date(Number(year), Number(month), 0).getDate();
+        const startOfMonth = `${monthFilter}-01`;
+        const endOfMonth = `${monthFilter}-${String(lastDay).padStart(2, '0')} 23:59:59`;
+        query = query.gte('created_at', startOfMonth).lte('created_at', endOfMonth);
       }
 
       // 🏷️ 2. Workflow / Match Status Filter
@@ -987,6 +997,12 @@ export const jobSheetService = {
 
         if (batchFilter && batchFilter !== 'ALL') list = list.filter(i => i.batch_name === batchFilter);
         if (truckFilter && truckFilter !== 'ALL') list = list.filter(i => i.truck_no === truckFilter);
+        if (monthFilter && monthFilter !== 'ALL') {
+          list = list.filter(i => {
+            const raw = i.created_at || i.date_job || '';
+            return String(raw).includes(monthFilter);
+          });
+        }
 
         // Sorting
         const sortColumn = sortConfig.key || 'created_at';

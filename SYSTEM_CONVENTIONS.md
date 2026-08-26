@@ -112,6 +112,22 @@
   * กฎ Strict Verified Completed Matching และ Date Lag Override
 * 1️⃣ **1 Job Sheet = 1 Driver Consensus:** สิทธิ์ความเป็นเจ้าของงานยึดตามใบงานเป็นหลัก 100%
 
+### 🗓️ 2026-08-26
+* 🔄 **ระบบฟิลเตอร์งวดเดือนมาตรฐาน (Unified MonthPicker Date Period Filtering):**
+  * นำ `MonthPicker` (ปุ่มเลื่อนเดือน ◀ ▶ + เมนูดรอปดาวน์เลือกปี-เดือนภาษาไทย + ปุ่ม 'ทุกงวด') มาใช้งานเป็นมาตรฐานเดียวกันทุกเมนูในระบบ:
+    * `DatabaseView.jsx` (Containers / Master DB ใบวางบิล) & `ContainerTableToolbar.jsx`: กรองตู้ตามเดือนทำงาน (`date_job_parsed`, `date_job`, `batch_name`)
+    * `TruckExpensesView.jsx` (ค่าใช้จ่ายรถ & น้ำมัน): เปลี่ยนจาก Date Input คู่เป็น `MonthPicker` ที่เชื่อมโยงกับฐานข้อมูล Supabase ตามช่วงเดือนอัตโนมัติ
+    * `DriverPayrollView.jsx` (ผลงานคนขับ Tab 1): กรองงวดรอบวิ่งตู้และคำนวณค่าตอบแทนตามงวดเดือนที่เลือก
+    * `BatchManagerView.jsx` (ประวัติใบงานที่บันทึกแล้ว): กรองใบงานตามงวดเดือน
+    * `OcrContainerHistoryView.jsx` (ประวัติตู้ OCR): กรองประวัติตู้ตามงวดเดือน
+    * `TruckOperationsView.jsx` (ประวัติการขับขี่รถ/คนขับ): กรองงวดการขับขี่ตามงวดเดือน
+    * `TruckMaintenanceView.jsx` (ประวัติการซ่อมบำรุง): กรองประวัติการเข้าซ่อมตามงวดเดือน
+    * `DriverLeavesView.jsx` (ประวัติการลางานคนขับ): กรองประวัติการลาตามงวดเดือน
+* ⚡ **Fleet Data Integrity Diagnostics & Auto-Heal:**
+  * เพิ่มเครื่องมือตรวจสอบความสอดคล้องของข้อมูลรถ-คนขับ-งวดการขับขี่แบบเรียลไทม์ และระบบซ่อมแซมความสอดคล้องอัตโนมัติ (Auto-Heal) ในหน้า `SettingsView`
+* 🛡️ **Loan Installment Metadata Fallback:**
+  * รองรับการจัดเก็บ metadata ค่างวดเงินกู้ (`installments_total`, `installments_paid`, `installment_amount`) ใน Supabase Columns และ embedded fallback ใน `remark`
+
 ### 🗓️ 2026-08-22
 * 🔄 **ระบบมอบหมายงานรถ/คนขับด่วนผ่านหน้าตาราง (Quick Operation Assignment):**
   * Interactive Selector ในหน้า `TrucksView` และ `DriversView`

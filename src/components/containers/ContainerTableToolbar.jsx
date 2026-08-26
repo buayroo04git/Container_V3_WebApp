@@ -1,5 +1,6 @@
 import React from 'react';
 import ColumnVisibilityDropdown from '../ui/ColumnVisibilityDropdown';
+import MonthPicker from '../ui/MonthPicker';
 
 /**
  * 🛠️ Top Header Action Bar for Containers Master DB
@@ -162,6 +163,8 @@ export function ContainerHeaderActions({
 export function ContainerTableFilterBar({
   currentTab,
   filteredCount,
+  selectedMonth = 'ALL',
+  setSelectedMonth,
   availableBatches = [],
   selectedBatchFilter = 'ALL',
   setSelectedBatchFilter,
@@ -194,6 +197,7 @@ export function ContainerTableFilterBar({
   onShowAllColumns
 }) {
   const hasActiveFilters = 
+    selectedMonth !== 'ALL' ||
     selectedBatchFilter !== 'ALL' || 
     selectedSourceFilter !== 'ALL' || 
     selectedTruckFilter !== 'ALL' || 
@@ -203,6 +207,7 @@ export function ContainerTableFilterBar({
     searchTerm.trim() !== '';
 
   const handleResetFilters = () => {
+    if (setSelectedMonth) setSelectedMonth('ALL');
     setSelectedBatchFilter('ALL');
     setSelectedSourceFilter('ALL');
     if (setSelectedTruckFilter) setSelectedTruckFilter('ALL');
@@ -230,6 +235,37 @@ export function ContainerTableFilterBar({
 
       {/* Filter Controls Bar */}
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
+        
+        {/* 📅 Month Filter */}
+        {setSelectedMonth && (
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <MonthPicker
+              value={selectedMonth === 'ALL' ? '' : selectedMonth}
+              onChange={(newMonth) => setSelectedMonth(newMonth)}
+              label="งวด:"
+            />
+            {selectedMonth !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedMonth('ALL')}
+                style={{
+                  height: '35px',
+                  padding: '0 8px',
+                  borderRadius: '7px',
+                  border: '1px solid #bfdbfe',
+                  background: '#eff6ff',
+                  color: '#2563eb',
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+                title="ดูทุกงวดเดือน"
+              >
+                ทุกงวด
+              </button>
+            )}
+          </div>
+        )}
         
         {/* 1. Batch Filter Dropdown */}
         {availableBatches.length > 0 && (

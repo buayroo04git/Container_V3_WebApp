@@ -24,6 +24,7 @@ export default function DatabaseView({ activeFilter = 'all' }) {
   const [selectedJobTypeFilter, setSelectedJobTypeFilter] = useState('ALL');
   const [selectedPortFilter, setSelectedPortFilter] = useState('ALL');
   const [selectedSizeFilter, setSelectedSizeFilter] = useState('ALL');
+  const [selectedMonth, setSelectedMonth] = useState('ALL');
   
   // Aliases & Columns
   const [aliases, setAliases] = useState(() => {
@@ -111,7 +112,7 @@ export default function DatabaseView({ activeFilter = 'all' }) {
   // รีเซ็ตหน้าเมื่อตัวกรองเปลี่ยน
   useEffect(() => {
     setCurrentPage(1);
-  }, [currentTab, searchTerm, selectedBatchFilter, selectedSourceFilter, selectedTruckFilter, selectedJobTypeFilter, selectedPortFilter, selectedSizeFilter, rowsPerPage]);
+  }, [currentTab, searchTerm, selectedMonth, selectedBatchFilter, selectedSourceFilter, selectedTruckFilter, selectedJobTypeFilter, selectedPortFilter, selectedSizeFilter, rowsPerPage]);
 
   const fetchAllData = async () => {
     setLoading(true);
@@ -439,6 +440,19 @@ const DEFAULT_COLUMN_ORDER = [
       });
     }
 
+    if (selectedMonth && selectedMonth !== 'ALL') {
+      result = result.filter(r => {
+        const rawDate = r.date_job_parsed || r.date_job || '';
+        if (rawDate) {
+          const norm = normalizeExcelDate(rawDate);
+          if (norm && norm.startsWith(selectedMonth)) return true;
+          if (String(rawDate).includes(selectedMonth)) return true;
+        }
+        if (r.batch_name && String(r.batch_name).includes(selectedMonth)) return true;
+        return false;
+      });
+    }
+
     if (searchTerm.trim()) {
       const lower = searchTerm.toLowerCase();
       result = result.filter(r => 
@@ -453,7 +467,7 @@ const DEFAULT_COLUMN_ORDER = [
     }
 
     return result;
-  }, [currentTabRecords, searchTerm, selectedBatchFilter, selectedSourceFilter, selectedTruckFilter, selectedJobTypeFilter, selectedPortFilter, selectedSizeFilter]);
+  }, [currentTabRecords, selectedMonth, searchTerm, selectedBatchFilter, selectedSourceFilter, selectedTruckFilter, selectedJobTypeFilter, selectedPortFilter, selectedSizeFilter]);
 
   // 🔀 ระบบ Sorting คอลัมน์
   const handleSort = (col) => {
@@ -1120,6 +1134,8 @@ const DEFAULT_COLUMN_ORDER = [
         <ContainerTableFilterBar
           currentTab={currentTab}
           filteredCount={sortedAndFilteredRecords.length}
+          selectedMonth={selectedMonth}
+          setSelectedMonth={setSelectedMonth}
           availableBatches={availableBatches}
           selectedBatchFilter={selectedBatchFilter}
           setSelectedBatchFilter={setSelectedBatchFilter}

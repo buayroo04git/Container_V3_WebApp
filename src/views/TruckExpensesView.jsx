@@ -6,6 +6,7 @@ import KpiCard from '../components/ui/KpiCard';
 import UniversalTableContainer from '../components/ui/UniversalTableContainer';
 import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
+import MonthPicker from '../components/ui/MonthPicker';
 import ExpenseModal from '../components/expenses/ExpenseModal';
 import ExpenseImportModal from '../components/expenses/ExpenseImportModal';
 
@@ -81,8 +82,7 @@ export default function TruckExpensesView() {
   const [refreshing, setRefreshing] = useState(false);
 
   // Filters
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [truckFilter, setTruckFilter] = useState('ALL');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [searchQuery, setSearchQuery] = useState('');
@@ -113,10 +113,15 @@ export default function TruckExpensesView() {
       if (!isSilent) setLoading(true);
       else setRefreshing(true);
 
+      const [year, month] = (selectedMonth || new Date().toISOString().slice(0, 7)).split('-');
+      const lastDay = new Date(Number(year), Number(month), 0).getDate();
+      const startOfMonth = `${selectedMonth}-01`;
+      const endOfMonth = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+
       const [expRes, trucksRes, driversRes] = await Promise.all([
         truckExpenseService.fetchExpenses({
-          dateFrom,
-          dateTo,
+          dateFrom: startOfMonth,
+          dateTo: endOfMonth,
           truckNo: truckFilter,
           category: categoryFilter,
           searchQuery
@@ -133,12 +138,12 @@ export default function TruckExpensesView() {
         setDrivers(Array.isArray(driversRes) ? driversRes : (driversRes.data || []));
       }
     } catch (err) {
-      console.error('Error loading expenses data:', err);
+      console.error('Failed to load truck expenses:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [dateFrom, dateTo, truckFilter, categoryFilter, searchQuery]);
+  }, [selectedMonth, truckFilter, categoryFilter, searchQuery]);
 
   useEffect(() => {
     loadData();
@@ -569,33 +574,12 @@ export default function TruckExpensesView() {
       }}>
         {/* Left side filters */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', flexWrap: 'wrap' }}>
-          {/* Date range filter */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.85rem', color: '#475569' }}>
-            <span>📅 วันที่:</span>
-            <input
-              type="date"
-              value={dateFrom}
-              onChange={e => setDateFrom(e.target.value)}
-              style={{
-                padding: '0.35rem 0.5rem',
-                border: '1px solid #cbd5e1',
-                borderRadius: '4px',
-                fontSize: '0.85rem'
-              }}
-            />
-            <span>ถึง</span>
-            <input
-              type="date"
-              value={dateTo}
-              onChange={e => setDateTo(e.target.value)}
-              style={{
-                padding: '0.35rem 0.5rem',
-                border: '1px solid #cbd5e1',
-                borderRadius: '4px',
-                fontSize: '0.85rem'
-              }}
-            />
-          </div>
+          {/* Month Picker filter */}
+          <MonthPicker
+            value={selectedMonth}
+            onChange={(newMonth) => setSelectedMonth(newMonth)}
+            label="งวดเดือน:"
+          />
 
           {/* Truck filter */}
           <select

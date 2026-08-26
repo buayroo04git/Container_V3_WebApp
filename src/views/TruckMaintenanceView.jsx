@@ -12,6 +12,7 @@ import MaintenanceModal from '../components/maintenance/MaintenanceModal';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
 import UniversalTableContainer from '../components/ui/UniversalTableContainer';
 import UniversalTableHeader from '../components/ui/UniversalTableHeader';
+import MonthPicker from '../components/ui/MonthPicker';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 const DEFAULT_MAINTENANCE_COLUMNS = [
@@ -96,6 +97,7 @@ export default function TruckMaintenanceView() {
   const [searchTerm, setSearchTerm] = useState('');
   const [typeFilter, setTypeFilter] = useState('ALL');
   const [truckFilter, setTruckFilter] = useState('ALL');
+  const [selectedMonth, setSelectedMonth] = useState('ALL');
 
   // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -156,6 +158,10 @@ export default function TruckMaintenanceView() {
   // Filtered List
   const filteredRecords = useMemo(() => {
     return records.filter(r => {
+      if (selectedMonth && selectedMonth !== 'ALL') {
+        const rawDate = r.start_date || r.end_date || '';
+        if (!rawDate.startsWith(selectedMonth)) return false;
+      }
       if (typeFilter !== 'ALL' && r.maintenance_type !== typeFilter) return false;
       if (truckFilter !== 'ALL' && r.truck_no !== truckFilter) return false;
 
@@ -170,7 +176,7 @@ export default function TruckMaintenanceView() {
       }
       return true;
     });
-  }, [records, typeFilter, truckFilter, searchTerm]);
+  }, [records, selectedMonth, typeFilter, truckFilter, searchTerm]);
 
   // Displayed Records (Sorted & Filtered)
   const displayedRecords = useMemo(() => {
@@ -373,6 +379,35 @@ export default function TruckMaintenanceView() {
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* 📅 Month Filter */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <MonthPicker
+              value={selectedMonth === 'ALL' ? '' : selectedMonth}
+              onChange={(newMonth) => setSelectedMonth(newMonth)}
+              label="งวด:"
+            />
+            {selectedMonth !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedMonth('ALL')}
+                style={{
+                  height: '35px',
+                  padding: '0 8px',
+                  borderRadius: '7px',
+                  border: '1px solid #bfdbfe',
+                  background: '#eff6ff',
+                  color: '#2563eb',
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+                title="ดูทุกงวดเดือน"
+              >
+                ทุกงวด
+              </button>
+            )}
+          </div>
+
           {/* ฟิลเตอร์ประเภทการซ่อม */}
           <select
             value={typeFilter}

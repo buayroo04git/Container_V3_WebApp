@@ -6,6 +6,7 @@ import { findTopContainerMatches, normalizeExcelDate } from '../utils/matchingLo
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
 import UniversalTableContainer from '../components/ui/UniversalTableContainer';
 import UniversalTableHeader from '../components/ui/UniversalTableHeader';
+import MonthPicker from '../components/ui/MonthPicker';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 function getPageNumbers(current, total) {
@@ -538,6 +539,35 @@ export default function BatchManagerView() {
                   title="ล้างคำค้นหา"
                 >
                   ✕
+                </button>
+              )}
+            </div>
+
+            {/* 📅 Month Filter */}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <MonthPicker
+                value={selectedMonth}
+                onChange={(newMonth) => setSelectedMonth(newMonth)}
+                label="งวด:"
+              />
+              {selectedMonth && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMonth('')}
+                  style={{
+                    height: '35px',
+                    padding: '0 8px',
+                    borderRadius: '7px',
+                    border: '1px solid #bfdbfe',
+                    background: '#eff6ff',
+                    color: '#2563eb',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                  title="ดูทุกงวดเดือน"
+                >
+                  ทุกงวด
                 </button>
               )}
             </div>

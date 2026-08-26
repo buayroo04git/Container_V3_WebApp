@@ -9,6 +9,7 @@ import Badge from '../components/ui/Badge';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
 import UniversalTableContainer from '../components/ui/UniversalTableContainer';
 import UniversalTableHeader from '../components/ui/UniversalTableHeader';
+import MonthPicker from '../components/ui/MonthPicker';
 import RateConfigModal from '../components/payroll/RateConfigModal';
 import DriverPayrollDetailModal from '../components/payroll/DriverPayrollDetailModal';
 import PaymentSettlementModal from '../components/payroll/PaymentSettlementModal';
@@ -385,6 +386,7 @@ export default function DriverPayrollView({ defaultTab, defaultSubTab } = {}) {
 
   // 🔍 Filters for Tab 1 (Trips)
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedMonth, setSelectedMonth] = useState(() => new Date().toISOString().slice(0, 7));
   const [datePreset, setDatePreset] = useState('ALL'); 
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
@@ -572,9 +574,22 @@ export default function DriverPayrollView({ defaultTab, defaultSubTab } = {}) {
         setIncentiveConfigs(incRes.data);
       }
 
+      let calcDateFrom = null;
+      let calcDateTo = null;
+
+      if (selectedMonth && selectedMonth !== 'ALL') {
+        const [year, month] = selectedMonth.split('-');
+        const lastDay = new Date(Number(year), Number(month), 0).getDate();
+        calcDateFrom = `${selectedMonth}-01`;
+        calcDateTo = `${selectedMonth}-${String(lastDay).padStart(2, '0')}`;
+      } else if (dateFrom || dateTo) {
+        calcDateFrom = dateFrom || null;
+        calcDateTo = dateTo || null;
+      }
+
       const payrollRes = await driverPayrollService.calculatePayrollSummary({
-        dateFrom: dateFrom || null,
-        dateTo: dateTo || null,
+        dateFrom: calcDateFrom,
+        dateTo: calcDateTo,
         driverFilter: selectedDriverFilter,
         batchFilter: selectedBatchFilter,
         truckFilter: selectedTruckFilter,
@@ -589,7 +604,7 @@ export default function DriverPayrollView({ defaultTab, defaultSubTab } = {}) {
     } finally {
       setIsLoading(false);
     }
-  }, [dateFrom, dateTo, selectedDriverFilter, selectedBatchFilter, selectedTruckFilter, selectedPaymentFilter]);
+  }, [selectedMonth, dateFrom, dateTo, selectedDriverFilter, selectedBatchFilter, selectedTruckFilter, selectedPaymentFilter]);
 
   // 3. Load Advances
   const loadAdvances = useCallback(async () => {
@@ -1642,33 +1657,41 @@ export default function DriverPayrollView({ defaultTab, defaultSubTab } = {}) {
                     )}
                   </div>
 
-                  {/* Preset Date Range Buttons */}
-                  <div style={{ display: 'flex', background: '#f1f5f9', padding: '3px', borderRadius: '8px', gap: '2px' }}>
-                    {[
-                      { id: 'ALL', label: 'ทั้งหมด' },
-                      { id: 'THIS_MONTH', label: 'เดือนนี้' },
-                      { id: 'LAST_MONTH', label: 'เดือนก่อน' },
-                      { id: 'LAST_7_DAYS', label: '7 วันล่าสุด' }
-                    ].map(p => (
+                  {/* 📅 Month Filter */}
+                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                    <MonthPicker
+                      value={selectedMonth === 'ALL' ? '' : selectedMonth}
+                      onChange={(newMonth) => {
+                        setSelectedMonth(newMonth);
+                        setDatePreset('CUSTOM');
+                      }}
+                      label="งวดเดือน:"
+                    />
+                    {selectedMonth !== 'ALL' && (
                       <button
-                        key={p.id}
                         type="button"
-                        onClick={() => handleDatePresetChange(p.id)}
-                        style={{
-                          padding: '4px 10px',
-                          border: 'none',
-                          borderRadius: '6px',
-                          fontSize: '11.5px',
-                          fontWeight: datePreset === p.id ? 700 : 500,
-                          background: datePreset === p.id ? '#ffffff' : 'transparent',
-                          color: datePreset === p.id ? '#0f172a' : '#64748b',
-                          cursor: 'pointer',
-                          boxShadow: datePreset === p.id ? '0 1px 2px rgba(0,0,0,0.06)' : 'none'
+                        onClick={() => {
+                          setSelectedMonth('ALL');
+                          setDateFrom('');
+                          setDateTo('');
+                          setDatePreset('ALL');
                         }}
+                        style={{
+                          height: '35px',
+                          padding: '0 8px',
+                          borderRadius: '7px',
+                          border: '1px solid #bfdbfe',
+                          background: '#eff6ff',
+                          color: '#2563eb',
+                          fontSize: '11.5px',
+                          fontWeight: 700,
+                          cursor: 'pointer'
+                        }}
+                        title="ดูทุกงวดเดือน"
                       >
-                        {p.label}
+                        ทุกงวด
                       </button>
-                    ))}
+                    )}
                   </div>
                 </div>
 
@@ -1696,7 +1719,7 @@ export default function DriverPayrollView({ defaultTab, defaultSubTab } = {}) {
                 </div>
               </div>
 
-              {/* Row 2: Secondary Filters (Date in Master DB, Batch, Truck, Driver) */}
+              {/* Row 2: Secondary Filters (Batch, Truck, Driver, Payment status) */}
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -1707,35 +1730,6 @@ export default function DriverPayrollView({ defaultTab, defaultSubTab } = {}) {
                 fontSize: '12.5px',
                 color: '#475569'
               }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <span style={{ fontWeight: 600, color: '#334155' }}>📅 วันที่ในใบวางบิล:</span>
-                  <input
-                    type="date"
-                    value={dateFrom}
-                    onChange={e => { setDateFrom(e.target.value); setDatePreset('CUSTOM'); }}
-                    style={{
-                      height: '30px',
-                      padding: '0 8px',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '12px'
-                    }}
-                  />
-                  <span>ถึง</span>
-                  <input
-                    type="date"
-                    value={dateTo}
-                    onChange={e => { setDateTo(e.target.value); setDatePreset('CUSTOM'); }}
-                    style={{
-                      height: '30px',
-                      padding: '0 8px',
-                      borderRadius: '6px',
-                      border: '1px solid #cbd5e1',
-                      fontSize: '12px'
-                    }}
-                  />
-                </div>
-
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <span style={{ fontWeight: 600, color: '#334155' }}>คนขับ:</span>
                   <select

@@ -16,6 +16,7 @@ import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown'
 import KpiCard from '../components/ui/KpiCard';
 import UniversalTableContainer from '../components/ui/UniversalTableContainer';
 import UniversalTableHeader from '../components/ui/UniversalTableHeader';
+import MonthPicker from '../components/ui/MonthPicker';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 const DEFAULT_OPERATION_COLUMNS = [
@@ -84,6 +85,7 @@ export default function TruckOperationsView() {
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [truckFilter, setTruckFilter] = useState('ALL');
   const [typeFilter, setTypeFilter] = useState('ALL');
+  const [selectedMonth, setSelectedMonth] = useState('ALL');
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -101,13 +103,10 @@ export default function TruckOperationsView() {
     if (!dateStr || dateStr === '-') return '-';
     try {
       const d = new Date(dateStr);
-      if (isNaN(d.getTime())) return String(dateStr);
-      const day = String(d.getDate()).padStart(2, '0');
-      const month = String(d.getMonth() + 1).padStart(2, '0');
-      const year = d.getFullYear();
-      return `${day}/${month}/${year}`;
+      if (isNaN(d.getTime())) return dateStr;
+      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
     } catch {
-      return String(dateStr);
+      return dateStr;
     }
   };
 
@@ -125,7 +124,7 @@ export default function TruckOperationsView() {
     }
   };
 
-  // Column Preferences Hook
+  // 🎛️ Dynamic Column Preferences Hook
   const opPrefs = useColumnPreferences({
     storageKeyPrefix: 'truck_operations',
     rawColumns: DEFAULT_OPERATION_COLUMNS,
@@ -133,20 +132,15 @@ export default function TruckOperationsView() {
     defaultWidths: DEFAULT_OPERATION_WIDTHS,
     sampleRecords: operations,
     formatCellValue: (col, val, row) => {
-      if (col === 'end_date') {
-        return (!val || row?.status === 'active') ? '🟢 ปัจจุบัน (Ongoing)' : formatDateDisplay(val);
-      }
-      if (col === 'start_date') {
-        return formatDateDisplay(val);
-      }
-      if (col === 'duration_days') {
-        return `${calculateDuration(row?.start_date, row?.end_date)} วัน`;
-      }
-      if (col === 'status') {
-        return (!row?.end_date || row?.status === 'active') ? '🟢 กำลังปฏิบัติงาน' : '⚪ สิ้นสุดแล้ว';
-      }
+      if (col === 'start_date') return formatDateDisplay(val);
+      if (col === 'end_date') return row?.status === 'active' ? '🟢 ปัจจุบัน' : formatDateDisplay(val);
+      if (col === 'duration_days') return `${val || 1} วัน`;
+      if (col === 'status') return row?.status === 'active' ? '🟢 กำลังขับขี่' : '⚪ สิ้นสุดแล้ว';
       if (col === 'operation_type') {
-        return val === 'primary' ? '🟢 คนขับประจำ' : (val === 'substitute' ? '🟡 ขับแทน' : '🟣 จ๊อบพิเศษ');
+        if (val === 'primary') return '🚛 ประจำคัน';
+        if (val === 'substitute') return '🔄 ขับแทน/สลับ';
+        if (val === 'contract') return '🤝 สัญญาจ้าง';
+        return val;
       }
       return String(val || '');
     }
@@ -220,6 +214,10 @@ export default function TruckOperationsView() {
   // Filtered Records
   const filteredOperations = useMemo(() => {
     return operations.filter(op => {
+      if (selectedMonth && selectedMonth !== 'ALL') {
+        const rawDate = op.start_date || op.end_date || '';
+        if (!rawDate.startsWith(selectedMonth)) return false;
+      }
       const isOngoing = !op.end_date || op.status === 'active';
       if (statusFilter === 'active' && !isOngoing) return false;
       if (statusFilter === 'completed' && isOngoing) return false;
@@ -235,7 +233,7 @@ export default function TruckOperationsView() {
       }
       return true;
     });
-  }, [operations, statusFilter, truckFilter, typeFilter, searchTerm]);
+  }, [operations, selectedMonth, statusFilter, truckFilter, typeFilter, searchTerm]);
 
   // Displayed Operations (Sorted & Filtered)
   const displayedOperations = useMemo(() => {
@@ -568,6 +566,35 @@ export default function TruckOperationsView() {
                 title="ล้างคำค้นหา"
               >
                 ✕
+              </button>
+            )}
+          </div>
+
+          {/* 📅 Month Filter */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <MonthPicker
+              value={selectedMonth === 'ALL' ? '' : selectedMonth}
+              onChange={(newMonth) => setSelectedMonth(newMonth)}
+              label="งวด:"
+            />
+            {selectedMonth !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedMonth('ALL')}
+                style={{
+                  height: '35px',
+                  padding: '0 8px',
+                  borderRadius: '7px',
+                  border: '1px solid #bfdbfe',
+                  background: '#eff6ff',
+                  color: '#2563eb',
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+                title="ดูทุกงวดเดือน"
+              >
+                ทุกงวด
               </button>
             )}
           </div>

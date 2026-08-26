@@ -10,6 +10,7 @@ import EditOcrContainerModal from '../components/ui/EditOcrContainerModal';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
 import UniversalTableContainer from '../components/ui/UniversalTableContainer';
 import UniversalTableHeader from '../components/ui/UniversalTableHeader';
+import MonthPicker from '../components/ui/MonthPicker';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 function getPageNumbers(current, total) {
@@ -107,6 +108,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'COMPLETED' | 'PENDING' | 'MATCHED' | 'UNMATCHED'
   const [selectedBatchFilter, setSelectedBatchFilter] = useState('ALL');
   const [selectedTruckFilter, setSelectedTruckFilter] = useState('ALL');
+  const [selectedMonth, setSelectedMonth] = useState('');
   const [previewImage, setPreviewImage] = useState(null);
   const [editingContainer, setEditingContainer] = useState(null);
 
@@ -156,12 +158,12 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
   // 3. รีเซ็ตกลับไปหน้าที่ 1 เมื่อตัวกรองเปลี่ยน
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, selectedBatchFilter, selectedTruckFilter, rowsPerPage]);
+  }, [statusFilter, selectedBatchFilter, selectedTruckFilter, selectedMonth, rowsPerPage]);
 
   // 4. ดึงข้อมูลตารางแบบ Server-Side Pagination จริงเมื่อเงื่อนไขเปลี่ยน
   useEffect(() => {
     loadPaginatedData();
-  }, [currentPage, rowsPerPage, debouncedSearch, statusFilter, selectedBatchFilter, selectedTruckFilter, sortConfig]);
+  }, [currentPage, rowsPerPage, debouncedSearch, statusFilter, selectedBatchFilter, selectedTruckFilter, selectedMonth, sortConfig]);
 
   const handleSort = (key) => {
     setSortConfig(prev => {
@@ -182,6 +184,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
         statusFilter,
         batchFilter: selectedBatchFilter,
         truckFilter: selectedTruckFilter,
+        monthFilter: selectedMonth,
         sortConfig
       });
 
@@ -577,6 +580,35 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
 
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
             
+            {/* 📅 Month Filter */}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <MonthPicker
+                value={selectedMonth}
+                onChange={(newMonth) => setSelectedMonth(newMonth)}
+                label="งวด:"
+              />
+              {selectedMonth && (
+                <button
+                  type="button"
+                  onClick={() => setSelectedMonth('')}
+                  style={{
+                    height: '35px',
+                    padding: '0 8px',
+                    borderRadius: '7px',
+                    border: '1px solid #bfdbfe',
+                    background: '#eff6ff',
+                    color: '#2563eb',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                  title="ดูทุกงวดเดือน"
+                >
+                  ทุกงวด
+                </button>
+              )}
+            </div>
+
             {/* Batch Filter Dropdown */}
             {availableBatches.length > 0 && (
               <select
@@ -628,11 +660,12 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
             )}
 
             {/* Clear Filter Button */}
-            {(selectedBatchFilter !== 'ALL' || selectedTruckFilter !== 'ALL' || searchTerm.trim() !== '' || statusFilter !== 'ALL') && (
+            {(selectedBatchFilter !== 'ALL' || selectedTruckFilter !== 'ALL' || searchTerm.trim() !== '' || statusFilter !== 'ALL' || selectedMonth !== '') && (
               <button
                 onClick={() => {
                   setSelectedBatchFilter('ALL');
                   setSelectedTruckFilter('ALL');
+                  setSelectedMonth('');
                   setStatusFilter('ALL');
                   setSearchTerm('');
                 }}

@@ -13,6 +13,7 @@ import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown'
 import KpiCard from '../components/ui/KpiCard';
 import UniversalTableContainer from '../components/ui/UniversalTableContainer';
 import UniversalTableHeader from '../components/ui/UniversalTableHeader';
+import MonthPicker from '../components/ui/MonthPicker';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 
 const DEFAULT_LEAVE_COLUMNS = [
@@ -96,6 +97,7 @@ export default function DriverLeavesView() {
   const [typeFilter, setTypeFilter] = useState('ALL');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [driverFilter, setDriverFilter] = useState('ALL');
+  const [selectedMonth, setSelectedMonth] = useState('ALL');
 
   // Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -118,7 +120,7 @@ export default function DriverLeavesView() {
     storageKeyPrefix: 'driver_leaves',
     rawColumns: DEFAULT_LEAVE_COLUMNS,
     defaultNames: DEFAULT_COLUMN_NAMES,
-    defaultWidths: DEFAULT_LEAVE_WIDTHS,
+    defaultWidths: DEFAULT_COLUMN_WIDTHS,
     sampleRecords: records,
     formatCellValue: (col, val, row) => {
       if (col === 'start_date') return formatDateDisplay(val);
@@ -137,12 +139,12 @@ export default function DriverLeavesView() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [leaveRes, driverRes] = await Promise.all([
+      const [leavesRes, driversRes] = await Promise.all([
         fetchLeaveRecords(),
         fetchDrivers()
       ]);
-      setRecords(leaveRes?.data || []);
-      const driverList = Array.isArray(driverRes) ? driverRes : (driverRes?.data || []);
+      setRecords(leavesRes?.data || []);
+      const driverList = Array.isArray(driversRes) ? driversRes : (driversRes?.data || []);
       setDrivers(driverList);
     } catch (err) {
       toastError('โหลดข้อมูลไม่สำเร็จ: ' + err.message);
@@ -158,6 +160,10 @@ export default function DriverLeavesView() {
   // Filtered List
   const filteredRecords = useMemo(() => {
     return records.filter(r => {
+      if (selectedMonth && selectedMonth !== 'ALL') {
+        const rawDate = r.start_date || r.end_date || '';
+        if (!rawDate.startsWith(selectedMonth)) return false;
+      }
       if (typeFilter !== 'ALL' && r.leave_type !== typeFilter) return false;
       if (statusFilter !== 'ALL' && r.status !== statusFilter) return false;
       if (driverFilter !== 'ALL' && r.driver_name !== driverFilter) return false;
@@ -172,7 +178,7 @@ export default function DriverLeavesView() {
       }
       return true;
     });
-  }, [records, typeFilter, statusFilter, driverFilter, searchTerm]);
+  }, [records, selectedMonth, typeFilter, statusFilter, driverFilter, searchTerm]);
 
   // Displayed Records (Sorted & Filtered)
   const displayedRecords = useMemo(() => {
@@ -384,6 +390,35 @@ export default function DriverLeavesView() {
         </div>
 
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+          {/* 📅 Month Filter */}
+          <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+            <MonthPicker
+              value={selectedMonth === 'ALL' ? '' : selectedMonth}
+              onChange={(newMonth) => setSelectedMonth(newMonth)}
+              label="งวด:"
+            />
+            {selectedMonth !== 'ALL' && (
+              <button
+                type="button"
+                onClick={() => setSelectedMonth('ALL')}
+                style={{
+                  height: '35px',
+                  padding: '0 8px',
+                  borderRadius: '7px',
+                  border: '1px solid #bfdbfe',
+                  background: '#eff6ff',
+                  color: '#2563eb',
+                  fontSize: '11.5px',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+                title="ดูทุกงวดเดือน"
+              >
+                ทุกงวด
+              </button>
+            )}
+          </div>
+
           {/* ฟิลเตอร์ประเภทการลา */}
           <select
             value={typeFilter}
