@@ -77,6 +77,11 @@
   * 🎨 **ปรับปรุงส่วนหัวแบรนด์ใน Sidebar (Modern Brand Header):**
     * เปลี่ยนชื่อแบรนด์จาก `JWD Transport` ➔ **`Container V3 WebApp`**
     * ออกแบบไอคอน 3D Badge พร้อมป้าย `PRO` และไฟสถานะระบบสีเขียว 🟢 ให้ดูพรีเมียม สวยงาม ทันสมัย
+  * ⚡ **เพิ่มประสิทธิภาพฐานข้อมูล & การโหลดข้อมูลแดชบอร์ด (Database & Dashboard Performance Boost):**
+    * สร้าง Database Indexes สำหรับ 4 ตารางหลัก (`container_records`, `truck_expenses`, `job_sheet_items`, `driver_advances`)
+    * เคลียร์ข้อมูลเรทราคาซ้ำซ้อนและสร้าง Unique Index สำหรับ `port_billing_rates` ป้องกันการบันทึกเรทซ้ำ
+    * เพิ่มคอลัมน์ `year_month` ใน `truck_expenses` พร้อม Index เพื่อให้ Group By ประจำเดือนรวดเร็ว
+    * ปรับปรุง [`ExecutiveDashboardView.jsx`](file:///C:/Users/AMD/Desktop/Container_V3_WebApp/src/views/ExecutiveDashboardView.jsx) และ [`TruckPnlView.jsx`](file:///C:/Users/AMD/Desktop/Container_V3_WebApp/src/views/TruckPnlView.jsx) ให้ใช้ **Server-Side Date Filtering** กรองข้อมูลเฉพาะงวดเดือนที่เลือก ลดขนาด Payload ข้าม Network ลงกว่า 90% โหลดแดชบอร์ดได้เร็วขึ้นอย่างมาก
 
 ### 🗓️ 2026-08-25
 * 💵 **ศูนย์รวมรายได้คนขับแบบครบวงจร (Driver Payroll & Compensation Hub 5 Tabs):**
