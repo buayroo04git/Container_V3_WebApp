@@ -93,11 +93,17 @@ export const driverAdvanceService = {
    */
   normalizeAdvanceItem(item) {
     if (!item) return item;
-    const isLoan = item.category === 'installment_loan' || item.advance_type === 'loan_installment';
+    const totalInst = Number(item.installments_total || 1);
+    const hasMultipleInst = totalInst > 1;
+    const isLoan = item.category === 'installment_loan' || 
+                   item.advance_type === 'loan_installment' || 
+                   hasMultipleInst ||
+                   (Number(item.installment_amount || 0) > 0 && Number(item.installment_amount) < Number(item.amount || 0));
+
     const category = isLoan ? 'installment_loan' : 'single_advance';
-    const advance_type = item.advance_type || (isLoan ? 'loan_installment' : 'salary_advance');
+    const advance_type = isLoan ? 'loan_installment' : (item.advance_type || 'salary_advance');
     const amount = Number(item.amount || 0);
-    const installments_total = isLoan ? Math.max(1, Number(item.installments_total || 1)) : 1;
+    const installments_total = isLoan ? Math.max(1, totalInst) : 1;
     const installments_paid = isLoan ? Math.max(0, Number(item.installments_paid || 0)) : (item.status === 'settled' ? 1 : 0);
     const installment_amount = isLoan 
       ? (Number(item.installment_amount) || Math.round(amount / installments_total))
@@ -173,7 +179,13 @@ export const driverAdvanceService = {
           
           data.forEach(dbItem => {
             const local = localMap.get(dbItem.id) || {};
-            const normalized = this.normalizeAdvanceItem({ ...local, ...dbItem });
+            const merged = { ...local };
+            Object.keys(dbItem).forEach(k => {
+              if (dbItem[k] !== null && dbItem[k] !== undefined && dbItem[k] !== '') {
+                merged[k] = dbItem[k];
+              }
+            });
+            const normalized = this.normalizeAdvanceItem(merged);
             mergedMap.set(dbItem.id, normalized);
           });
 

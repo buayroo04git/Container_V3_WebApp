@@ -100,18 +100,27 @@ export default function SettingsView() {
   };
 
   return (
-    <div style={{ padding: '24px 32px', maxWidth: '840px', margin: '0 auto', animation: 'fadeIn 0.3s ease' }}>
-      
-      <div style={{ marginBottom: '24px' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: 800, margin: '0 0 4px 0', color: '#0f172a' }}>
-          ⚙️ Owner Settings
-        </h1>
-        <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>
-          ตั้งค่าระบบหลักและเชื่อมต่อ API (บันทึกเก็บไว้ในเบราว์เซอร์อย่างปลอดภัย)
-        </p>
-      </div>
+    <div style={{
+      height: '100%',
+      width: '100%',
+      overflowY: 'auto',
+      overflowX: 'hidden',
+      boxSizing: 'border-box',
+      padding: '24px 32px',
+      background: '#f8fafc'
+    }}>
+      <div style={{ maxWidth: '840px', margin: '0 auto', animation: 'fadeIn 0.3s ease' }}>
+        
+        <div style={{ marginBottom: '24px' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: 800, margin: '0 0 4px 0', color: '#0f172a' }}>
+            ⚙️ Owner Settings
+          </h1>
+          <p style={{ color: '#64748b', fontSize: '13px', margin: 0 }}>
+            ตั้งค่าระบบหลักและเชื่อมต่อ API (บันทึกเก็บไว้ในเบราว์เซอร์อย่างปลอดภัย)
+          </p>
+        </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         
         {/* API Credentials Card */}
         <div style={{
@@ -281,6 +290,7 @@ export default function SettingsView() {
 
       </div>
       
+      </div>
     </div>
   );
 }

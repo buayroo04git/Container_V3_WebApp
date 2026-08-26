@@ -24,11 +24,13 @@ function getInitialTab() {
 function App() {
   const [activeTab, setActiveTab] = useState(getInitialTab);
   const [editingSheet, setEditingSheet] = useState(null);
+  const [tabCustomProps, setTabCustomProps] = useState({});
 
   // Sync with URL Hash & localStorage on tab change
-  const handleTabChange = (tab) => {
+  const handleTabChange = (tab, customProps = {}) => {
     if (!tab) return;
     setEditingSheet(null);
+    setTabCustomProps(customProps || {});
     setActiveTab(tab);
     try {
       localStorage.setItem(STORAGE_TAB_KEY, tab);
@@ -44,6 +46,7 @@ function App() {
       const hash = window.location.hash.replace(/^#/, '').trim();
       if (hash && getNavigationItem(hash)) {
         setActiveTab(hash);
+        setTabCustomProps({});
         try {
           localStorage.setItem(STORAGE_TAB_KEY, hash);
         } catch (e) {}
@@ -100,7 +103,8 @@ function App() {
     editingSheet,
     setEditingSheet,
     onEditSheet: handleEditSheet,
-    ...(currentNavItem?.defaultProps || {})
+    ...(currentNavItem?.defaultProps || {}),
+    ...tabCustomProps
   };
 
   return (

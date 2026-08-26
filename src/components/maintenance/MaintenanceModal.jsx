@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 
 /**
- * 🛠️ MaintenanceModal: ฟอร์มบันทึกประวัติการซ่อมบำรุงและค่าใช้จ่ายรถ (Completed Records)
- * แยกเป็นอิสระจากสถานะการดำเนินงานของรถ
+ * 🛠️ MaintenanceModal: ฟอร์มบันทึกประวัติการซ่อมบำรุงรถ (Maintenance Records Only)
+ * ค่าใช้จ่ายจะถูกแยกไปบันทึกที่เมนูค่าใช้จ่ายรถโดยตรง
  */
 export default function MaintenanceModal({
   isOpen,
@@ -16,11 +16,9 @@ export default function MaintenanceModal({
     truck_no: '',
     maintenance_type: 'general',
     start_date: new Date().toISOString().slice(0, 10),
+    end_date: new Date().toISOString().slice(0, 10),
     garage_name: '',
     mileage: '',
-    cost_parts: '',
-    cost_labor: '',
-    cost_total: '',
     invoice_no: '',
     status: 'completed',
     parts_list: '',
@@ -35,11 +33,9 @@ export default function MaintenanceModal({
         truck_no: record.truck_no || '',
         maintenance_type: record.maintenance_type || 'general',
         start_date: record.start_date || new Date().toISOString().slice(0, 10),
+        end_date: record.end_date || record.start_date || new Date().toISOString().slice(0, 10),
         garage_name: record.garage_name && record.garage_name !== '-' ? record.garage_name : '',
         mileage: record.mileage && record.mileage > 0 ? String(record.mileage) : '',
-        cost_parts: record.cost_parts && record.cost_parts > 0 ? String(record.cost_parts) : '',
-        cost_labor: record.cost_labor && record.cost_labor > 0 ? String(record.cost_labor) : '',
-        cost_total: record.cost_total && record.cost_total > 0 ? String(record.cost_total) : '',
         invoice_no: record.invoice_no && record.invoice_no !== '-' ? record.invoice_no : '',
         status: 'completed',
         parts_list: record.parts_list && record.parts_list !== '-' ? record.parts_list : '',
@@ -52,11 +48,9 @@ export default function MaintenanceModal({
         truck_no: initialTruckNo || '',
         maintenance_type: 'general',
         start_date: today,
+        end_date: today,
         garage_name: '',
         mileage: '',
-        cost_parts: '',
-        cost_labor: '',
-        cost_total: '',
         invoice_no: '',
         status: 'completed',
         parts_list: '',
@@ -65,15 +59,6 @@ export default function MaintenanceModal({
       });
     }
   }, [record, isOpen, initialTruckNo]);
-
-  // Auto-calculate Total Cost (ค่าอะไหล่ + ค่าแรง = รวมเงิน)
-  useEffect(() => {
-    const p = parseFloat(formData.cost_parts) || 0;
-    const l = parseFloat(formData.cost_labor) || 0;
-    if (p > 0 || l > 0) {
-      setFormData(prev => ({ ...prev, cost_total: String(p + l) }));
-    }
-  }, [formData.cost_parts, formData.cost_labor]);
 
   if (!isOpen) return null;
 
@@ -84,21 +69,27 @@ export default function MaintenanceModal({
       return;
     }
     if (!formData.start_date) {
-      alert('กรุณาระบุวันที่ซ่อม / ทำรายการ');
+      alert('กรุณาระบุวันที่เข้าซ่อม');
       return;
     }
 
     setSaving(true);
     try {
+      // คำนวณจำนวนวันซ่อม
+      let duration = 1;
+      if (formData.start_date && formData.end_date) {
+        const d1 = new Date(formData.start_date);
+        const d2 = new Date(formData.end_date);
+        const diff = Math.ceil((d2.getTime() - d1.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+        duration = diff > 0 ? diff : 1;
+      }
+
       const payload = {
         ...formData,
         start_date: formData.start_date,
-        end_date: formData.start_date,
-        duration_days: 1,
+        end_date: formData.end_date || formData.start_date,
+        duration_days: duration,
         status: 'completed',
-        cost_parts: Number(formData.cost_parts) || 0,
-        cost_labor: Number(formData.cost_labor) || 0,
-        cost_total: Number(formData.cost_total) || 0,
         mileage: Number(formData.mileage) || 0
       };
       await onSave(payload, record?.id);
@@ -126,7 +117,7 @@ export default function MaintenanceModal({
         background: '#ffffff',
         borderRadius: '16px',
         width: '100%',
-        maxWidth: '580px',
+        maxWidth: '560px',
         maxHeight: '90vh',
         overflowY: 'auto',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
@@ -149,10 +140,10 @@ export default function MaintenanceModal({
             <span style={{ fontSize: '22px' }}>🔧</span>
             <div>
               <h3 style={{ margin: 0, fontSize: '17px', fontWeight: 800, color: '#0f172a' }}>
-                {record ? 'แก้ไขประวัติการซ่อมบำรุง' : 'บันทึกประวัติการซ่อมบำรุง & ค่าใช้จ่าย'}
+                {record ? 'แก้ไขประวัติการซ่อมบำรุง' : 'บันทึกประวัติการซ่อมบำรุง'}
               </h3>
               <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-                สมุดบันทึกรายการซ่อม อะไหล่ ค่าใช้จ่าย และข้อมูลอู่
+                สมุดบันทึกรายการซ่อม อะไหล่ และข้อมูลอู่
               </div>
             </div>
           </div>
@@ -234,16 +225,24 @@ export default function MaintenanceModal({
             </div>
           </div>
 
-          {/* แถวที่ 2: วันที่ซ่อม & เลขไมล์ */}
+          {/* แถวที่ 2: วันที่เข้าซ่อม & วันที่ซ่อมเสร็จ */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-                📅 วันที่ซ่อม / ทำรายการ <span style={{ color: '#ef4444' }}>*</span>
+                📅 วันที่เข้าซ่อม <span style={{ color: '#ef4444' }}>*</span>
               </label>
               <input
                 type="date"
                 value={formData.start_date}
-                onChange={e => setFormData({ ...formData, start_date: e.target.value })}
+                onChange={e => {
+                  const newStart = e.target.value;
+                  setFormData(prev => ({
+                    ...prev,
+                    start_date: newStart,
+                    // If end_date was before new start_date, auto advance end_date
+                    end_date: prev.end_date < newStart ? newStart : prev.end_date
+                  }));
+                }}
                 required
                 style={{
                   width: '100%',
@@ -258,6 +257,31 @@ export default function MaintenanceModal({
               />
             </div>
 
+            <div>
+              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                🏁 วันที่ซ่อมเสร็จ
+              </label>
+              <input
+                type="date"
+                value={formData.end_date}
+                min={formData.start_date}
+                onChange={e => setFormData({ ...formData, end_date: e.target.value })}
+                style={{
+                  width: '100%',
+                  padding: '8px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '13px',
+                  fontWeight: 600,
+                  background: '#ffffff',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+          </div>
+
+          {/* แถวที่ 3: เลขไมล์ & อู่ / ศูนย์บริการ */}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.3fr', gap: '12px' }}>
             <div>
               <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
                 🔢 เลขไมล์ตอนเข้าซ่อม (กม.)
@@ -277,18 +301,38 @@ export default function MaintenanceModal({
                 }}
               />
             </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                🏢 ชื่ออู่ / ศูนย์บริการ / ช่างผู้ซ่อม
+              </label>
+              <input
+                type="text"
+                value={formData.garage_name}
+                onChange={e => setFormData({ ...formData, garage_name: e.target.value })}
+                placeholder="เช่น อู่สมบูรณ์การช่าง, ศูนย์ Isuzu"
+                style={{
+                  width: '100%',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  fontSize: '13px',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
           </div>
 
-          {/* แถวที่ 3: อู่ / ศูนย์บริการ */}
+          {/* แถวที่ 4: เลขที่บิล / ใบสั่งซ่อม */}
           <div>
             <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
-              🏢 ชื่ออู่ / ศูนย์บริการ / ช่างผู้ซ่อม
+              📄 เลขที่บิล / ใบสั่งซ่อม / เอกสารอ้างอิง (ถ้ามี)
             </label>
             <input
               type="text"
-              value={formData.garage_name}
-              onChange={e => setFormData({ ...formData, garage_name: e.target.value })}
-              placeholder="เช่น อู่สมบูรณ์การช่าง, ศูนย์ Isuzu ชลบุรี, ปะยางข้างทาง"
+              value={formData.invoice_no}
+              onChange={e => setFormData({ ...formData, invoice_no: e.target.value })}
+              placeholder="เช่น INV-00123 หรือ WO-2026/08"
               style={{
                 width: '100%',
                 padding: '8px 12px',
@@ -300,110 +344,16 @@ export default function MaintenanceModal({
             />
           </div>
 
-          {/* แถวที่ 4: ค่าใช้จ่าย & ใบเสร็จ */}
-          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '14px' }}>
-            <div style={{ fontSize: '12.5px', fontWeight: 700, color: '#166534', marginBottom: '10px' }}>
-              💰 ค่าใช้จ่าย & ข้อมูลใบเสร็จ
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1.2fr 1fr', gap: '10px' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#15803d', marginBottom: '3px' }}>
-                  ค่าอะไหล่ (บาท)
-                </label>
-                <input
-                  type="number"
-                  value={formData.cost_parts}
-                  onChange={e => setFormData({ ...formData, cost_parts: e.target.value })}
-                  placeholder="0"
-                  style={{
-                    width: '100%',
-                    padding: '7px 8px',
-                    borderRadius: '6px',
-                    border: '1px solid #86efac',
-                    fontSize: '12.5px',
-                    background: '#ffffff',
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#15803d', marginBottom: '3px' }}>
-                  ค่าแรงช่าง (บาท)
-                </label>
-                <input
-                  type="number"
-                  value={formData.cost_labor}
-                  onChange={e => setFormData({ ...formData, cost_labor: e.target.value })}
-                  placeholder="0"
-                  style={{
-                    width: '100%',
-                    padding: '7px 8px',
-                    borderRadius: '6px',
-                    border: '1px solid #86efac',
-                    fontSize: '12.5px',
-                    background: '#ffffff',
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 700, color: '#15803d', marginBottom: '3px' }}>
-                  ยอดรวมทั้งหมด (บาท)
-                </label>
-                <input
-                  type="number"
-                  value={formData.cost_total}
-                  onChange={e => setFormData({ ...formData, cost_total: e.target.value })}
-                  placeholder="0"
-                  style={{
-                    width: '100%',
-                    padding: '7px 8px',
-                    borderRadius: '6px',
-                    border: '1px solid #86efac',
-                    fontSize: '13px',
-                    fontWeight: 700,
-                    color: '#15803d',
-                    background: '#ffffff',
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: '11px', fontWeight: 600, color: '#15803d', marginBottom: '3px' }}>
-                  เลขที่บิล / Invoice
-                </label>
-                <input
-                  type="text"
-                  value={formData.invoice_no}
-                  onChange={e => setFormData({ ...formData, invoice_no: e.target.value })}
-                  placeholder="INV-..."
-                  style={{
-                    width: '100%',
-                    padding: '7px 8px',
-                    borderRadius: '6px',
-                    border: '1px solid #86efac',
-                    fontSize: '12.5px',
-                    background: '#ffffff',
-                    boxSizing: 'border-box'
-                  }}
-                />
-              </div>
-            </div>
-          </div>
-
           {/* รายการอะไหล่ / งานที่ทำ */}
           <div>
             <label style={{ display: 'block', fontSize: '12.5px', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
               ⚙️ รายการอะไหล่ / งานที่ทำ
             </label>
             <textarea
-              rows={2}
+              rows={3}
               value={formData.parts_list}
               onChange={e => setFormData({ ...formData, parts_list: e.target.value })}
-              placeholder="เช่น เปลี่ยนถ่ายน้ำมันเครื่อง 15W-40, กรองน้ำมันเครื่อง, เปลี่ยนผ้าเบรกหน้า"
+              placeholder="เช่น เปลี่ยนถ่ายน้ำมันเครื่อง 15W-40, เปลี่ยนไส้กรองน้ำมันเครื่อง, เปลี่ยนผ้าเบรกหน้า ซ้าย-ขวา"
               style={{
                 width: '100%',
                 padding: '8px 12px',
@@ -426,7 +376,7 @@ export default function MaintenanceModal({
               type="text"
               value={formData.remark}
               onChange={e => setFormData({ ...formData, remark: e.target.value })}
-              placeholder="เช่น รับประกันงานซ่อม 3 เดือน, นัดเช็กระยะครั้งต่อไป 150,000 กม."
+              placeholder="เช่น รับประกันงานซ่อม 3 เดือน, นัดตรวจเช็กระยะรอบถัดไป 150,000 กม."
               style={{
                 width: '100%',
                 padding: '8px 12px',

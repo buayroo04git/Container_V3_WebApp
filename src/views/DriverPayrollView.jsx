@@ -322,9 +322,15 @@ const RATES_ALIGN_MAP = {
   actions: 'center'
 };
 
-export default function DriverPayrollView() {
-  const [activeTab, setActiveTab] = useState('trips');
+export default function DriverPayrollView({ defaultTab, defaultSubTab } = {}) {
+  const [activeTab, setActiveTab] = useState(defaultSubTab || defaultTab || 'trips');
   const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (defaultSubTab || defaultTab) {
+      setActiveTab(defaultSubTab || defaultTab);
+    }
+  }, [defaultTab, defaultSubTab]);
 
   // 📦 Data for Tab 1 (Trip Earnings Summary)
   const [payrollData, setPayrollData] = useState({

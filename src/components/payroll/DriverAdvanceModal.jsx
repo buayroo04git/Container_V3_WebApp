@@ -170,8 +170,10 @@ export default function DriverAdvanceModal({
   onSave,
   driverList = [],
   defaultDriverName = '',
-  advanceRecord = null
+  advanceRecord = null,
+  advance = null
 }) {
+  const currentRecord = advanceRecord || advance;
   const [category, setCategory] = useState('single_advance'); // 'single_advance' | 'installment_loan'
   const [formData, setFormData] = useState({
     advance_date: new Date().toISOString().slice(0, 10),
@@ -197,26 +199,26 @@ export default function DriverAdvanceModal({
   const safeDriverList = Array.isArray(driverList) ? driverList : (driverList?.data || []);
 
   useEffect(() => {
-    if (advanceRecord) {
-      const isLoan = advanceRecord.category === 'installment_loan' || advanceRecord.advance_type === 'loan_installment';
+    if (currentRecord) {
+      const isLoan = currentRecord.category === 'installment_loan' || currentRecord.advance_type === 'loan_installment';
       setCategory(isLoan ? 'installment_loan' : 'single_advance');
       setIsManualInstallmentAmt(false);
-      const existingSlip = advanceRecord.slip_url && advanceRecord.slip_url !== '-' ? advanceRecord.slip_url : '';
+      const existingSlip = currentRecord.slip_url && currentRecord.slip_url !== '-' ? currentRecord.slip_url : '';
       setSlipPreviewUrl(existingSlip);
       setFormData({
-        advance_date: advanceRecord.advance_date ? String(advanceRecord.advance_date).slice(0, 10) : new Date().toISOString().slice(0, 10),
-        driver_name: advanceRecord.driver_name || '',
-        amount: advanceRecord.amount !== undefined ? String(advanceRecord.amount) : '',
-        advance_type: advanceRecord.advance_type || (isLoan ? 'loan_installment' : 'salary_advance'),
-        installments_total: String(advanceRecord.installments_total || (isLoan ? 4 : 1)),
-        installment_amount: advanceRecord.installment_amount !== undefined ? String(advanceRecord.installment_amount) : '',
-        installments_paid: String(advanceRecord.installments_paid || 0),
-        remaining_amount: advanceRecord.remaining_amount !== undefined ? String(advanceRecord.remaining_amount) : '',
-        start_period: advanceRecord.start_period || (advanceRecord.advance_date ? String(advanceRecord.advance_date).slice(0, 7) : new Date().toISOString().slice(0, 7)),
-        status: advanceRecord.status || 'pending',
-        payment_method: advanceRecord.payment_method || 'transfer',
+        advance_date: currentRecord.advance_date ? String(currentRecord.advance_date).slice(0, 10) : new Date().toISOString().slice(0, 10),
+        driver_name: currentRecord.driver_name || '',
+        amount: currentRecord.amount !== undefined ? String(currentRecord.amount) : '',
+        advance_type: currentRecord.advance_type || (isLoan ? 'loan_installment' : 'salary_advance'),
+        installments_total: String(currentRecord.installments_total || (isLoan ? 4 : 1)),
+        installment_amount: currentRecord.installment_amount !== undefined ? String(currentRecord.installment_amount) : '',
+        installments_paid: String(currentRecord.installments_paid || 0),
+        remaining_amount: currentRecord.remaining_amount !== undefined ? String(currentRecord.remaining_amount) : '',
+        start_period: currentRecord.start_period || (currentRecord.advance_date ? String(currentRecord.advance_date).slice(0, 7) : new Date().toISOString().slice(0, 7)),
+        status: currentRecord.status || 'pending',
+        payment_method: currentRecord.payment_method || 'transfer',
         slip_url: existingSlip,
-        remark: advanceRecord.remark && advanceRecord.remark !== '-' ? advanceRecord.remark : ''
+        remark: currentRecord.remark && currentRecord.remark !== '-' ? currentRecord.remark : ''
       });
     } else {
       const initialDriver = defaultDriverName || (safeDriverList.length > 0 ? safeDriverList[0].driver_name : '');
@@ -241,7 +243,7 @@ export default function DriverAdvanceModal({
       });
     }
     setErrorMsg('');
-  }, [advanceRecord, isOpen, defaultDriverName, driverList]);
+  }, [currentRecord, isOpen, defaultDriverName, safeDriverList]);
 
   // คำนวณค่างวดอัตโนมัติเมื่อจำนวนเงินหรือจำนวนงวดเปลี่ยน
   useEffect(() => {
@@ -373,7 +375,7 @@ export default function DriverAdvanceModal({
     try {
       await onSave({
         ...formData,
-        id: advanceRecord?.id,
+        id: currentRecord?.id,
         category,
         advance_type: isLoan ? 'loan_installment' : formData.advance_type,
         amount: amt,
@@ -454,7 +456,7 @@ export default function DriverAdvanceModal({
             </span>
             <div>
               <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#0f172a' }}>
-                {advanceRecord ? 'แก้ไขรายการเบิก / เงินยืม' : 'บันทึกเบิกเงินล่วงหน้า & เงินยืมก้อน'}
+                {currentRecord ? 'แก้ไขรายการเบิก / เงินยืม' : 'บันทึกเบิกเงินล่วงหน้า & เงินยืมก้อน'}
               </h3>
               <p style={{ margin: '2px 0 0 0', fontSize: '11.5px', color: '#64748b' }}>
                 ระบบบันทึกรายการหักเงินเดือนคนขับทั้งแบบงวดเดียวและผ่อนชำระ

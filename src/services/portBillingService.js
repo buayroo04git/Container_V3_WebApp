@@ -230,7 +230,7 @@ export const portBillingService = {
   },
 
   /**
-   * คำนวณราคาตู้จากเรทท่าเรือตามขนาดและวันที่
+   * คำนวณราคาตู้จากค่าเที่ยวท่าเรือตามขนาดและวันที่
    */
   calculatePortUnitPrice(size, jobDateStr = null, portRates = DEFAULT_PORT_RATES) {
     const effectiveRate = this.findEffectivePortRate(jobDateStr, portRates);

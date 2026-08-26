@@ -1,4 +1,5 @@
 import ExecutiveDashboardView from '../views/ExecutiveDashboardView';
+import DriverIncomeSummaryView from '../views/DriverIncomeSummaryView';
 import ScannerView from '../views/ScannerView';
 import BatchManagerView from '../views/BatchManagerView';
 import OcrContainerHistoryView from '../views/OcrContainerHistoryView';
@@ -17,20 +18,27 @@ import SettingsView from '../views/SettingsView';
  * 🗺️ Navigation Registry (Master Menu Configuration)
  * 
  * ทุกเมนูในระบบจะถูกลงทะเบียนไว้ที่นี่ที่เดียว
- * จัดหมวดหมู่ 3 เสาหลัก + แดชบอร์ดภาพรวมผู้บริหาร
+ * จัดหมวดหมู่ แดชบอร์ด + 3 เสาหลัก
  */
 export const NAVIGATION_SECTIONS = [
   {
     id: 'executive',
-    title: 'ภาพรวมบริหาร',
+    title: 'แดชบอร์ด',
     icon: '📊',
     items: [
       {
         id: 'executive-dashboard',
-        label: 'แดชบอร์ดภาพรวม',
+        label: 'ผลประกอบการรถ',
         icon: '📊',
-        description: 'ศูนย์รวมรายรับท่าเรือ ต้นทุนฟลีท และสรุปกำไรสุทธิแบบ Real-time',
+        description: 'ศูนย์รวมรายรับค่าเที่ยวท่าเรือ ต้นทุนฟลีท และสรุปกำไรสุทธิแบบ Real-time',
         component: ExecutiveDashboardView,
+      },
+      {
+        id: 'driver-summary',
+        label: 'สรุปรายได้คนขับ',
+        icon: '👨‍✈️',
+        description: 'สรุปยอดตั้งจ่ายคนขับ (เงินเดือน+ค่ารอบ+เงินพิเศษ) หักรายการหัก (ประกันสังคม, ภาษี 3%, เบิก/ยืม) สู่ยอดโอนจ่ายจริง',
+        component: DriverIncomeSummaryView,
       }
     ]
   },
@@ -77,9 +85,9 @@ export const NAVIGATION_SECTIONS = [
     items: [
       {
         id: 'driver-payroll',
-        label: 'ผลงานคนขับ & ค่าเที่ยว',
+        label: 'ผลงานคนขับ',
         icon: '📦',
-        description: 'สรุปผลงานตู้ที่ตรวจผ่าน ค่าเที่ยว และเงินพิเศษขั้นบันได',
+        description: 'สรุปผลงานตู้ที่ตรวจผ่าน ค่ารอบคนขับ และเงินพิเศษขั้นบันได',
         component: DriverPayrollView,
       },
       {
@@ -91,7 +99,7 @@ export const NAVIGATION_SECTIONS = [
       },
       {
         id: 'fleet-drivers',
-        label: 'ทะเบียนคนขับ & ฐานเงินเดือน',
+        label: 'ทะเบียนคนขับ',
         icon: '👤',
         description: 'ทะเบียนคนขับ ฐานเงินเดือน ประกันสังคม และประวัติการลางาน',
         component: FleetDriversHubView,
@@ -107,19 +115,19 @@ export const NAVIGATION_SECTIONS = [
   },
   {
     id: 'fleet',
-    title: '3. รถ & ผลประกอบการ',
+    title: '3. การดำเนินงานรถ',
     icon: '🚛',
     items: [
       {
         id: 'truck-pnl',
         label: 'รายได้รถ',
         icon: '📈',
-        description: 'สรุปรายได้ที่รถสร้างจากตู้ท่าเรือ ต้นทุนฟลีท และจัดการเรทท่าเรือ',
+        description: 'สรุปรายได้ที่รถสร้างจากตู้ท่าเรือในใบวางบิล และจัดการค่าเที่ยวท่าเรือ',
         component: TruckPnlView,
       },
       {
         id: 'truck-expenses',
-        label: 'ค่าใช้จ่ายรถ & น้ำมัน',
+        label: 'ค่าใช้จ่ายรถ',
         icon: '⛽',
         description: 'บันทึกค่าใช้จ่ายรถ ค่าน้ำมัน ค่าซ่อมบำรุง และค่างวดรถแบบเบ็ดเสร็จ',
         component: TruckExpensesView,

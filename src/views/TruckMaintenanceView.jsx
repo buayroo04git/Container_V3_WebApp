@@ -10,7 +10,6 @@ import {
 import { fetchTrucks } from '../services/truckDriverService';
 import MaintenanceModal from '../components/maintenance/MaintenanceModal';
 import ColumnVisibilityDropdown from '../components/ui/ColumnVisibilityDropdown';
-import KpiCard from '../components/ui/KpiCard';
 import UniversalTableContainer from '../components/ui/UniversalTableContainer';
 import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
@@ -20,13 +19,12 @@ const DEFAULT_MAINTENANCE_COLUMNS = [
   'truck_no',
   'maintenance_type',
   'start_date',
+  'end_date',
+  'duration_days',
   'garage_name',
   'mileage',
-  'cost_parts',
-  'cost_labor',
-  'cost_total',
-  'invoice_no',
   'parts_list',
+  'invoice_no',
   'remark',
   'actions'
 ];
@@ -35,14 +33,13 @@ const DEFAULT_COLUMN_NAMES = {
   id: '#',
   truck_no: 'เบอร์รถ',
   maintenance_type: 'ประเภทการซ่อม',
-  start_date: 'วันที่ซ่อม',
+  start_date: 'วันที่เข้าซ่อม',
+  end_date: 'วันที่ซ่อมเสร็จ',
+  duration_days: 'ระยะเวลา',
   garage_name: 'อู่ / ศูนย์บริการ',
   mileage: 'เลขไมล์ (กม.)',
-  cost_parts: 'ค่าอะไหล่ (บาท)',
-  cost_labor: 'ค่าแรง (บาท)',
-  cost_total: 'ยอดรวม (บาท)',
-  invoice_no: 'เลขที่บิล',
-  parts_list: 'รายการอะไหล่',
+  parts_list: 'รายการอะไหล่ / งานที่ทำ',
+  invoice_no: 'เลขที่บิล / ใบสั่งซ่อม',
   remark: 'หมายเหตุ',
   actions: 'จัดการ'
 };
@@ -52,13 +49,12 @@ const DEFAULT_MAINTENANCE_WIDTHS = {
   truck_no: 95,
   maintenance_type: 140,
   start_date: 110,
+  end_date: 110,
+  duration_days: 90,
   garage_name: 150,
-  mileage: 105,
-  cost_parts: 105,
-  cost_labor: 105,
-  cost_total: 115,
-  invoice_no: 110,
-  parts_list: 160,
+  mileage: 110,
+  parts_list: 220,
+  invoice_no: 120,
   remark: 140,
   actions: 100
 };
@@ -68,13 +64,12 @@ const MAINTENANCE_ALIGN_MAP = {
   truck_no: 'center',
   maintenance_type: 'center',
   start_date: 'center',
+  end_date: 'center',
+  duration_days: 'center',
   garage_name: 'left',
   mileage: 'right',
-  cost_parts: 'right',
-  cost_labor: 'right',
-  cost_total: 'right',
-  invoice_no: 'left',
   parts_list: 'left',
+  invoice_no: 'left',
   remark: 'left',
   actions: 'center'
 };
@@ -120,16 +115,16 @@ export default function TruckMaintenanceView() {
 
   // Column Preferences Hook
   const maintPrefs = useColumnPreferences({
-    storageKeyPrefix: 'truck_maintenance',
+    storageKeyPrefix: 'truck_maintenance_v3',
     rawColumns: DEFAULT_MAINTENANCE_COLUMNS,
     defaultNames: DEFAULT_COLUMN_NAMES,
     defaultWidths: DEFAULT_MAINTENANCE_WIDTHS,
     sampleRecords: records,
     formatCellValue: (col, val, row) => {
-      if (col === 'start_date') return formatDateDisplay(val);
+      if (col === 'start_date' || col === 'end_date') return formatDateDisplay(val);
+      if (col === 'duration_days') return val ? `${val} วัน` : '1 วัน';
       if (col === 'maintenance_type') return MAINTENANCE_TYPE_MAP[val]?.label || val;
       if (col === 'mileage') return val ? `${Number(val).toLocaleString()} กม.` : '-';
-      if (col === 'cost_parts' || col === 'cost_labor' || col === 'cost_total') return val > 0 ? `฿${Number(val).toLocaleString()}` : '-';
       return String(val || '');
     }
   });
@@ -182,14 +177,6 @@ export default function TruckMaintenanceView() {
     return sortRecords(filteredRecords);
   }, [filteredRecords, sortConfig, sortRecords]);
 
-  // KPI Calculations
-  const kpis = useMemo(() => {
-    const totalRecords = records.length;
-    const totalCost = records.reduce((sum, r) => sum + (Number(r.cost_total) || 0), 0);
-    const uniqueTrucks = new Set(records.map(r => r.truck_no)).size;
-    return { totalRecords, totalCost, uniqueTrucks };
-  }, [records]);
-
   // Save Record
   const handleSaveRecord = async (formData, id) => {
     try {
@@ -231,13 +218,12 @@ export default function TruckMaintenanceView() {
       '#': idx + 1,
       'เบอร์รถ': r.truck_no,
       'ประเภทการซ่อม': MAINTENANCE_TYPE_MAP[r.maintenance_type]?.label || r.maintenance_type,
-      'วันที่ซ่อม / ทำรายการ': r.start_date || '-',
+      'วันที่เข้าซ่อม': r.start_date || '-',
+      'วันที่ซ่อมเสร็จ': r.end_date || r.start_date || '-',
+      'ระยะเวลา (วัน)': r.duration_days || 1,
       'อู่ / ศูนย์บริการ': r.garage_name || '-',
       'เลขไมล์ (กม.)': r.mileage || 0,
-      'ค่าอะไหล่ (บาท)': r.cost_parts || 0,
-      'ค่าแรง (บาท)': r.cost_labor || 0,
-      'ยอดรวมค่าใช้จ่าย (บาท)': r.cost_total || 0,
-      'เลขที่บิล / Invoice': r.invoice_no || '-',
+      'เลขที่บิล / ใบสั่งซ่อม': r.invoice_no || '-',
       'รายการอะไหล่ / งานที่ทำ': r.parts_list || '-',
       'หมายเหตุ': r.remark || '-'
     }));
@@ -275,7 +261,7 @@ export default function TruckMaintenanceView() {
             <span>🔧</span> ประวัติการซ่อมบำรุงรถ (Truck Maintenance Log)
           </h1>
           <p style={{ margin: 0, fontSize: '13.5px', color: '#64748b' }}>
-            สมุดบันทึกประวัติการเข้าอู่ ค่าใช้จ่ายอะไหล่-ค่าแรง บิลใบเสร็จ และสถิติการซ่อมบำรุง
+            สมุดบันทึกประวัติการเข้าอู่ รายการซ่อมบำรุง อะไหล่ และเลขไมล์ประจำรถ (บันทึกค่าใช้จ่ายได้ที่เมนูค่าใช้จ่ายรถ)
           </p>
         </div>
 
@@ -512,6 +498,29 @@ export default function TruckMaintenanceView() {
                           </td>
                         );
                       }
+                      if (col === 'end_date') {
+                        return (
+                          <td key={col} style={{ ...cellStyle, color: '#059669', fontWeight: 600 }}>
+                            {formatDateDisplay(r.end_date || r.start_date)}
+                          </td>
+                        );
+                      }
+                      if (col === 'duration_days') {
+                        const days = r.duration_days || 1;
+                        return (
+                          <td key={col} style={{ ...cellStyle, color: '#64748b' }}>
+                            <span style={{
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: '#f1f5f9',
+                              fontSize: '11.5px',
+                              fontWeight: 600
+                            }}>
+                              {days} วัน
+                            </span>
+                          </td>
+                        );
+                      }
                       if (col === 'garage_name') {
                         return (
                           <td key={col} style={{ ...cellStyle, color: '#334155' }}>
@@ -523,27 +532,6 @@ export default function TruckMaintenanceView() {
                         return (
                           <td key={col} style={{ ...cellStyle, color: '#64748b' }}>
                             {r.mileage && r.mileage > 0 ? `${Number(r.mileage).toLocaleString()} กม.` : '-'}
-                          </td>
-                        );
-                      }
-                      if (col === 'cost_parts') {
-                        return (
-                          <td key={col} style={{ ...cellStyle, color: '#64748b' }}>
-                            {r.cost_parts > 0 ? `฿${Number(r.cost_parts).toLocaleString()}` : '-'}
-                          </td>
-                        );
-                      }
-                      if (col === 'cost_labor') {
-                        return (
-                          <td key={col} style={{ ...cellStyle, color: '#64748b' }}>
-                            {r.cost_labor > 0 ? `฿${Number(r.cost_labor).toLocaleString()}` : '-'}
-                          </td>
-                        );
-                      }
-                      if (col === 'cost_total') {
-                        return (
-                          <td key={col} style={{ ...cellStyle, fontWeight: 800, color: r.cost_total > 0 ? '#15803d' : '#94a3b8' }}>
-                            {r.cost_total > 0 ? `฿${Number(r.cost_total).toLocaleString()}` : '-'}
                           </td>
                         );
                       }
@@ -560,7 +548,7 @@ export default function TruckMaintenanceView() {
                       }
                       if (col === 'parts_list') {
                         return (
-                          <td key={col} style={{ ...cellStyle, color: '#64748b' }} title={r.parts_list}>
+                          <td key={col} style={{ ...cellStyle, color: '#334155' }} title={r.parts_list}>
                             {r.parts_list && r.parts_list !== '-' ? r.parts_list : '-'}
                           </td>
                         );

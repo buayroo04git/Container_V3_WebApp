@@ -150,7 +150,22 @@ export default function DriverAdvancesView() {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+    <div style={{
+      height: '100%',
+      width: '100%',
+      overflowY: 'auto',
+      overflowX: 'hidden',
+      boxSizing: 'border-box',
+      padding: '20px',
+      background: '#f8fafc'
+    }}>
+      <div style={{
+        maxWidth: '1440px',
+        margin: '0 auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '20px'
+      }}>
       
       {/* 🏷️ Header Bar */}
       <div style={{
@@ -467,6 +482,7 @@ export default function DriverAdvancesView() {
           setEditingAdvance(null);
         }}
         onSave={handleSaveAdvance}
+        advanceRecord={editingAdvance}
         advance={editingAdvance}
         driverList={drivers}
       />
@@ -497,6 +513,7 @@ export default function DriverAdvancesView() {
         </div>
       )}
 
+      </div>
     </div>
   );
 }

@@ -71,14 +71,6 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
     const safeContainers = Array.isArray(containers) ? containers : [];
     const safeTrucks = Array.isArray(trucks) ? trucks : [];
 
-    // Map คนขับประจำรถ
-    const truckDriverMap = {};
-    safeTrucks.forEach(tr => {
-      if (tr && tr.truck_no) {
-        truckDriverMap[String(tr.truck_no).trim()] = tr.assigned_driver_name || '-';
-      }
-    });
-
     // 1. กรองตู้จากใบวางบิล Master DB ในงวดที่เลือก
     const monthlyContainers = safeContainers.filter(item => {
       const rawDate = item.date_job_parsed || item.date_job || '';
@@ -95,7 +87,6 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
       if (!tNo) return;
       truckMap[tNo] = {
         truck_no: tNo,
-        driver_name: tr.assigned_driver_name || '-',
         count_20: 0,
         revenue_20: 0,
         count_40: 0,
@@ -116,12 +107,10 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
       const jobDate = normalizeExcelDate(rawDate);
       const unitPrice = portBillingService.calculatePortUnitPrice(size, jobDate, portRates);
       const effectiveRatePeriod = portBillingService.findEffectivePortRate(jobDate, portRates);
-      const dName = truckDriverMap[tNo] || '-';
 
       if (!truckMap[tNo]) {
         truckMap[tNo] = {
           truck_no: tNo,
-          driver_name: dName,
           count_20: 0,
           revenue_20: 0,
           count_40: 0,
@@ -165,7 +154,7 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
     const filtered = rows.filter(r => {
       if (!searchQuery.trim()) return true;
       const q = searchQuery.toLowerCase().trim();
-      return r.truck_no.toLowerCase().includes(q) || r.driver_name.toLowerCase().includes(q);
+      return r.truck_no.toLowerCase().includes(q);
     });
 
     // เรียงลำดับจากรายได้สูงสุด
@@ -178,6 +167,8 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
     const totalRevenue20 = rows.reduce((sum, r) => sum + r.revenue_20, 0);
     const totalCount40 = rows.reduce((sum, r) => sum + r.count_40, 0);
     const totalRevenue40 = rows.reduce((sum, r) => sum + r.revenue_40, 0);
+    const totalCount45 = rows.reduce((sum, r) => sum + r.count_45, 0);
+    const totalRevenue45 = rows.reduce((sum, r) => sum + r.revenue_45, 0);
     const activeTruckCount = rows.filter(r => r.total_containers > 0).length;
 
     return {
@@ -188,17 +179,18 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
       totalRevenue20,
       totalCount40,
       totalRevenue40,
+      totalCount45,
+      totalRevenue45,
       activeTruckCount,
       totalTruckCount: rows.length
     };
   }, [containers, trucks, portRates, selectedMonth, cycleFilter, searchQuery]);
 
   const exportToExcel = () => {
-    const cycleLabel = cycleFilter === 'H1' ? 'ครึ่งเดือนแรก' : cycleFilter === 'H2' ? 'ครึ่งเดือนหลัง' : 'ทั้งเดือน';
+    const cycleLabel = cycleFilter === 'H1' ? 'ครึ่งแรก' : cycleFilter === 'H2' ? 'ครึ่งหลัง' : 'ทั้งเดือน';
     const rows = revenueData.rows.map((t, idx) => ({
       'ลำดับ': idx + 1,
       'ทะเบียนรถ': t.truck_no,
-      'คนขับประจำ': t.driver_name,
       'ตู้ 20" (เที่ยว)': t.count_20,
       'รายได้ 20" (บาท)': t.revenue_20,
       'ตู้ 40" (เที่ยว)': t.count_40,
@@ -216,7 +208,22 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
   };
 
   return (
-    <div style={{ padding: '20px', maxWidth: '1440px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+    <div style={{
+      height: '100%',
+      width: '100%',
+      overflowY: 'auto',
+      overflowX: 'hidden',
+      boxSizing: 'border-box',
+      padding: '20px 24px',
+      background: '#f8fafc'
+    }}>
+      <div style={{
+        maxWidth: '1440px',
+        margin: '0 auto',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '16px'
+      }}>
       
       {/* 🏷️ Header Bar with Month Picker & Subtabs */}
       <div style={{
@@ -235,12 +242,12 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <span style={{ fontSize: '22px' }}>📈</span>
             <h1 style={{ margin: 0, fontSize: '20px', fontWeight: 800, color: '#0f172a' }}>
-              {activeSubTab === 'revenue' ? 'รายได้รถ (Truck Revenue)' : 'เรทท่าเรือ (Port Billing Rates)'}
+              {activeSubTab === 'revenue' ? 'รายได้รถ (Truck Revenue)' : 'ค่าเที่ยวท่าเรือ (Port Billing Rates)'}
             </h1>
           </div>
           <p style={{ margin: '3px 0 0 0', fontSize: '13px', color: '#64748b' }}>
             {activeSubTab === 'revenue'
-              ? 'สรุปรายได้ที่รถแต่ละคันสร้างจากตู้ท่าเรือในใบวางบิล คำนวณตามขนาดตู้ 20"/40" และเรทช่วงเวลาจริง'
+              ? 'สรุปรายได้ที่รถแต่ละคันสร้างจากตู้ท่าเรือในใบวางบิล คำนวณตามขนาดตู้ 20"/40"/45" และเรทช่วงเวลาจริง'
               : 'กำหนดราคาตู้ 20" และ 40" ที่ท่าเรือจ่ายให้เรา แยกตามรอบครึ่งเดือนแรก (1-15) และครึ่งเดือนหลัง (16-สิ้นเดือน)'}
           </p>
         </div>
@@ -280,7 +287,7 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
       <div style={{ display: 'flex', gap: '8px', borderBottom: '1px solid #e2e8f0', paddingBottom: '4px' }}>
         {[
           { id: 'revenue', label: '📈 รายได้รถ', desc: 'สรุปรายได้ตู้ท่าเรือรายคัน' },
-          { id: 'rates', label: '💵 เรทท่าเรือ', desc: 'ตั้งค่าราคาตู้ 20"/40" ตามช่วงเวลา' }
+          { id: 'rates', label: '💵 ค่าเที่ยวท่าเรือ', desc: 'ตั้งค่าราคาตู้ 20"/40" ตามช่วงเวลา' }
         ].map(tab => {
           const isActive = activeSubTab === tab.id;
           return (
@@ -359,8 +366,8 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
               <div style={{ display: 'flex', gap: '6px', background: '#f1f5f9', padding: '4px', borderRadius: '10px' }}>
                 {[
                   { id: 'ALL', label: '📅 ทั้งเดือน' },
-                  { id: 'H1', label: '🌓 ครึ่งเดือนแรก (1-15)' },
-                  { id: 'H2', label: '🌕 ครึ่งเดือนหลัง (16-สิ้นเดือน)' }
+                  { id: 'H1', label: '🌓 ครึ่งแรก (1-15)' },
+                  { id: 'H2', label: '🌕 ครึ่งหลัง (16-สิ้นเดือน)' }
                 ].map(cycle => (
                   <button
                     key={cycle.id}
@@ -387,7 +394,7 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
               <div style={{ width: '260px' }}>
                 <input
                   type="text"
-                  placeholder="🔍 ค้นหาทะเบียนรถ, คนขับ..."
+                  placeholder="🔍 ค้นหาทะเบียนรถ..."
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   style={{ width: '100%', padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', fontSize: '13px', boxSizing: 'border-box' }}
@@ -408,7 +415,6 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
                     <tr style={{ background: '#f8fafc', borderBottom: '2px solid #e2e8f0', color: '#475569', fontWeight: 800 }}>
                       <th style={{ padding: '10px 12px', textAlign: 'center', width: '45px' }}>#</th>
                       <th style={{ padding: '10px 12px', textAlign: 'left' }}>ทะเบียนรถ</th>
-                      <th style={{ padding: '10px 12px', textAlign: 'left' }}>คนขับประจำ</th>
                       <th style={{ padding: '10px 12px', textAlign: 'center', color: '#2563eb' }}>ตู้ 20" (เที่ยว)</th>
                       <th style={{ padding: '10px 12px', textAlign: 'right', color: '#2563eb' }}>รายได้ 20" (บาท)</th>
                       <th style={{ padding: '10px 12px', textAlign: 'center', color: '#7c3aed' }}>ตู้ 40" (เที่ยว)</th>
@@ -426,9 +432,6 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
                         </td>
                         <td style={{ padding: '12px', fontWeight: 800, color: '#0f172a' }}>
                           🚛 {row.truck_no}
-                        </td>
-                        <td style={{ padding: '12px', color: '#475569', fontWeight: 600 }}>
-                          {row.driver_name}
                         </td>
                         <td style={{ padding: '12px', textAlign: 'center', fontWeight: 700, color: '#2563eb' }}>
                           {row.count_20 > 0 ? row.count_20 : '-'}
@@ -521,7 +524,7 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
                   🚛 รายละเอียดตู้: รถ {selectedTruckDetail.truck_no}
                 </h3>
                 <p style={{ margin: '3px 0 0 0', fontSize: '12.5px', color: '#64748b' }}>
-                  คนขับ: {selectedTruckDetail.driver_name} | รวม {selectedTruckDetail.total_containers} ตู้ | รายรับรวม: ฿{selectedTruckDetail.total_port_revenue.toLocaleString()}
+                  รวม {selectedTruckDetail.total_containers} ตู้ | รายรับรวม: ฿{selectedTruckDetail.total_port_revenue.toLocaleString()}
                 </p>
               </div>
               <button
@@ -540,7 +543,7 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
                     <th style={{ padding: '8px 10px', textAlign: 'left' }}>วันที่วิ่งงาน</th>
                     <th style={{ padding: '8px 10px', textAlign: 'left' }}>เลขตู้</th>
                     <th style={{ padding: '8px 10px', textAlign: 'center' }}>ขนาด</th>
-                    <th style={{ padding: '8px 10px', textAlign: 'left' }}>ช่วงเรทท่าเรือ</th>
+                    <th style={{ padding: '8px 10px', textAlign: 'left' }}>ช่วงค่าเที่ยวท่าเรือ</th>
                     <th style={{ padding: '8px 10px', textAlign: 'right', color: '#059669' }}>ราคา (บาท)</th>
                   </tr>
                 </thead>
@@ -584,6 +587,7 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
         </div>
       )}
 
+      </div>
     </div>
   );
 }

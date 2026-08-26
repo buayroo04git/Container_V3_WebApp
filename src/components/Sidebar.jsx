@@ -21,39 +21,65 @@ export default function Sidebar({ activeTab, setActiveTab }) {
       <div style={{ 
         display: 'flex',
         alignItems: 'center',
-        gap: '10px',
-        padding: '0 4px 14px 4px',
+        gap: '11px',
+        padding: '2px 6px 14px 6px',
         borderBottom: '1px solid #f1f5f9',
         marginBottom: '14px'
       }}>
+        {/* Modern App Icon Badge */}
         <div style={{
-          width: '28px',
-          height: '28px',
-          borderRadius: '7px',
-          background: 'linear-gradient(135deg, #2563eb, #1d4ed8)',
+          width: '32px',
+          height: '32px',
+          borderRadius: '9px',
+          background: 'linear-gradient(135deg, #1e40af 0%, #2563eb 50%, #3b82f6 100%)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           color: '#ffffff',
-          fontWeight: 800,
-          fontSize: '13.5px',
-          boxShadow: '0 2px 5px rgba(37, 99, 235, 0.25)'
+          fontWeight: 900,
+          fontSize: '15px',
+          boxShadow: '0 4px 10px rgba(37, 99, 235, 0.28)',
+          border: '1px solid rgba(255, 255, 255, 0.2)',
+          flexShrink: 0
         }}>
-          J
+          📦
         </div>
-        <div>
-          <h2 style={{ 
-            margin: 0, 
-            fontSize: '14px', 
-            fontWeight: 800,
-            color: '#0f172a',
-            letterSpacing: '-0.2px',
-            lineHeight: 1.15
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <h2 style={{ 
+              margin: 0, 
+              fontSize: '14px', 
+              fontWeight: 800,
+              color: '#0f172a',
+              letterSpacing: '-0.3px',
+              lineHeight: 1.2
+            }}>
+              Container V3
+            </h2>
+            <span style={{
+              padding: '1px 5px',
+              borderRadius: '4px',
+              background: '#eff6ff',
+              color: '#2563eb',
+              fontSize: '9.5px',
+              fontWeight: 800,
+              border: '1px solid #bfdbfe',
+              letterSpacing: '0.2px'
+            }}>
+              PRO
+            </span>
+          </div>
+          <p style={{ 
+            margin: '2px 0 0 0', 
+            fontSize: '10.5px', 
+            color: '#64748b', 
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
           }}>
-            JWD Transport
-          </h2>
-          <p style={{ margin: 0, fontSize: '10.5px', color: '#94a3b8', fontWeight: 500 }}>
-            Container V3 WebApp
+            <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#10b981', display: 'inline-block' }} />
+            WebApp Fleet Hub
           </p>
         </div>
       </div>

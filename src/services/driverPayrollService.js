@@ -754,6 +754,7 @@ export const driverPayrollService = {
 
             containersToProcess.push({
               id: item.id,
+              ref_master_id: item.ref_master_id || (matchedDb ? matchedDb.id : null),
               job_sheet_id: sheet.id,
               batch_name: sheet.batch_name || 'General_Batch',
               truck_no: sheet.truck_no || '-',
@@ -799,6 +800,7 @@ export const driverPayrollService = {
 
             containersToProcess.push({
               id: item.id,
+              ref_master_id: item.ref_master_id || (matchedDb ? matchedDb.id : null),
               job_sheet_id: item.job_sheet_id || item.sheet_id || 'legacy',
               batch_name: item.batch_name || 'General_Batch',
               truck_no: item.truck_no || '-',
@@ -954,6 +956,7 @@ export const driverPayrollService = {
 
         dSum.containers.push({
           id: item.id,
+          ref_master_id: item.ref_master_id || null,
           job_sheet_id: item.job_sheet_id,
           batch_name: item.batch_name || 'General_Batch',
           truck_no: item.truck_no || '-',
@@ -1118,10 +1121,14 @@ export const driverPayrollService = {
         paymentStatusFilter = 'ALL'
       } = options;
 
-      const [year, month] = yearMonth.split('-');
-      const lastDay = new Date(Number(year), Number(month), 0).getDate();
-      const dateFrom = `${yearMonth}-01`;
-      const dateTo = `${yearMonth}-${String(lastDay).padStart(2, '0')}`;
+      let dateFrom = options.dateFrom || null;
+      let dateTo = options.dateTo || null;
+      if (yearMonth && yearMonth !== 'ALL' && /^\d{4}-\d{2}/.test(yearMonth)) {
+        const [year, month] = yearMonth.split('-');
+        const lastDay = new Date(Number(year), Number(month), 0).getDate();
+        dateFrom = `${yearMonth}-01`;
+        dateTo = `${yearMonth}-${String(lastDay).padStart(2, '0')}`;
+      }
 
       // 1. ดึงสรุปค่ารอบในเดือนนั้น
       const tripSummaryRes = await this.calculatePayrollSummary({
