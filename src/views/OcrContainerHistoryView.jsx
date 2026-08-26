@@ -585,7 +585,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
               <MonthPicker
                 value={selectedMonth}
                 onChange={(newMonth) => setSelectedMonth(newMonth)}
-                label="งวด:"
+                label="เดือน:"
               />
               {selectedMonth && (
                 <button
@@ -602,9 +602,9 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
                     fontWeight: 700,
                     cursor: 'pointer'
                   }}
-                  title="ดูทุกงวดเดือน"
+                  title="ดูทุกเดือน"
                 >
-                  ทุกงวด
+                  ทุกเดือน
                 </button>
               )}
             </div>

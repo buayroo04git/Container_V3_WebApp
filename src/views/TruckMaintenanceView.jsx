@@ -384,7 +384,7 @@ export default function TruckMaintenanceView() {
             <MonthPicker
               value={selectedMonth === 'ALL' ? '' : selectedMonth}
               onChange={(newMonth) => setSelectedMonth(newMonth)}
-              label="งวด:"
+              label="เดือน:"
             />
             {selectedMonth !== 'ALL' && (
               <button
@@ -401,9 +401,9 @@ export default function TruckMaintenanceView() {
                   fontWeight: 700,
                   cursor: 'pointer'
                 }}
-                title="ดูทุกงวดเดือน"
+                title="ดูทุกเดือน"
               >
-                ทุกงวด
+                ทุกเดือน
               </button>
             )}
           </div>

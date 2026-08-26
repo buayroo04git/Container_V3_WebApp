@@ -578,7 +578,7 @@ export default function TruckExpensesView() {
           <MonthPicker
             value={selectedMonth}
             onChange={(newMonth) => setSelectedMonth(newMonth)}
-            label="งวดเดือน:"
+            label="เดือน:"
           />
 
           {/* Truck filter */}

@@ -242,7 +242,7 @@ export function ContainerTableFilterBar({
             <MonthPicker
               value={selectedMonth === 'ALL' ? '' : selectedMonth}
               onChange={(newMonth) => setSelectedMonth(newMonth)}
-              label="งวด:"
+              label="เดือน:"
             />
             {selectedMonth !== 'ALL' && (
               <button
@@ -259,9 +259,9 @@ export function ContainerTableFilterBar({
                   fontWeight: 700,
                   cursor: 'pointer'
                 }}
-                title="ดูทุกงวดเดือน"
+                title="ดูทุกเดือน"
               >
-                ทุกงวด
+                ทุกเดือน
               </button>
             )}
           </div>

@@ -1665,7 +1665,7 @@ export default function DriverPayrollView({ defaultTab, defaultSubTab } = {}) {
                         setSelectedMonth(newMonth);
                         setDatePreset('CUSTOM');
                       }}
-                      label="งวดเดือน:"
+                      label="เดือน:"
                     />
                     {selectedMonth !== 'ALL' && (
                       <button
@@ -1687,9 +1687,9 @@ export default function DriverPayrollView({ defaultTab, defaultSubTab } = {}) {
                           fontWeight: 700,
                           cursor: 'pointer'
                         }}
-                        title="ดูทุกงวดเดือน"
+                        title="ดูทุกเดือน"
                       >
-                        ทุกงวด
+                        ทุกเดือน
                       </button>
                     )}
                   </div>

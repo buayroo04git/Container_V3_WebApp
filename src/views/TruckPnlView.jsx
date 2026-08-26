@@ -275,7 +275,7 @@ export default function TruckPnlView({ defaultSubTab = 'revenue' }) {
           <MonthPicker
             value={selectedMonth}
             onChange={setSelectedMonth}
-            label="งวดเดือน:"
+            label="เดือน:"
           />
 
           {activeSubTab === 'revenue' && (

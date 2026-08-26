@@ -382,7 +382,7 @@ export default function DriverIncomeSummaryView() {
             <MonthPicker
               value={selectedMonth}
               onChange={setSelectedMonth}
-              label="งวดเดือน:"
+              label="เดือน:"
             />
 
             <button

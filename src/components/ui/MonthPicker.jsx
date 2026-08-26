@@ -15,7 +15,7 @@ const THAI_MONTHS_FULL = [
  * @param {string} value - YYYY-MM e.g. '2026-08'
  * @param {function} onChange - callback(newValue)
  */
-export default function MonthPicker({ value, onChange, label = 'งวดเดือน:' }) {
+export default function MonthPicker({ value, onChange, label = 'เดือน:' }) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
 

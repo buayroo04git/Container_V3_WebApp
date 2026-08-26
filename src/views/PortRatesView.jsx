@@ -281,7 +281,7 @@ export default function PortRatesView({
           <MonthPicker
             value={selectedMonth}
             onChange={setSelectedMonth}
-            label="งวดเดือน:"
+            label="เดือน:"
           />
         </div>
       )}

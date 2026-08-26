@@ -786,7 +786,7 @@ export default function ExecutiveDashboardView() {
             <MonthPicker
               value={selectedMonth}
               onChange={setSelectedMonth}
-              label="งวดเดือน:"
+              label="เดือน:"
             />
 
             <button

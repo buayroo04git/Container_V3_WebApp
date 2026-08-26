@@ -382,32 +382,38 @@ export default function BatchManagerView() {
       </div>
 
       {/* 2. KPI Metric Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px', marginBottom: '20px' }}>
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>📄 ใบงานทั้งหมด</div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', fontFamily: "'Inter', sans-serif" }}>
-            {kpiStats.totalSheets.toLocaleString()} <span style={{ fontSize: '13px', fontWeight: 600, color: '#64748b' }}>ใบ</span>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gap: '10px',
+        marginBottom: '14px',
+        flexShrink: 0
+      }}>
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+          <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#64748b', marginBottom: '2px' }}>📄 ใบงานทั้งหมด</div>
+          <div style={{ fontSize: '20px', fontWeight: 800, color: '#0f172a', fontFamily: "'Inter', sans-serif" }}>
+            {kpiStats.totalSheets.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>ใบ</span>
           </div>
         </div>
 
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', marginBottom: '4px' }}>📦 รวมงานทั้งหมด</div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#2563eb', fontFamily: "'Inter', sans-serif" }}>
-            {kpiStats.totalContainers.toLocaleString()} <span style={{ fontSize: '13px', fontWeight: 600, color: '#64748b' }}>งาน</span>
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+          <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#64748b', marginBottom: '2px' }}>📦 รวมงานทั้งหมด</div>
+          <div style={{ fontSize: '20px', fontWeight: 800, color: '#2563eb', fontFamily: "'Inter', sans-serif" }}>
+            {kpiStats.totalContainers.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>งาน</span>
           </div>
         </div>
 
-        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: '#166534', marginBottom: '4px' }}>🟢 จับคู่สมบูรณ์</div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: '#15803d', fontFamily: "'Inter', sans-serif" }}>
-            {kpiStats.totalGreen.toLocaleString()} <span style={{ fontSize: '13px', fontWeight: 600, color: '#166534' }}>งาน</span>
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '10px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+          <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#166534', marginBottom: '2px' }}>🟢 จับคู่สมบูรณ์</div>
+          <div style={{ fontSize: '20px', fontWeight: 800, color: '#15803d', fontFamily: "'Inter', sans-serif" }}>
+            {kpiStats.totalGreen.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 600, color: '#166534' }}>งาน</span>
           </div>
         </div>
 
-        <div style={{ background: kpiStats.totalRed > 0 ? '#fef2f2' : '#f8fafc', border: kpiStats.totalRed > 0 ? '1px solid #fecaca' : '1px solid #e2e8f0', borderRadius: '10px', padding: '14px 18px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <div style={{ fontSize: '12px', fontWeight: 600, color: kpiStats.totalRed > 0 ? '#991b1b' : '#64748b', marginBottom: '4px' }}>🔴 ไม่พบในใบวางบิล</div>
-          <div style={{ fontSize: '24px', fontWeight: 800, color: kpiStats.totalRed > 0 ? '#dc2626' : '#64748b', fontFamily: "'Inter', sans-serif" }}>
-            {kpiStats.totalRed.toLocaleString()} <span style={{ fontSize: '13px', fontWeight: 600, color: kpiStats.totalRed > 0 ? '#991b1b' : '#64748b' }}>งาน</span>
+        <div style={{ background: kpiStats.totalRed > 0 ? '#fef2f2' : '#f8fafc', border: kpiStats.totalRed > 0 ? '1px solid #fecaca' : '1px solid #e2e8f0', borderRadius: '10px', padding: '10px 16px', boxShadow: '0 1px 2px rgba(0,0,0,0.02)' }}>
+          <div style={{ fontSize: '11.5px', fontWeight: 600, color: kpiStats.totalRed > 0 ? '#991b1b' : '#64748b', marginBottom: '2px' }}>🔴 ไม่พบในใบวางบิล</div>
+          <div style={{ fontSize: '20px', fontWeight: 800, color: kpiStats.totalRed > 0 ? '#dc2626' : '#64748b', fontFamily: "'Inter', sans-serif" }}>
+            {kpiStats.totalRed.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 600, color: kpiStats.totalRed > 0 ? '#991b1b' : '#64748b' }}>งาน</span>
           </div>
         </div>
       </div>
@@ -446,52 +452,31 @@ export default function BatchManagerView() {
 
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
             
-            {/* Month Filter */}
-            <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <span style={{ position: 'absolute', left: '8px', pointerEvents: 'none', fontSize: '13px' }}>📅</span>
-              <input
-                type="month"
+            {/* 📅 Month Filter */}
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+              <MonthPicker
                 value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
-                style={{
-                  height: '35px',
-                  paddingLeft: '28px',
-                  paddingRight: selectedMonth ? '26px' : '8px',
-                  borderRadius: '7px',
-                  border: selectedMonth ? '1px solid #93c5fd' : '1px solid #cbd5e1',
-                  background: selectedMonth ? '#eff6ff' : '#ffffff',
-                  color: selectedMonth ? '#1d4ed8' : '#334155',
-                  fontSize: '12.5px',
-                  fontWeight: selectedMonth ? 700 : 500,
-                  outline: 'none',
-                  cursor: 'pointer',
-                  boxSizing: 'border-box'
-                }}
-                title="เลือกเดือนที่ต้องการแสดงข้อมูล"
+                onChange={(newMonth) => setSelectedMonth(newMonth)}
+                label="เดือน:"
               />
               {selectedMonth && (
                 <button
                   type="button"
                   onClick={() => setSelectedMonth('')}
                   style={{
-                    position: 'absolute',
-                    right: '6px',
-                    top: '50%',
-                    transform: 'translateY(-50%)',
-                    background: 'none',
-                    border: 'none',
-                    color: '#64748b',
-                    cursor: 'pointer',
-                    padding: 0,
-                    fontSize: '11px',
-                    fontWeight: 'bold',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
+                    height: '35px',
+                    padding: '0 8px',
+                    borderRadius: '7px',
+                    border: '1px solid #bfdbfe',
+                    background: '#eff6ff',
+                    color: '#2563eb',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer'
                   }}
-                  title="ล้างตัวกรองเดือน"
+                  title="ดูทุกเดือน"
                 >
-                  ✕
+                  ทุกเดือน
                 </button>
               )}
             </div>
@@ -539,35 +524,6 @@ export default function BatchManagerView() {
                   title="ล้างคำค้นหา"
                 >
                   ✕
-                </button>
-              )}
-            </div>
-
-            {/* 📅 Month Filter */}
-            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-              <MonthPicker
-                value={selectedMonth}
-                onChange={(newMonth) => setSelectedMonth(newMonth)}
-                label="งวด:"
-              />
-              {selectedMonth && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedMonth('')}
-                  style={{
-                    height: '35px',
-                    padding: '0 8px',
-                    borderRadius: '7px',
-                    border: '1px solid #bfdbfe',
-                    background: '#eff6ff',
-                    color: '#2563eb',
-                    fontSize: '11.5px',
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                  title="ดูทุกงวดเดือน"
-                >
-                  ทุกงวด
                 </button>
               )}
             </div>
