@@ -234,7 +234,7 @@ export function ContainerTableFilterBar({
       </div>
 
       {/* Filter Controls Bar */}
-      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
+      <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
         
         {/* 📅 Month Filter */}
         {setSelectedMonth && (

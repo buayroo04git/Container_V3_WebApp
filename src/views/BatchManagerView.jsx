@@ -384,7 +384,7 @@ export default function BatchManagerView() {
       {/* 2. KPI Metric Cards */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+        gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
         gap: '10px',
         marginBottom: '14px',
         flexShrink: 0
@@ -450,7 +450,7 @@ export default function BatchManagerView() {
             </span>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             
             {/* 📅 Month Filter */}
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
@@ -482,7 +482,7 @@ export default function BatchManagerView() {
             </div>
 
             {/* Search Box */}
-            <div style={{ position: 'relative', width: '220px' }}>
+            <div style={{ position: 'relative', width: '180px' }}>
               <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '13px', pointerEvents: 'none' }}>🔍</span>
               <input
                 type="text"

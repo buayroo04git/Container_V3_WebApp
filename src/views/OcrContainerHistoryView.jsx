@@ -392,7 +392,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
       {/* 2. KPI Summary Cards (Compact 5-column layout) */}
       <div style={{
         display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+        gridTemplateColumns: 'repeat(5, minmax(0, 1fr))',
         gap: '10px',
         marginBottom: '14px',
         flexShrink: 0
@@ -578,7 +578,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
             </span>
           </div>
 
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap', marginLeft: 'auto' }}>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
             
             {/* 📅 Month Filter */}
             <div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
