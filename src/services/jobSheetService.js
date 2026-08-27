@@ -413,12 +413,19 @@ export const jobSheetService = {
     try {
       const cleanDriver = newDriverName && newDriverName !== '-' ? String(newDriverName).trim() : null;
       
-      const { error: sheetErr } = await supabase
-        .from('job_sheets')
-        .update({ driver_name: cleanDriver })
-        .eq('id', sheetId);
+      try {
+        await supabase
+          .from('job_sheets')
+          .update({ driver_name: cleanDriver })
+          .eq('id', sheetId);
+      } catch (e) {}
 
-      if (sheetErr) throw sheetErr;
+      try {
+        await supabase
+          .from('job_sheet_items')
+          .update({ driver_name: cleanDriver })
+          .eq('job_sheet_id', sheetId);
+      } catch (e) {}
 
       try {
         await supabase
@@ -882,13 +889,12 @@ export const jobSheetService = {
         }
 
         // 3. ถ้าไม่มี ให้ดูจากวันที่บนหัวใบงาน
-        if (!effectiveDate && sheet.date_job && sheet.date_job !== '-') {
-          effectiveDate = sheet.date_job_parsed || sheet.date_job;
-        }
+        const itemWithDriver = sheetItems.find(i => i.driver_name && i.driver_name !== '-');
+        const legacyWithDriver = (legacyRes?.data || []).find(i => i.job_sheet_id === sheet.id && i.driver_name && i.driver_name !== '-');
 
         const resolvedDriver = (sheet.driver_name && sheet.driver_name !== '-')
           ? sheet.driver_name
-          : resolveDriver(sheet.truck_no, effectiveDate);
+          : (itemWithDriver?.driver_name || legacyWithDriver?.driver_name || resolveDriver(sheet.truck_no, effectiveDate));
 
         return {
           ...sheet,

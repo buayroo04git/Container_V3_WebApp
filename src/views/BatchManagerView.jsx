@@ -794,9 +794,27 @@ export default function BatchManagerView() {
                         if (col === 'driver_name') {
                           return (
                             <td key={col} style={cellStyle}>
-                              <span style={{ fontWeight: 600, color: sheet.driver_name && sheet.driver_name !== '-' ? '#1e293b' : '#94a3b8', fontSize: '13px' }}>
-                                {sheet.driver_name || '-'}
-                              </span>
+                              <select
+                                value={sheet.driver_name || '-'}
+                                onChange={(e) => handleUpdateDriver(sheet.id, e.target.value)}
+                                style={{
+                                  padding: '4px 8px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #cbd5e1',
+                                  background: sheet.driver_name && sheet.driver_name !== '-' ? '#f0fdf4' : '#ffffff',
+                                  color: sheet.driver_name && sheet.driver_name !== '-' ? '#166534' : '#64748b',
+                                  fontWeight: 700,
+                                  fontSize: '12px',
+                                  cursor: 'pointer',
+                                  maxWidth: '160px'
+                                }}
+                                title="คลิกเพื่อเลือก/เปลี่ยนตัวคนขับ"
+                              >
+                                <option value="-">-- เลือกคนขับ --</option>
+                                {availableDrivers.map(dName => (
+                                  <option key={dName} value={dName}>{dName}</option>
+                                ))}
+                              </select>
                             </td>
                           );
                         }
