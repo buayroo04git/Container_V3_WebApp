@@ -149,9 +149,9 @@ export default function BatchManagerView() {
     fetchMetadata();
   }, []);
 
-  const handleUpdateDriver = async (sheetId, newDriver) => {
+  const handleUpdateDriver = async (sheetId, newDriver, truckNo = null) => {
     try {
-      const res = await jobSheetService.updateJobSheetDriver(sheetId, newDriver);
+      const res = await jobSheetService.updateJobSheetDriver(sheetId, newDriver, truckNo);
       if (!res.success) throw res.error;
       
       const cleanVal = newDriver === '-' ? null : newDriver;
@@ -812,7 +812,7 @@ export default function BatchManagerView() {
                             <td key={col} style={cellStyle}>
                               <select
                                 value={sheet.driver_name || '-'}
-                                onChange={(e) => handleUpdateDriver(sheet.id, e.target.value)}
+                                onChange={(e) => handleUpdateDriver(sheet.id, e.target.value, sheet.truck_no)}
                                 style={{
                                   padding: '4px 8px',
                                   borderRadius: '6px',

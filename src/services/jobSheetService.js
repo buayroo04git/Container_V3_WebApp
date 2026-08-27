@@ -253,6 +253,23 @@ export const jobSheetService = {
         });
 
         if (!rpcError && rpcData?.success) {
+          // 🚚 ซิงค์ชื่อคนขับไปยัง ocr_records และ truck_records เพื่อให้บันทึกถาวร 100%
+          if (driverName && driverName !== '-') {
+            try {
+              await supabase.from('ocr_records').update({ driver_name: driverName }).eq('job_sheet_id', targetSheetId);
+            } catch (e) {}
+            try {
+              await supabase.from('job_sheet_items').update({ driver_name: driverName }).eq('job_sheet_id', targetSheetId);
+            } catch (e) {}
+            try {
+              await supabase.from('job_sheets').update({ driver_name: driverName }).eq('id', targetSheetId);
+            } catch (e) {}
+            if (truckNo && truckNo !== '-') {
+              try {
+                await supabase.from('truck_records').update({ assigned_driver_name: driverName }).eq('truck_no', String(truckNo).trim());
+              } catch (e) {}
+            }
+          }
           return { success: true, sheetId: targetSheetId, error: null };
         }
         if (rpcError) {
@@ -409,7 +426,7 @@ export const jobSheetService = {
   /**
    * 👤 อัปเดต/เปลี่ยนตัวคนขับของใบงาน (Update Driver Name)
    */
-  async updateJobSheetDriver(sheetId, newDriverName) {
+  async updateJobSheetDriver(sheetId, newDriverName, truckNo = null) {
     try {
       const cleanDriver = newDriverName && newDriverName !== '-' ? String(newDriverName).trim() : null;
       
@@ -433,6 +450,15 @@ export const jobSheetService = {
           .update({ driver_name: cleanDriver })
           .eq('job_sheet_id', sheetId);
       } catch (e) {}
+
+      if (cleanDriver && truckNo && truckNo !== '-') {
+        try {
+          await supabase
+            .from('truck_records')
+            .update({ assigned_driver_name: cleanDriver })
+            .eq('truck_no', String(truckNo).trim());
+        } catch (e) {}
+      }
 
       return { success: true, error: null };
     } catch (error) {
