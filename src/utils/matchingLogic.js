@@ -215,15 +215,34 @@ export const evaluateMatchStatus = (ocrRow, candidates) => {
   }
 };
 
-// ✂️ ฟังก์ชันตัดคำชื่อไฟล์ให้ได้ชื่อรอบงาน (Clean Batch Name)
+// ✂️ ฟังก์ชันตัดคำชื่อไฟล์ให้ได้ชื่อรอบงานที่สวยงาม สะอาด และเป็นมาตรฐาน (Clean Batch Name)
 export const cleanBatchName = (filename) => {
   if (!filename) return 'General_Batch';
-  let name = String(filename).replace(/\.xlsx?$/i, '');
-  name = name.replace(/^วางบิล\s*DG\s*/i, '');
-  name = name.replace(/^วางบิล\s*/i, '');
-  name = name.replace(/\s*TSAW\s*$/i, '');
-  name = name.replace(/^LINE_ALBUM_/i, '');
-  return name.trim() || 'General_Batch';
+  let name = String(filename).replace(/\.[a-zA-Z0-9]+$/i, ''); // ตัด extension .xlsx, .jpg ฯลฯ
+
+  // 1. ตรวจจับรูปแบบสากลของงวดใบวางบิล: [วันเริ่มต้น] - [วันสิ้นสุด] [เดือน] [ปี]
+  // เช่น 'วางบิลDG 16 - 31 MAY  2026 TSAW Rev3 แก้ของน้าเป็ดแล้ว' -> '16 - 31 MAY 2026'
+  const periodRegex = /(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([A-Za-zก-๙\.]+)\s+(\d{2,4})/i;
+  const match = name.match(periodRegex);
+  if (match) {
+    const d1 = String(match[1]).padStart(2, '0');
+    const d2 = String(match[2]).padStart(2, '0');
+    const month = match[3].toUpperCase();
+    const year = match[4];
+    return `${d1} - ${d2} ${month} ${year}`;
+  }
+
+  // 2. ถ้าไม่เข้า Pattern วันที่คู่ ให้ตัด Prefix และ Suffix ส่วนเกินออก
+  name = name.replace(/^(วางบิล\s*DG|วางบิล|ใบวางบิล|LINE_ALBUM_)\s*/i, '');
+  name = name.replace(/\s*TSAW.*$/i, ''); // ตัด TSAW และข้อความต่อท้ายทั้งหมด (เช่น Rev3, แก้ของน้าเป็ดแล้ว)
+  name = name.replace(/\s*[-_]?\s*Rev[\.\d\s]*.*$/i, '');
+  name = name.replace(/\s*[-_]?\s*Re\b.*$/i, '');
+  name = name.replace(/\s*\(.*\)$/i, '');
+  name = name.replace(/\s*(_อัพเดทแล้ว|_แก้ไขแล้ว|แก้ของ.*)$/i, '');
+  
+  // จัดการช่องว่างให้เรียบร้อย
+  name = name.replace(/\s+/g, ' ').trim();
+  return name || 'General_Batch';
 };
 
 // 🗳️ โหวตเสียงส่วนใหญ่ (Majority Vote) เพื่อหารอบงานที่แท้จริงของใบงาน
