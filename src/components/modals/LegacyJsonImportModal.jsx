@@ -16,9 +16,14 @@ export default function LegacyJsonImportModal({
   const [expandedSheetId, setExpandedSheetId] = useState(null);
   const [importProgress, setImportProgress] = useState(null);
   const [selectedDriverOverrides, setSelectedDriverOverrides] = useState({});
+  const [uploadToDrive, setUploadToDrive] = useState(true);
 
   const folderInputRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  const googleToken = typeof window !== 'undefined' 
+    ? (localStorage.getItem('google_access_token') || localStorage.getItem('gdrive_token') || null) 
+    : null;
 
   if (!isOpen) return null;
 
@@ -63,6 +68,8 @@ export default function LegacyJsonImportModal({
     setIsImporting(true);
     try {
       const res = await executeLegacyJsonBatchImport(sheetsToSave, {
+        uploadToDrive: uploadToDrive && Boolean(googleToken),
+        accessToken: googleToken,
         onProgress: (prog) => setImportProgress(prog)
       });
 
@@ -241,6 +248,53 @@ export default function LegacyJsonImportModal({
               </button>
             </div>
           </div>
+
+          {/* Google Drive Status & Upload Toggle */}
+          {parsedSheets.length > 0 && (
+            <div style={{
+              marginTop: '12px',
+              padding: '10px 16px',
+              borderRadius: '10px',
+              background: googleToken ? '#eff6ff' : '#f8fafc',
+              border: googleToken ? '1px solid #bfdbfe' : '1px solid #e2e8f0',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              fontSize: '12.5px',
+              flexWrap: 'wrap',
+              gap: '8px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '18px' }}>☁️</span>
+                <div>
+                  <span style={{ fontWeight: 800, color: '#1e293b' }}>
+                    Google Drive Image Sync:
+                  </span>
+                  <span style={{ color: '#64748b', marginLeft: '6px' }}>
+                    {parsedSheets.filter(s => Boolean(s.imageFile)).length > 0 
+                      ? `พบไฟล์รูปภาพต้นฉบับในโฟลเดอร์ ${parsedSheets.filter(s => Boolean(s.imageFile)).length} รูป`
+                      : 'ไม่พบไฟล์รูปภาพในโฟลเดอร์ (จะผูกชื่อรูปภาพตามโครงสร้างเดิม)'}
+                  </span>
+                </div>
+              </div>
+
+              {googleToken ? (
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 700, color: '#2563eb' }}>
+                  <input
+                    type="checkbox"
+                    checked={uploadToDrive}
+                    onChange={(e) => setUploadToDrive(e.target.checked)}
+                    disabled={isImporting || parsedSheets.filter(s => Boolean(s.imageFile)).length === 0}
+                  />
+                  <span>อัปโหลดรูปภาพขึ้น Google Drive อัตโนมัติ</span>
+                </label>
+              ) : (
+                <span style={{ fontSize: '11.5px', color: '#64748b', background: '#f1f5f9', padding: '3px 8px', borderRadius: '6px' }}>
+                  ℹ️ ยังไม่ได้เชื่อมต่อ Google Drive (จะบันทึกชื่อรูปภาพไว้ และสามารถซิงค์ขึ้น Drive ภายหลังได้)
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Loading States */}
           {isParsing && (

@@ -1,11 +1,12 @@
 import { supabase } from '../supabaseClient';
 import { cleanBatchName, findBestMasterDbMatch, normalizeExcelDate } from '../utils/matchingLogic';
+import { getOrCreateFolder, uploadImageToDrive } from '../utils/googleDriveApi';
 
 /**
  * 📦 Legacy JSON Import Service
  * Handles parsing legacy manual_*.json and result_*.json files,
  * auto-matching with Master DB, detecting duplicate container occurrences in DB,
- * resolving drivers, and executing atomic batch insertion into Supabase.
+ * resolving drivers, and executing atomic batch insertion into Supabase (with optional Google Drive image sync).
  */
 
 export async function parseLegacyJsonFiles(files, masterDbList = [], driversList = [], trucksList = [], opsList = []) {
@@ -256,13 +257,14 @@ export async function parseLegacyJsonFiles(files, masterDbList = [], driversList
 }
 
 export async function executeLegacyJsonBatchImport(sheetsToImport = [], options = {}) {
-  const { onProgress = () => {} } = options;
+  const { onProgress = () => {}, uploadToDrive = false, accessToken = null } = options;
   if (!sheetsToImport || sheetsToImport.length === 0) {
     return { success: true, importedSheets: 0, importedItems: 0 };
   }
 
   let totalSheetsImported = 0;
   let totalItemsImported = 0;
+  let totalImagesUploaded = 0;
   const errors = [];
 
   for (let i = 0; i < sheetsToImport.length; i++) {
@@ -275,13 +277,45 @@ export async function executeLegacyJsonBatchImport(sheetsToImport = [], options 
     });
 
     try {
+      let driveUrl = null;
+      let driveId = null;
+
+      // ☁️ Upload image to Google Drive if selected
+      if (uploadToDrive && accessToken && sheet.imageFile) {
+        try {
+          const batchFolderId = await getOrCreateFolder(accessToken, sheet.batch_name || 'Completed_Job_Sheets');
+          const base64Data = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => {
+              const res = reader.result;
+              const base64 = typeof res === 'string' ? res.split(',')[1] : '';
+              resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(sheet.imageFile);
+          });
+
+          if (base64Data) {
+            const driveRes = await uploadImageToDrive(accessToken, batchFolderId, base64Data, sheet.image_name);
+            if (driveRes?.id) {
+              driveId = driveRes.id;
+              driveUrl = driveRes.webViewLink || `https://drive.google.com/uc?id=${driveRes.id}`;
+              totalImagesUploaded++;
+            }
+          }
+        } catch (driveErr) {
+          console.warn(`Could not upload image for ${sheet.id} to Google Drive:`, driveErr);
+        }
+      }
+
       const sheetPayload = {
         id: sheet.id,
         batch_name: sheet.batch_name,
         truck_no: sheet.truck_no,
         driver_name: (sheet.driver_name && sheet.driver_name !== '-') ? sheet.driver_name : null,
         image_name: sheet.image_name,
-        image_url: null,
+        image_url: driveUrl,
+        drive_file_id: driveId,
         total_containers: sheet.total_containers,
         matched_count: sheet.matched_count,
         unmatched_count: sheet.unmatched_count,
