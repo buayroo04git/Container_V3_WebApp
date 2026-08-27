@@ -460,10 +460,10 @@ export default function BatchManagerView() {
                 onChange={(newMonth) => setSelectedMonth(newMonth)}
                 label="เดือน:"
               />
-              {selectedMonth && (
+              {selectedMonth && selectedMonth !== 'ALL' && (
                 <button
                   type="button"
-                  onClick={() => setSelectedMonth('')}
+                  onClick={() => setSelectedMonth('ALL')}
                   style={{
                     height: '35px',
                     padding: '0 8px',
@@ -576,12 +576,12 @@ export default function BatchManagerView() {
             </select>
 
             {/* Clear Filters */}
-            {(selectedTruckFilter !== 'ALL' || selectedBatchFilter !== 'ALL' || searchTerm.trim() !== '' || selectedMonth !== '') && (
+            {(selectedTruckFilter !== 'ALL' || selectedBatchFilter !== 'ALL' || searchTerm.trim() !== '' || (selectedMonth && selectedMonth !== 'ALL')) && (
               <button
                 onClick={() => {
                   setSelectedTruckFilter('ALL');
                   setSelectedBatchFilter('ALL');
-                  setSelectedMonth('');
+                  setSelectedMonth('ALL');
                   setSearchTerm('');
                 }}
                 style={{

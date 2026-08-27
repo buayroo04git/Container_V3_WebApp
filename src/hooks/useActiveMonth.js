@@ -15,11 +15,12 @@ export function getDefaultMonth() {
 /**
  * 🔍 Get currently saved month from localStorage or fallback
  */
-export function getSavedActiveMonth(fallback = getDefaultMonth()) {
+export function getSavedActiveMonth(fallback = 'ALL') {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved && saved.trim()) {
-      return saved.trim();
+    if (saved !== null && saved !== undefined) {
+      const trimmed = saved.trim();
+      return trimmed || 'ALL';
     }
   } catch (e) {}
   return fallback;
@@ -30,10 +31,9 @@ export function getSavedActiveMonth(fallback = getDefaultMonth()) {
  */
 export function setActiveMonthGlobal(month) {
   try {
-    if (month && month !== 'ALL') {
-      localStorage.setItem(STORAGE_KEY, month);
-    }
-    window.dispatchEvent(new CustomEvent('app_month_changed', { detail: month }));
+    const clean = (month && month !== 'ALL') ? String(month).trim() : 'ALL';
+    localStorage.setItem(STORAGE_KEY, clean);
+    window.dispatchEvent(new CustomEvent('app_month_changed', { detail: clean }));
   } catch (e) {}
 }
 
@@ -41,21 +41,19 @@ export function setActiveMonthGlobal(month) {
  * 🎛️ useActiveMonth Hook:
  * Persistent & Real-time Synchronized Month Filter across all menus/views.
  *
- * @param {string|null} defaultFallback - optional default fallback if nothing in localStorage
+ * @param {string} defaultFallback - optional default fallback if nothing in localStorage (default: 'ALL')
  */
-export function useActiveMonth(defaultFallback = null) {
+export function useActiveMonth(defaultFallback = 'ALL') {
   const [selectedMonth, setSelectedMonthState] = useState(() => {
-    const saved = getSavedActiveMonth(defaultFallback || getDefaultMonth());
-    return saved;
+    return getSavedActiveMonth(defaultFallback);
   });
 
   const setSelectedMonth = useCallback((newMonth) => {
-    setSelectedMonthState(newMonth);
+    const clean = (newMonth && newMonth !== 'ALL') ? String(newMonth).trim() : 'ALL';
+    setSelectedMonthState(clean);
     try {
-      if (newMonth && newMonth !== 'ALL') {
-        localStorage.setItem(STORAGE_KEY, newMonth);
-      }
-      window.dispatchEvent(new CustomEvent('app_month_changed', { detail: newMonth }));
+      localStorage.setItem(STORAGE_KEY, clean);
+      window.dispatchEvent(new CustomEvent('app_month_changed', { detail: clean }));
     } catch (e) {}
   }, []);
 

@@ -588,10 +588,10 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
                 onChange={(newMonth) => setSelectedMonth(newMonth)}
                 label="เดือน:"
               />
-              {selectedMonth && (
+              {selectedMonth && selectedMonth !== 'ALL' && (
                 <button
                   type="button"
-                  onClick={() => setSelectedMonth('')}
+                  onClick={() => setSelectedMonth('ALL')}
                   style={{
                     height: '35px',
                     padding: '0 8px',
@@ -661,12 +661,12 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
             )}
 
             {/* Clear Filter Button */}
-            {(selectedBatchFilter !== 'ALL' || selectedTruckFilter !== 'ALL' || searchTerm.trim() !== '' || statusFilter !== 'ALL' || selectedMonth !== '') && (
+            {(selectedBatchFilter !== 'ALL' || selectedTruckFilter !== 'ALL' || searchTerm.trim() !== '' || statusFilter !== 'ALL' || (selectedMonth && selectedMonth !== 'ALL')) && (
               <button
                 onClick={() => {
                   setSelectedBatchFilter('ALL');
                   setSelectedTruckFilter('ALL');
-                  setSelectedMonth('');
+                  setSelectedMonth('ALL');
                   setStatusFilter('ALL');
                   setSearchTerm('');
                 }}

@@ -19,14 +19,16 @@ export default function MonthPicker({ value, onChange, label = 'เดือน:
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef(null);
 
-  const [currentYear, currentMonth] = (value || new Date().toISOString().slice(0, 7))
-    .split('-')
-    .map(Number);
+  const isValidMonth = Boolean(value && value !== 'ALL' && /^\d{4}-\d{2}$/.test(String(value).trim()));
+  const validStr = isValidMonth ? String(value).trim() : new Date().toISOString().slice(0, 7);
+  const [currentYear, currentMonth] = validStr.split('-').map(Number);
 
   const [displayYear, setDisplayYear] = useState(currentYear || new Date().getFullYear());
 
   useEffect(() => {
-    if (currentYear) setDisplayYear(currentYear);
+    if (currentYear && !isNaN(currentYear)) {
+      setDisplayYear(currentYear);
+    }
   }, [currentYear]);
 
   // Click outside to close
@@ -46,7 +48,9 @@ export default function MonthPicker({ value, onChange, label = 'เดือน:
 
   const handlePrevMonth = (e) => {
     e.stopPropagation();
-    const date = new Date(currentYear, currentMonth - 2, 1);
+    const baseYear = (!isNaN(currentYear) && currentYear) ? currentYear : new Date().getFullYear();
+    const baseMonth = (!isNaN(currentMonth) && currentMonth) ? currentMonth : (new Date().getMonth() + 1);
+    const date = new Date(baseYear, baseMonth - 2, 1);
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     onChange(`${y}-${m}`);
@@ -54,7 +58,9 @@ export default function MonthPicker({ value, onChange, label = 'เดือน:
 
   const handleNextMonth = (e) => {
     e.stopPropagation();
-    const date = new Date(currentYear, currentMonth, 1);
+    const baseYear = (!isNaN(currentYear) && currentYear) ? currentYear : new Date().getFullYear();
+    const baseMonth = (!isNaN(currentMonth) && currentMonth) ? currentMonth : (new Date().getMonth() + 1);
+    const date = new Date(baseYear, baseMonth, 1);
     const y = date.getFullYear();
     const m = String(date.getMonth() + 1).padStart(2, '0');
     onChange(`${y}-${m}`);
@@ -121,9 +127,9 @@ export default function MonthPicker({ value, onChange, label = 'เดือน:
           style={{
             padding: '4px 10px',
             borderRadius: '6px',
-            border: isOpen ? '1px solid #3b82f6' : '1px solid #e2e8f0',
-            background: isOpen ? '#eff6ff' : '#ffffff',
-            color: '#0f172a',
+            border: isOpen ? '1px solid #3b82f6' : (isValidMonth ? '1px solid #bfdbfe' : '1px solid #e2e8f0'),
+            background: isOpen ? '#eff6ff' : (isValidMonth ? '#eff6ff' : '#ffffff'),
+            color: isValidMonth ? '#1d4ed8' : '#0f172a',
             fontSize: '13px',
             fontWeight: 800,
             cursor: 'pointer',
@@ -134,7 +140,7 @@ export default function MonthPicker({ value, onChange, label = 'เดือน:
             justifyContent: 'center'
           }}
         >
-          <span>{currentMonthName} {currentYear}</span>
+          <span>{isValidMonth ? `${currentMonthName} ${currentYear}` : '🌐 ทุกเดือน (All)'}</span>
           <span style={{ fontSize: '10px', color: '#64748b' }}>▼</span>
         </button>
 
@@ -268,8 +274,27 @@ export default function MonthPicker({ value, onChange, label = 'เดือน:
             })}
           </div>
 
-          {/* Quick Current Month Button */}
-          <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid #f1f5f9', textAlign: 'center' }}>
+          {/* Quick Buttons */}
+          <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid #f1f5f9', display: 'flex', justifyContent: 'space-between', gap: '6px' }}>
+            <button
+              type="button"
+              onClick={() => {
+                onChange('ALL');
+                setIsOpen(false);
+              }}
+              style={{
+                background: !isValidMonth ? '#eff6ff' : 'transparent',
+                border: !isValidMonth ? '1px solid #bfdbfe' : 'none',
+                borderRadius: '6px',
+                padding: '4px 8px',
+                color: '#2563eb',
+                fontSize: '12px',
+                fontWeight: 700,
+                cursor: 'pointer'
+              }}
+            >
+              🌐 ทุกเดือน (All)
+            </button>
             <button
               type="button"
               onClick={() => {
@@ -288,7 +313,7 @@ export default function MonthPicker({ value, onChange, label = 'เดือน:
                 cursor: 'pointer'
               }}
             >
-              📅 งวดเดือนปัจจุบัน
+              📅 เดือนปัจจุบัน
             </button>
           </div>
         </div>
