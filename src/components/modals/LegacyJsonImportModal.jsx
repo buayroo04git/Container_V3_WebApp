@@ -115,10 +115,13 @@ export default function LegacyJsonImportModal({
       }
     }
 
-    const sheetsToSave = targetSheets.map(s => ({
-      ...s,
-      driver_name: selectedDriverOverrides[s.id] || s.driver_name
-    }));
+    const sheetsToSave = targetSheets.map(s => {
+      const chosen = selectedDriverOverrides[s.id] !== undefined ? selectedDriverOverrides[s.id] : s.driver_name;
+      return {
+        ...s,
+        driver_name: (chosen && chosen !== '-') ? chosen : null
+      };
+    });
 
     setIsImporting(true);
     try {

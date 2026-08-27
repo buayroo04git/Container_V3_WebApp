@@ -808,29 +808,19 @@ export default function BatchManagerView() {
                         }
 
                         if (col === 'driver_name') {
+                          const hasDriver = sheet.driver_name && sheet.driver_name !== '-';
                           return (
                             <td key={col} style={cellStyle}>
-                              <select
-                                value={sheet.driver_name || '-'}
-                                onChange={(e) => handleUpdateDriver(sheet.id, e.target.value, sheet.truck_no)}
-                                style={{
-                                  padding: '4px 8px',
-                                  borderRadius: '6px',
-                                  border: '1px solid #cbd5e1',
-                                  background: sheet.driver_name && sheet.driver_name !== '-' ? '#f0fdf4' : '#ffffff',
-                                  color: sheet.driver_name && sheet.driver_name !== '-' ? '#166534' : '#64748b',
-                                  fontWeight: 700,
-                                  fontSize: '12px',
-                                  cursor: 'pointer',
-                                  maxWidth: '160px'
-                                }}
-                                title="คลิกเพื่อเลือก/เปลี่ยนตัวคนขับ"
-                              >
-                                <option value="-">-- เลือกคนขับ --</option>
-                                {availableDrivers.map(dName => (
-                                  <option key={dName} value={dName}>{dName}</option>
-                                ))}
-                              </select>
+                              <span style={{
+                                fontWeight: 700,
+                                fontSize: '13px',
+                                color: hasDriver ? '#0f172a' : '#94a3b8',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}>
+                                {hasDriver ? `👤 ${sheet.driver_name}` : '-'}
+                              </span>
                             </td>
                           );
                         }
