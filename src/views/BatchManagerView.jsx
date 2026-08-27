@@ -164,6 +164,22 @@ export default function BatchManagerView() {
     }
   };
 
+  const handleDeleteSheet = async (sheet) => {
+    if (!window.confirm(`⚠️ คุณแน่ใจหรือไม่ว่าต้องการลบใบงานนี้ออกจากระบบ?\n\n- รหัสใบงาน: ${sheet.id}\n- เบอร์รถ: ${sheet.truck_no}\n- รอบงาน: ${sheet.batch_name}\n- จำนวนตู้: ${sheet.total || sheet.total_containers || 0} ตู้\n\n(รายการตู้ทั้งหมดในใบงานนี้จะถูกลบออกจากฐานข้อมูล)`)) {
+      return;
+    }
+    try {
+      const res = await jobSheetService.deleteCompletedJobSheet(sheet);
+      if (!res.success) throw res.error;
+      alert('🗑️ ลบใบงานสำเร็จเรียบร้อยแล้ว');
+      if (activeDetailSheet?.id === sheet.id) setActiveDetailSheet(null);
+      loadPaginatedData();
+    } catch (err) {
+      console.error('Delete sheet error:', err);
+      alert('ไม่สามารถลบใบงานได้: ' + (err.message || err));
+    }
+  };
+
   // 2. Debounce Search (300ms)
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -912,6 +928,23 @@ export default function BatchManagerView() {
                                     ✏️ แก้ไข ({sheet.red})
                                   </button>
                                 )}
+
+                                <button
+                                  onClick={() => handleDeleteSheet(sheet)}
+                                  style={{
+                                    padding: '3px 8px',
+                                    borderRadius: '5px',
+                                    border: '1px solid #fecaca',
+                                    background: '#ffffff',
+                                    color: '#dc2626',
+                                    fontSize: '12px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer'
+                                  }}
+                                  title="ลบใบงานนี้ออกจากระบบ"
+                                >
+                                  🗑️ ลบ
+                                </button>
                               </div>
                             </td>
                           );
@@ -1094,25 +1127,48 @@ export default function BatchManagerView() {
               alignItems: 'center',
               background: '#f8fafc'
             }}>
-              {activeDetailSheet.image_url ? (
+              <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                {activeDetailSheet.image_url && (
+                  <button
+                    onClick={() => handleDownloadImage(activeDetailSheet.image_url, activeDetailSheet.truck_no, activeDetailSheet.batch_name)}
+                    style={{
+                      border: 'none',
+                      background: 'none',
+                      color: '#0284c7',
+                      fontSize: '13px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      padding: 0,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                  >
+                    <span>📥 ดาวน์โหลดภาพถ่ายใบงานต้นฉบับ</span>
+                  </button>
+                )}
+
                 <button
-                  onClick={() => handleDownloadImage(activeDetailSheet.image_url, activeDetailSheet.truck_no, activeDetailSheet.batch_name)}
+                  onClick={() => handleDeleteSheet(activeDetailSheet)}
                   style={{
-                    background: 'none',
-                    border: 'none',
-                    color: '#2563eb',
-                    fontSize: '13px',
-                    fontWeight: 600,
+                    padding: '6px 12px',
+                    borderRadius: '6px',
+                    border: '1px solid #fecaca',
+                    background: '#fef2f2',
+                    color: '#dc2626',
+                    fontSize: '12.5px',
+                    fontWeight: 700,
                     cursor: 'pointer',
-                    padding: 0,
                     display: 'inline-flex',
                     alignItems: 'center',
                     gap: '4px'
                   }}
+                  title="ลบใบงานนี้ออกจากระบบ"
                 >
-                  <span>📥 ดาวน์โหลดภาพถ่ายใบงานต้นฉบับ</span>
+                  🗑️ ลบใบงานนี้
                 </button>
-              ) : <div />}
+              </div>
 
               <div style={{ display: 'flex', gap: '8px' }}>
                 {activeDetailSheet.red > 0 && (
