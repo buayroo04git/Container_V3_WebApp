@@ -1,4 +1,5 @@
 import { supabase } from '../supabaseClient';
+import { jobSheetService } from './jobSheetService';
 import { cleanBatchName, findBestMasterDbMatch, normalizeExcelDate } from '../utils/matchingLogic';
 import { getOrCreateFolder, uploadImageToDrive } from '../utils/googleDriveApi';
 
@@ -308,62 +309,40 @@ export async function executeLegacyJsonBatchImport(sheetsToImport = [], options 
         }
       }
 
-      const sheetPayload = {
-        id: sheet.id,
-        batch_name: sheet.batch_name,
-        truck_no: sheet.truck_no,
-        driver_name: (sheet.driver_name && sheet.driver_name !== '-') ? sheet.driver_name : null,
-        image_name: sheet.image_name,
-        image_url: driveUrl,
-        drive_file_id: driveId,
-        total_containers: sheet.total_containers,
-        matched_count: sheet.matched_count,
-        unmatched_count: sheet.unmatched_count,
-        status: 'completed',
-        date_job: sheet.first_date,
-        date_job_parsed: sheet.first_date && /^\d{4}-\d{2}-\d{2}$/.test(sheet.first_date) ? sheet.first_date : null,
-        created_at: new Date().toISOString()
-      };
-
-      const { error: sheetErr } = await supabase
-        .from('job_sheets')
-        .upsert(sheetPayload, { onConflict: 'id' });
-
-      if (sheetErr) throw sheetErr;
-
-      await supabase
-        .from('job_sheet_items')
-        .delete()
-        .eq('job_sheet_id', sheet.id);
-
-      const itemsPayload = (sheet.items || []).map(item => ({
-        job_sheet_id: sheet.id,
-        line_no: item.line_no,
+      const matchingResults = (sheet.items || []).map((item, idx) => ({
         container_no: item.container_no,
-        raw_ocr_text: item.raw_ocr_text || item.container_no,
+        originalText: item.raw_ocr_text || item.container_no,
         port: (item.port && item.port !== '-') ? item.port : null,
         size: (item.size && item.size !== '-') ? item.size : null,
+        jobType: (item.job_type && item.job_type !== '-') ? item.job_type : null,
         job_type: (item.job_type && item.job_type !== '-') ? item.job_type : null,
         date_job: (item.date_job && item.date_job !== '-') ? item.date_job : null,
-        date_job_parsed: item.date_job_parsed || null,
-        match_status: item.match_status || 'matched_green',
-        ref_master_id: item.ref_master_id || null,
-        created_at: new Date().toISOString()
+        matchColor: item.match_status === 'matched_green' ? 'green' : 'red',
+        selectedDbId: item.ref_master_id || null,
+        displayIndex: item.line_no || (idx + 1)
       }));
 
-      if (itemsPayload.length > 0) {
-        const { error: itemsErr } = await supabase
-          .from('job_sheet_items')
-          .insert(itemsPayload);
+      const res = await jobSheetService.completeJobSheet({
+        sheetId: sheet.id,
+        batchName: sheet.batch_name,
+        truckNo: sheet.truck_no,
+        driverName: (sheet.driver_name && sheet.driver_name !== '-') ? sheet.driver_name : null,
+        imageUrl: driveUrl,
+        imageName: sheet.image_name,
+        driveFileId: driveId,
+        matchingResults,
+        isCompletedEdit: true
+      });
 
-        if (itemsErr) throw itemsErr;
+      if (!res.success) {
+        throw new Error(res.error?.message || res.error || 'Failed to save job sheet');
       }
 
       totalSheetsImported++;
-      totalItemsImported += itemsPayload.length;
+      totalItemsImported += matchingResults.length;
     } catch (err) {
       console.error(`Error importing sheet ${sheet.id}:`, err);
-      errors.push({ sheetId: sheet.id, error: err.message || err });
+      errors.push({ sheetId: sheet.id, error: err.message || String(err) });
     }
   }
 

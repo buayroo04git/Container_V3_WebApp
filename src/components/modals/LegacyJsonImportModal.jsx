@@ -133,7 +133,8 @@ export default function LegacyJsonImportModal({
         onImportSuccess();
         onClose();
       } else {
-        alert(`⚠️ นำเข้าเสร็จสิ้นบางส่วน (สำเร็จ ${res.importedSheets} ใบ, พบปัญหา ${res.errors.length} รายการ)`);
+        const errDetails = (res.errors || []).slice(0, 3).map(e => `${e.sheetId}: ${e.error}`).join('\n');
+        alert(`⚠️ นำเข้าเสร็จสิ้นบางส่วน (สำเร็จ ${res.importedSheets} ใบ, พบปัญหา ${res.errors.length} รายการ)\n\nรายละเอียดข้อผิดพลาด:\n${errDetails}`);
         onImportSuccess();
       }
     } catch (err) {
