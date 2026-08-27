@@ -199,12 +199,7 @@ export const jobSheetService = {
         };
       });
 
-      // ดึงวันที่ใบงานจากรายการตู้แรกที่มีวันที่
-      const firstItemWithDate = itemsToInsert.find(i => i.date_job && i.date_job !== '-' && i.date_job !== 'null');
-      const sheetDateJob = firstItemWithDate?.date_job || '-';
-      const sheetDateParsed = firstItemWithDate?.date_job_parsed || null;
-
-      // 1. สร้าง Payload หัวใบงาน
+      // 1. สร้าง Payload หัวใบงาน (หัวใบงานจะไม่มี date_job เพราะ 1 ใบงานมีรายการหลายวันที่)
       const sheetHeader = {
         id: targetSheetId,
         batch_name: batchName,
@@ -217,8 +212,6 @@ export const jobSheetService = {
         matched_count: greenCount,
         unmatched_count: redCount,
         status: 'completed',
-        date_job: sheetDateJob,
-        date_job_parsed: sheetDateParsed,
         created_at: new Date().toISOString()
       };
 
