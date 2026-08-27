@@ -779,16 +779,18 @@ export const jobSheetService = {
       const { data, count, error } = await query;
       if (error) throw error;
 
-      // 📦 7. ดึงรายการตู้ (job_sheet_items หรือ ocr_records) ของใบงานในหน้านี้
       const sheetIds = (data || []).map(s => s.id).filter(Boolean);
       const itemsMap = {};
       const masterIds = [];
+      let legacyRows = [];
 
       if (sheetIds.length > 0) {
         const [itemsRes, legacyRes] = await Promise.all([
           supabase.from('job_sheet_items').select('*').in('job_sheet_id', sheetIds).order('line_no', { ascending: true }),
           supabase.from('ocr_records').select('*').in('job_sheet_id', sheetIds).neq('match_status', 'deleted')
         ]);
+
+        legacyRows = legacyRes?.data || [];
 
         if (itemsRes.data && itemsRes.data.length > 0) {
           itemsRes.data.forEach(item => {
@@ -797,8 +799,8 @@ export const jobSheetService = {
             if (item.ref_master_id) masterIds.push(item.ref_master_id);
           });
         }
-        if (legacyRes.data && legacyRes.data.length > 0) {
-          legacyRes.data.forEach(item => {
+        if (legacyRows.length > 0) {
+          legacyRows.forEach(item => {
             if (!itemsMap[item.job_sheet_id]) itemsMap[item.job_sheet_id] = [];
             if (!itemsMap[item.job_sheet_id].some(existing => existing.container_no === item.container_no)) {
               itemsMap[item.job_sheet_id].push(item);
@@ -888,13 +890,15 @@ export const jobSheetService = {
           effectiveDate = firstItemWithDate?.date_job_parsed || firstItemWithDate?.date_job;
         }
 
-        // 3. ถ้าไม่มี ให้ดูจากวันที่บนหัวใบงาน
+        // 3. ใช้ชื่อคนขับที่ถูกเลือก/บันทึกไว้ในตอนอัปโหลดโดยตรงทันที
         const itemWithDriver = sheetItems.find(i => i.driver_name && i.driver_name !== '-');
-        const legacyWithDriver = (legacyRes?.data || []).find(i => i.job_sheet_id === sheet.id && i.driver_name && i.driver_name !== '-');
+        const legacyWithDriver = legacyRows.find(i => i.job_sheet_id === sheet.id && i.driver_name && i.driver_name !== '-');
 
-        const resolvedDriver = (sheet.driver_name && sheet.driver_name !== '-')
+        const directSavedDriver = (sheet.driver_name && sheet.driver_name !== '-')
           ? sheet.driver_name
-          : (itemWithDriver?.driver_name || legacyWithDriver?.driver_name || resolveDriver(sheet.truck_no, effectiveDate));
+          : (itemWithDriver?.driver_name || legacyWithDriver?.driver_name || null);
+
+        const resolvedDriver = directSavedDriver || resolveDriver(sheet.truck_no, effectiveDate);
 
         return {
           ...sheet,
