@@ -193,6 +193,7 @@ export const jobSheetService = {
           job_type: res.jobType || res.job_type || null,
           date_job: rawDate,
           date_job_parsed: parsedDate,
+          driver_name: driverName || null,
           match_status: matchStatus,
           ref_master_id: refId,
           created_at: new Date().toISOString()
@@ -327,17 +328,44 @@ export const jobSheetService = {
           .from('job_sheet_items')
           .insert(itemsToInsert);
 
-        // 🛡️ Auto Schema Fallback: กรณี job_sheet_items ยังไม่มี date_job_parsed
-        if (itemsErr && (itemsErr.message?.includes('date_job_parsed') || itemsErr.details?.includes('date_job_parsed') || itemsErr.hint?.includes('date_job_parsed'))) {
-          console.warn('Retrying job_sheet_items insert without date_job_parsed...');
-          const strippedItems = itemsToInsert.map(i => {
-            const { date_job_parsed, ...rest } = i;
-            return rest;
+        // 🛡️ Auto Schema Fallback: กรณี job_sheet_items ใน DB ยังไม่มี driver_name หรือ date_job_parsed
+        if (itemsErr) {
+          console.warn('job_sheet_items insert initial error, auto-stripping extra columns:', itemsErr.message);
+          let safeItems = itemsToInsert.map(i => {
+            let itemCopy = { ...i };
+            if (itemsErr.message?.includes('driver_name') || itemsErr.details?.includes('driver_name') || itemsErr.hint?.includes('driver_name')) {
+              delete itemCopy.driver_name;
+            }
+            if (itemsErr.message?.includes('date_job_parsed') || itemsErr.details?.includes('date_job_parsed') || itemsErr.hint?.includes('date_job_parsed')) {
+              delete itemCopy.date_job_parsed;
+            }
+            return itemCopy;
           });
           const retryItems = await supabase
             .from('job_sheet_items')
-            .insert(strippedItems);
+            .insert(safeItems);
           itemsErr = retryItems.error;
+
+          // Fallback ขั้นสุดท้าย: บันทึกเฉพาะ Core Columns ดั้งเดิมของ job_sheet_items
+          if (itemsErr) {
+            const coreItems = itemsToInsert.map((it, idx) => ({
+              job_sheet_id: targetSheetId,
+              line_no: it.line_no || (idx + 1),
+              container_no: it.container_no,
+              raw_ocr_text: it.raw_ocr_text || it.container_no,
+              port: it.port || '-',
+              size: it.size || '-',
+              job_type: it.job_type || '-',
+              date_job: it.date_job || '-',
+              match_status: it.match_status || 'matched_green',
+              ref_master_id: it.ref_master_id || null,
+              created_at: it.created_at || new Date().toISOString()
+            }));
+            const coreItemsRes = await supabase
+              .from('job_sheet_items')
+              .insert(coreItems);
+            itemsErr = coreItemsRes.error;
+          }
         }
 
         if (itemsErr) {
