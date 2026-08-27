@@ -9,6 +9,7 @@ import UniversalTableHeader from '../components/ui/UniversalTableHeader';
 import MonthPicker from '../components/ui/MonthPicker';
 import useActiveMonth from '../hooks/useActiveMonth';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
+import LegacyJsonImportModal from '../components/modals/LegacyJsonImportModal';
 
 function getPageNumbers(current, total) {
   if (total <= 7) {
@@ -105,28 +106,38 @@ export default function BatchManagerView() {
   const [sortConfig, setSortConfig] = useState({ key: 'saved_at', direction: 'desc' });
 
   const [availableDrivers, setAvailableDrivers] = useState([]);
+  const [fullDriversList, setFullDriversList] = useState([]);
+  const [fullTrucksList, setFullTrucksList] = useState([]);
+  const [fullOpsList, setFullOpsList] = useState([]);
+  const [isLegacyImportModalOpen, setIsLegacyImportModalOpen] = useState(false);
 
   // 1. โหลด Metadata ตอนเปิดหน้าจอ
   useEffect(() => {
     const fetchMetadata = async () => {
       try {
-        const [batchesRes, trucksRes, driversRes, masterRes] = await Promise.all([
+        const [batchesRes, trucksRes, driversRes, masterRes, opsRes] = await Promise.all([
           supabase.from('job_sheets').select('batch_name').neq('status', 'deleted').limit(150),
-          supabase.from('truck_records').select('truck_no').order('truck_no'),
-          supabase.from('driver_records').select('driver_name').order('driver_name', { ascending: true }),
-          containerService.fetchMasterContainers()
+          supabase.from('truck_records').select('*').order('truck_no'),
+          supabase.from('driver_records').select('*').order('driver_name', { ascending: true }),
+          containerService.fetchMasterContainers(),
+          supabase.from('truck_operations').select('*').limit(2000)
         ]);
         if (batchesRes?.data) {
           const bSet = new Set(batchesRes.data.map(b => b.batch_name).filter(Boolean));
           setAvailableBatches(Array.from(bSet).sort());
         }
         if (trucksRes?.data) {
+          setFullTrucksList(trucksRes.data);
           const tSet = new Set(trucksRes.data.map(t => t.truck_no).filter(Boolean));
           setAvailableTrucks(Array.from(tSet).sort());
         }
         if (driversRes?.data) {
+          setFullDriversList(driversRes.data);
           const dSet = new Set(driversRes.data.map(d => d.driver_name).filter(Boolean));
           setAvailableDrivers(Array.from(dSet).sort((a, b) => a.localeCompare(b, 'th')));
+        }
+        if (opsRes?.data) {
+          setFullOpsList(opsRes.data);
         }
         if (masterRes?.data) {
           setMasterDb(masterRes.data);
@@ -607,6 +618,32 @@ export default function BatchManagerView() {
 
             {/* Column Visibility Menu */}
             <ColumnVisibilityDropdown preferences={batchPrefs} />
+
+            {/* 📥 Import Legacy JSON Button */}
+            <button
+              type="button"
+              onClick={() => setIsLegacyImportModalOpen(true)}
+              style={{
+                height: '35px',
+                padding: '0 12px',
+                borderRadius: '7px',
+                border: 'none',
+                background: '#2563eb',
+                color: '#ffffff',
+                fontSize: '12px',
+                fontWeight: 800,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                boxShadow: '0 1px 3px rgba(37, 99, 235, 0.25)',
+                whiteSpace: 'nowrap'
+              }}
+              title="นำเข้าไฟล์ manual_*.json หรือ result_*.json เดิมเข้าสู่ระบบ"
+            >
+              <span>📥</span>
+              <span>นำเข้าจาก JSON เก่า</span>
+            </button>
 
           </div>
         </div>
@@ -1359,6 +1396,19 @@ export default function BatchManagerView() {
           </div>
         </div>
       )}
+
+      {/* 📥 Legacy JSON Import Modal */}
+      <LegacyJsonImportModal
+        isOpen={isLegacyImportModalOpen}
+        onClose={() => setIsLegacyImportModalOpen(false)}
+        masterDbList={masterDb}
+        driversList={fullDriversList}
+        trucksList={fullTrucksList}
+        opsList={fullOpsList}
+        onImportSuccess={() => {
+          loadPaginatedData();
+        }}
+      />
 
     </div>
   );

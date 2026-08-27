@@ -29,5 +29,11 @@ client_secret*.json
 .gemini/
 Archive2/
 sample_data/
+Data/
+__MACOSX/
+ใบงาน*/
+*.png
+*.jpg
+*.jpeg
 test_api*.js
 test_*.js
