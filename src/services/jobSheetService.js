@@ -278,14 +278,43 @@ export const jobSheetService = {
         .from('job_sheets')
         .upsert(sheetHeader, { onConflict: 'id' });
 
-      // 🛡️ Auto Schema Fallback: กรณี job_sheets ใน DB ยังไม่มีคอลัมน์ date_job หรือ date_job_parsed
-      if (sheetErr && (sheetErr.message?.includes('date_job') || sheetErr.details?.includes('date_job') || sheetErr.hint?.includes('date_job'))) {
-        console.warn('Retrying job_sheets upsert without date_job columns...');
-        const { date_job, date_job_parsed, ...strippedHeader } = sheetHeader;
+      // 🛡️ Auto Schema Fallback: กรณี job_sheets ใน DB ยังไม่มีคอลัมน์ driver_name, date_job หรืออื่นๆ
+      if (sheetErr) {
+        console.warn('job_sheets upsert initial error, auto-stripping non-existent columns:', sheetErr.message);
+        let safeHeader = { ...sheetHeader };
+        if (sheetErr.message?.includes('driver_name') || sheetErr.details?.includes('driver_name') || sheetErr.hint?.includes('driver_name')) {
+          delete safeHeader.driver_name;
+        }
+        if (sheetErr.message?.includes('date_job') || sheetErr.details?.includes('date_job') || sheetErr.hint?.includes('date_job')) {
+          delete safeHeader.date_job;
+          delete safeHeader.date_job_parsed;
+        }
+
         const retryRes = await supabase
           .from('job_sheets')
-          .upsert(strippedHeader, { onConflict: 'id' });
+          .upsert(safeHeader, { onConflict: 'id' });
         sheetErr = retryRes.error;
+
+        // Fallback ขั้นสุดท้าย: บันทึกเฉพาะ Core Columns ขั้นพื้นฐาน
+        if (sheetErr) {
+          const coreHeader = {
+            id: sheetHeader.id,
+            batch_name: sheetHeader.batch_name || 'General_Batch',
+            truck_no: sheetHeader.truck_no,
+            image_url: sheetHeader.image_url || null,
+            image_name: sheetHeader.image_name || null,
+            drive_file_id: sheetHeader.drive_file_id || null,
+            total_containers: sheetHeader.total_containers || 0,
+            matched_count: sheetHeader.matched_count || 0,
+            unmatched_count: sheetHeader.unmatched_count || 0,
+            status: sheetHeader.status || 'completed',
+            created_at: sheetHeader.created_at || new Date().toISOString()
+          };
+          const coreRes = await supabase
+            .from('job_sheets')
+            .upsert(coreHeader, { onConflict: 'id' });
+          sheetErr = coreRes.error;
+        }
       }
 
       if (sheetErr) {
