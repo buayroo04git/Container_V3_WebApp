@@ -265,8 +265,9 @@ export const jobSheetService = {
               await supabase.from('job_sheets').update({ driver_name: driverName }).eq('id', targetSheetId);
             } catch (e) {}
             if (truckNo && truckNo !== '-') {
+              const cleanTruck = String(truckNo).trim().replace(/^รถ\s*/, '');
               try {
-                await supabase.from('truck_records').update({ assigned_driver_name: driverName }).eq('truck_no', String(truckNo).trim());
+                await supabase.from('truck_records').update({ assigned_driver_name: driverName }).ilike('truck_no', `%${cleanTruck}%`);
               } catch (e) {}
             }
           }
@@ -414,6 +415,24 @@ export const jobSheetService = {
             ocr_data: cacheUpdatePayload
           })
           .eq('id', cacheId);
+      }
+
+      if (driverName && driverName !== '-') {
+        try {
+          await supabase.from('ocr_records').update({ driver_name: driverName }).eq('job_sheet_id', targetSheetId);
+        } catch (e) {}
+        try {
+          await supabase.from('job_sheet_items').update({ driver_name: driverName }).eq('job_sheet_id', targetSheetId);
+        } catch (e) {}
+        try {
+          await supabase.from('job_sheets').update({ driver_name: driverName }).eq('id', targetSheetId);
+        } catch (e) {}
+        if (truckNo && truckNo !== '-') {
+          const cleanTruck = String(truckNo).trim().replace(/^รถ\s*/, '');
+          try {
+            await supabase.from('truck_records').update({ assigned_driver_name: driverName }).ilike('truck_no', `%${cleanTruck}%`);
+          } catch (e) {}
+        }
       }
 
       return { success: true, sheetId: targetSheetId, error: null };

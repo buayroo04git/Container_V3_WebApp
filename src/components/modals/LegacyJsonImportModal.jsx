@@ -108,9 +108,10 @@ export default function LegacyJsonImportModal({
 
     let targetSheets = parsedSheets;
     if (skipExisting) {
-      targetSheets = parsedSheets.filter(s => !s.isExisting);
+      // ข้ามเฉพาะใบงานเดิมที่ผู้ใช้ไม่ได้ทำการเลือก/แก้ไขชื่อคนขับ
+      targetSheets = parsedSheets.filter(s => !s.isExisting || (selectedDriverOverrides[s.id] !== undefined && selectedDriverOverrides[s.id] !== s.driver_name));
       if (targetSheets.length === 0) {
-        alert('ใบงานทั้งหมดมีอยู่ในระบบแล้ว และคุณเลือกข้ามใบงานที่มีอยู่แล้ว');
+        alert('ใบงานทั้งหมดมีอยู่ในระบบแล้ว (หากต้องการบันทึกทับ ให้ยกเลิกติ๊ก "ข้ามใบงานที่มีในระบบแล้ว")');
         return;
       }
     }
@@ -477,7 +478,7 @@ export default function LegacyJsonImportModal({
                   <tbody>
                     {parsedSheets.map((sheet, index) => {
                       const isExpanded = expandedSheetId === sheet.id;
-                      const currentDriver = selectedDriverOverrides[sheet.id] || sheet.driver_name;
+                      const currentDriver = selectedDriverOverrides[sheet.id] !== undefined ? selectedDriverOverrides[sheet.id] : sheet.driver_name;
                       const hasImage = Boolean(sheet.imageFile || sheet.image_url);
 
                       return (
@@ -802,7 +803,7 @@ export default function LegacyJsonImportModal({
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <span style={{ fontSize: '12px', fontWeight: 700, color: '#93c5fd' }}>คนขับ:</span>
                 <select
-                  value={selectedDriverOverrides[previewImageSheet.id] || previewImageSheet.driver_name || '-'}
+                  value={(selectedDriverOverrides[previewImageSheet.id] !== undefined ? selectedDriverOverrides[previewImageSheet.id] : previewImageSheet.driver_name) || '-'}
                   onChange={(e) => handleDriverChange(previewImageSheet.id, e.target.value)}
                   style={{
                     padding: '6px 10px',
