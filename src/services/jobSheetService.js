@@ -281,9 +281,19 @@ export const jobSheetService = {
         }
       }
 
-      const { error: sheetErr } = await supabase
+      let { error: sheetErr } = await supabase
         .from('job_sheets')
         .upsert(sheetHeader, { onConflict: 'id' });
+
+      // 🛡️ Auto Schema Fallback: กรณี job_sheets ใน DB ยังไม่มีคอลัมน์ date_job หรือ date_job_parsed
+      if (sheetErr && (sheetErr.message?.includes('date_job') || sheetErr.details?.includes('date_job') || sheetErr.hint?.includes('date_job'))) {
+        console.warn('Retrying job_sheets upsert without date_job columns...');
+        const { date_job, date_job_parsed, ...strippedHeader } = sheetHeader;
+        const retryRes = await supabase
+          .from('job_sheets')
+          .upsert(strippedHeader, { onConflict: 'id' });
+        sheetErr = retryRes.error;
+      }
 
       if (sheetErr) {
         console.error('job_sheets upsert failed in fallback:', sheetErr);
@@ -291,9 +301,22 @@ export const jobSheetService = {
       }
 
       if (itemsToInsert.length > 0) {
-        const { error: itemsErr } = await supabase
+        let { error: itemsErr } = await supabase
           .from('job_sheet_items')
           .insert(itemsToInsert);
+
+        // 🛡️ Auto Schema Fallback: กรณี job_sheet_items ยังไม่มี date_job_parsed
+        if (itemsErr && (itemsErr.message?.includes('date_job_parsed') || itemsErr.details?.includes('date_job_parsed') || itemsErr.hint?.includes('date_job_parsed'))) {
+          console.warn('Retrying job_sheet_items insert without date_job_parsed...');
+          const strippedItems = itemsToInsert.map(i => {
+            const { date_job_parsed, ...rest } = i;
+            return rest;
+          });
+          const retryItems = await supabase
+            .from('job_sheet_items')
+            .insert(strippedItems);
+          itemsErr = retryItems.error;
+        }
 
         if (itemsErr) {
           console.error('job_sheet_items insert failed in fallback:', itemsErr);
@@ -308,7 +331,11 @@ export const jobSheetService = {
       }
 
       if (legacyRecords.length > 0) {
-        await supabase.from('ocr_records').insert(legacyRecords);
+        try {
+          await supabase.from('ocr_records').insert(legacyRecords);
+        } catch (ocrErr) {
+          console.warn('ocr_records backup warning in fallback:', ocrErr);
+        }
       }
 
       if (cacheId) {
