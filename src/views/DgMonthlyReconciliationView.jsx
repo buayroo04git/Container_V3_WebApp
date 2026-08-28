@@ -150,12 +150,24 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
       // -------------------------------------------------------------
       const truckSheetsThisMonth = jobSheets.filter(s => {
         if (String(s.truck_no || '').trim() !== tNo) return false;
-        const batch = cleanBatchName(s.batch_name);
-        return batch.includes(targetMonth) || (s.created_at && s.created_at.startsWith(targetMonth));
+        const sCleanBatch = cleanBatchName(s.batch_name);
+        const sPeriod = parseBatchPeriod(sCleanBatch);
+        if (sPeriod && sPeriod.year === tYearNum && sPeriod.month === tMonthNum) return true;
+        if (s.created_at && s.created_at.startsWith(targetMonth)) return true;
+        return false;
       });
 
       const sheetIdsThisMonth = new Set(truckSheetsThisMonth.map(s => s.id));
-      const truckItemsThisMonth = jobSheetItems.filter(i => sheetIdsThisMonth.has(i.job_sheet_id));
+      const truckItemsThisMonth = jobSheetItems.filter(i => {
+        if (sheetIdsThisMonth.has(i.job_sheet_id)) return true;
+        const s = sheetMap.get(i.job_sheet_id);
+        if (s && String(s.truck_no || '').trim() === tNo) {
+          const sCleanBatch = cleanBatchName(s.batch_name);
+          const sPeriod = parseBatchPeriod(sCleanBatch);
+          if (sPeriod && sPeriod.year === tYearNum && sPeriod.month === tMonthNum) return true;
+        }
+        return false;
+      });
 
       // นับตู้ใบงานช่วง 1-15 และ 16-31
       let h1_sheet_total = 0;
@@ -163,9 +175,10 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
 
       truckItemsThisMonth.forEach(i => {
         const s = sheetMap.get(i.job_sheet_id);
-        const sBatch = cleanBatchName(s?.batch_name);
+        const sCleanBatch = cleanBatchName(s?.batch_name);
+        const sPeriod = parseBatchPeriod(sCleanBatch);
         const norm = i.date_job_parsed || normalizeExcelDate(i.date_job);
-        const day = norm ? parseInt(norm.slice(8, 10), 10) : (sBatch.includes('16-') ? 16 : 1);
+        const day = norm ? parseInt(norm.slice(8, 10), 10) : (sPeriod ? sPeriod.startDay : 1);
 
         if (day <= 15) h1_sheet_total++;
         else h2_sheet_total++;

@@ -200,10 +200,12 @@ export const jobSheetService = {
         };
       });
 
+      const cleanBatch = cleanBatchName(batchName);
+
       // 1. สร้าง Payload หัวใบงาน (หัวใบงานจะไม่มี date_job เพราะ 1 ใบงานมีรายการหลายวันที่)
       const sheetHeader = {
         id: targetSheetId,
-        batch_name: batchName,
+        batch_name: cleanBatch,
         truck_no: String(truckNo || '').trim(),
         driver_name: driverName || null,
         image_url: imageUrl || null,
@@ -219,7 +221,7 @@ export const jobSheetService = {
       // 2. สร้าง Payload ข้อมูลสำรอง (ocr_records พร้อม job_sheet_id)
       const legacyRecords = itemsToInsert.map(item => ({
         job_sheet_id: targetSheetId,
-        batch_name: batchName,
+        batch_name: cleanBatch,
         truck_no: truckNo,
         driver_name: driverName || null,
         image_url: imageUrl,
@@ -1160,7 +1162,10 @@ export const jobSheetService = {
         else if (statusFilter === 'MATCHED') list = list.filter(i => i.match_status === 'matched_green');
         else if (statusFilter === 'UNMATCHED') list = list.filter(i => i.match_status === 'manual_red' || i.match_status === 'unmatched_red');
 
-        if (batchFilter && batchFilter !== 'ALL') list = list.filter(i => i.batch_name === batchFilter);
+        if (batchFilter && batchFilter !== 'ALL') {
+          const cleanFilter = cleanBatchName(batchFilter);
+          list = list.filter(i => cleanBatchName(i.batch_name) === cleanFilter);
+        }
         if (truckFilter && truckFilter !== 'ALL') list = list.filter(i => i.truck_no === truckFilter);
         if (monthFilter && monthFilter !== 'ALL') {
           const [year, month] = monthFilter.trim().split('-');

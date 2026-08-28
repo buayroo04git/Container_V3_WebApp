@@ -130,7 +130,7 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
         ]);
         if (kpiRes) setKpis(kpiRes);
         if (batchesRes?.data) {
-          const bSet = new Set(batchesRes.data.map(b => b.batch_name).filter(Boolean));
+          const bSet = new Set(batchesRes.data.map(b => cleanBatchName(b.batch_name)).filter(b => b && b !== 'General_Batch'));
           setAvailableBatches(Array.from(bSet).sort());
         }
         if (trucksRes?.data) {

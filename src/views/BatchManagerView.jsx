@@ -125,7 +125,7 @@ export default function BatchManagerView() {
           supabase.from('truck_operations').select('*').limit(2000)
         ]);
         if (batchesRes?.data) {
-          const bSet = new Set(batchesRes.data.map(b => b.batch_name).filter(Boolean));
+          const bSet = new Set(batchesRes.data.map(b => cleanBatchName(b.batch_name)).filter(b => b && b !== 'General_Batch'));
           setAvailableBatches(Array.from(bSet).sort());
         }
         if (trucksRes?.data) {
