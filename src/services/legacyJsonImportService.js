@@ -284,9 +284,10 @@ export async function executeLegacyJsonBatchImport(sheetsToImport = [], options 
       // ☁️ Upload image to Google Drive if selected
       if (uploadToDrive && accessToken && sheet.imageFile) {
         try {
+          const cleanTruck = String(sheet.truck_no || 'Unknown').trim().replace(/^รถ\s*/, '');
           const mainCompletedFolderId = await getOrCreateFolder(accessToken, 'Completed_Job_Sheets');
           const batchFolderId = await getOrCreateFolder(accessToken, sheet.batch_name || 'General_Batch', mainCompletedFolderId);
-          const truckFolderId = await getOrCreateFolder(accessToken, `Truck_${sheet.truck_no || 'Unknown'}`, batchFolderId);
+          const truckFolderId = await getOrCreateFolder(accessToken, `Truck_${cleanTruck}`, batchFolderId);
 
           const base64Data = await new Promise((resolve, reject) => {
             const reader = new FileReader();
