@@ -1,5 +1,6 @@
 import ExecutiveDashboardView from '../views/ExecutiveDashboardView';
 import DriverIncomeSummaryView from '../views/DriverIncomeSummaryView';
+import DgMonthlyReconciliationView from '../views/DgMonthlyReconciliationView';
 import ScannerView from '../views/ScannerView';
 import BatchManagerView from '../views/BatchManagerView';
 import OcrContainerHistoryView from '../views/OcrContainerHistoryView';
@@ -39,6 +40,13 @@ export const NAVIGATION_SECTIONS = [
         icon: '👨‍✈️',
         description: 'สรุปยอดตั้งจ่ายคนขับ (เงินเดือน+ค่ารอบ+เงินพิเศษ) หักรายการหัก (ประกันสังคม, ภาษี 3%, เบิก/ยืม) สู่ยอดโอนจ่ายจริง',
         component: DriverIncomeSummaryView,
+      },
+      {
+        id: 'dg-reconciliation',
+        label: 'ตู้ DG ประจำเดือน',
+        icon: '📑',
+        description: 'รายงานกระทบยอดจำนวนตู้ใบงาน vs ตู้วางบิลประจำเดือน จำแนกขนาด 20"/40" และงานข้ามรอบ (1)+(2)+(3)+(4)',
+        component: DgMonthlyReconciliationView,
       }
     ]
   },
