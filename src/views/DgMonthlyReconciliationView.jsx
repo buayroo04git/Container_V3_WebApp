@@ -344,11 +344,11 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
       '16-31 จำนวนตู้วางบิล': r.h2_billed_total,
       '16-31 จำนวนตู้ใบงาน': r.h2_sheet_total,
       'รวมจำนวนตู้วางบิล': r.total_billed,
-      'รวมจำนวนตู้ใบงาน วางบิลเดือนนี้ (1)+(2)+(3)+(4)': r.reconciled_total,
-      'รวมจำนวนตู้ใบงาน (1)': r.col1_total_sheets,
-      'จำนวนตู้ใบงานที่วางบิลแล้วในเดือนก่อนหน้า (2)': r.col2_count > 0 ? `(${r.col2_count})` : 0,
-      'จำนวนตู้วางบิลแล้วจากใบงานเดือนหน้า (3)': r.col3_count,
-      'จำนวนตู้ค้างวางบิลจากใบงานยกไปเดือนหน้า (4)': r.col4_count > 0 ? `(${r.col4_count})` : 0,
+      'รวมจำนวนตู้ใบงาน วางบิลเดือนนี้': r.reconciled_total,
+      'รวมจำนวนตู้ใบงาน': r.col1_total_sheets,
+      'จำนวนตู้ใบงานที่วางบิลแล้วในเดือนก่อนหน้า': r.col2_count > 0 ? `(${r.col2_count})` : 0,
+      'จำนวนตู้วางบิลแล้วจากใบงานเดือนหน้า': r.col3_count,
+      'จำนวนตู้ค้างวางบิลจากใบงานยกไปเดือนหน้า': r.col4_count > 0 ? `(${r.col4_count})` : 0,
       'สถานะกระทบยอด': r.isReconciled ? '✓ ตรงกัน' : `⚠️ ต่าง ${r.diff}`
     }));
 
@@ -456,7 +456,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
               </span>
             </div>
             <p style={{ margin: '2px 0 0 0', fontSize: '12.5px', color: '#64748b' }}>
-              เปรียบเทียบยอดตู้ในใบงาน vs ใบวางบิล แยกช่วงวัน 1-15, 16-31 และตรวจเช็กงานข้ามรอบ (1)+(2)+(3)+(4)
+              เปรียบเทียบยอดตู้ในใบงาน vs ใบวางบิล แยกช่วงวัน 1-15, 16-31 และตรวจเช็กงานข้ามรอบประจำเดือน
             </p>
           </div>
         </div>
@@ -505,40 +505,40 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
           </div>
         </div>
 
-        {/* Card 2: Total Sheets (1) */}
+        {/* Card 2: Total Sheets */}
         <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
           <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            รวมตู้ในใบงาน (1)
+            รวมตู้ในใบงาน
           </div>
           <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', marginTop: '3px', fontFamily: "'Inter', sans-serif" }}>
             {totals.col1_total_sheets.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>ตู้</span>
           </div>
         </div>
 
-        {/* Card 3: Prev Month (2) */}
+        {/* Card 3: Prev Month */}
         <div style={{ background: '#ffffff', border: '1px solid #fed7aa', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
           <div style={{ fontSize: '11px', color: '#b45309', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            (2) วางบิลแล้วเดือนก่อน
+            วางบิลแล้วเดือนก่อน
           </div>
           <div style={{ fontSize: '24px', fontWeight: 700, color: '#c2410c', marginTop: '3px', fontFamily: "'Inter', sans-serif" }}>
             ({totals.col2_count.toLocaleString()}) <span style={{ fontSize: '12px', fontWeight: 500, color: '#ea580c' }}>ตู้</span>
           </div>
         </div>
 
-        {/* Card 4: Next Sheet (3) */}
+        {/* Card 4: Next Sheet */}
         <div style={{ background: '#ffffff', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
           <div style={{ fontSize: '11px', color: '#15803d', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            (3) ใบงานมาเดือนหน้า
+            ใบงานมาเดือนหน้า
           </div>
           <div style={{ fontSize: '24px', fontWeight: 700, color: '#16a34a', marginTop: '3px', fontFamily: "'Inter', sans-serif" }}>
             +{totals.col3_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#22c55e' }}>ตู้</span>
           </div>
         </div>
 
-        {/* Card 5: Rolled Forward (4) */}
+        {/* Card 5: Rolled Forward */}
         <div style={{ background: '#ffffff', border: '1px solid #e9d5ff', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
           <div style={{ fontSize: '11px', color: '#7e22ce', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            (4) ค้างวางบิลยกไป
+            ค้างวางบิลยกไป
           </div>
           <div style={{ fontSize: '24px', fontWeight: 700, color: '#9333ea', marginTop: '3px', fontFamily: "'Inter', sans-serif" }}>
             ({totals.col4_count.toLocaleString()}) <span style={{ fontSize: '12px', fontWeight: 500, color: '#a855f7' }}>ตู้</span>
@@ -598,19 +598,19 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
                   รวมจำนวน<br/>ตู้วางบิล
                 </th>
                 <th rowSpan={3} style={{ ...topHeaderStyle, width: '110px', background: '#dcfce7', color: '#166534' }}>
-                  รวมตู้ใบงาน<br/>วางบิลเดือนนี้<br/>(1)+(2)+(3)+(4)
+                  รวมตู้ใบงาน<br/>วางบิลเดือนนี้
                 </th>
                 <th rowSpan={3} style={{ ...topHeaderStyle, width: '80px', color: '#334155' }}>
-                  (1)<br/>ตู้ใบงาน
+                  รวมจำนวน<br/>ตู้ใบงาน
                 </th>
                 <th rowSpan={3} style={{ ...topHeaderStyle, width: '95px', background: '#ffedd5', color: '#c2410c' }}>
-                  (2)<br/>วางบิลแล้ว<br/>เดือนก่อนหน้า
+                  วางบิลแล้ว<br/>เดือนก่อนหน้า
                 </th>
                 <th rowSpan={3} style={{ ...topHeaderStyle, width: '95px', background: '#dcfce7', color: '#15803d' }}>
-                  (3)<br/>วางบิลแล้ว<br/>ใบงานเดือนหน้า
+                  วางบิลแล้ว<br/>ใบงานเดือนหน้า
                 </th>
                 <th rowSpan={3} style={{ ...topHeaderStyle, width: '95px', background: '#f3e8ff', color: '#7e22ce' }}>
-                  (4)<br/>ค้างวางบิล<br/>ยกไปเดือนหน้า
+                  ค้างวางบิล<br/>ยกไปเดือนหน้า
                 </th>
                 <th rowSpan={3} style={{ ...topHeaderStyle, width: '90px', color: '#64748b' }}>
                   สถานะ
@@ -810,12 +810,12 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
                         {r.reconciled_total}
                       </td>
 
-                      {/* (1) ตู้ใบงาน */}
+                      {/* ตู้ใบงาน */}
                       <td style={{ padding: '9px 6px', textAlign: 'center', fontWeight: 600, fontSize: '12.5px', color: '#334155', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f1f5f9' }}>
                         {r.col1_total_sheets}
                       </td>
 
-                      {/* (2) วางบิลแล้วเดือนก่อน (Interactive Hover) */}
+                      {/* วางบิลแล้วเดือนก่อน (Interactive Hover) */}
                       <td
                         style={{
                           padding: '9px 6px',
@@ -827,9 +827,9 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
                           borderRight: '1px solid #f1f5f9',
                           cursor: r.col2_count > 0 ? 'pointer' : 'default'
                         }}
-                        onMouseEnter={(e) => handleMouseEnterCell(e, `(2) ตู้ที่วางบิลแล้วในเดือนก่อนหน้า`, r.col2_count, r.col2_items, 'amber', r.truck_no)}
+                        onMouseEnter={(e) => handleMouseEnterCell(e, `ตู้ที่วางบิลแล้วในเดือนก่อนหน้า`, r.col2_count, r.col2_items, 'amber', r.truck_no)}
                         onMouseLeave={handleMouseLeaveCell}
-                        onClick={() => r.col2_count > 0 && setDrillDownModal({ title: `(2) ตู้ใบงานที่วางบิลแล้วในเดือนก่อนหน้า (รถ ${r.truck_no})`, items: r.col2_items, theme: 'amber' })}
+                        onClick={() => r.col2_count > 0 && setDrillDownModal({ title: `ตู้ใบงานที่วางบิลแล้วในเดือนก่อนหน้า (รถ ${r.truck_no})`, items: r.col2_items, theme: 'amber' })}
                       >
                         {r.col2_count > 0 ? (
                           <span style={{ padding: '1px 6px', borderRadius: '4px', background: '#ffedd5', color: '#c2410c' }}>
@@ -838,7 +838,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
                         ) : '0'}
                       </td>
 
-                      {/* (3) วางบิลแล้วใบงานเดือนหน้า (Interactive Hover) */}
+                      {/* วางบิลแล้วใบงานเดือนหน้า (Interactive Hover) */}
                       <td
                         style={{
                           padding: '9px 6px',
@@ -850,9 +850,9 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
                           borderRight: '1px solid #f1f5f9',
                           cursor: r.col3_count > 0 ? 'pointer' : 'default'
                         }}
-                        onMouseEnter={(e) => handleMouseEnterCell(e, `(3) ตู้วางบิลแล้วจากใบงานเดือนหน้า`, r.col3_count, r.col3_items, 'emerald', r.truck_no)}
+                        onMouseEnter={(e) => handleMouseEnterCell(e, `ตู้วางบิลแล้วจากใบงานเดือนหน้า`, r.col3_count, r.col3_items, 'emerald', r.truck_no)}
                         onMouseLeave={handleMouseLeaveCell}
-                        onClick={() => r.col3_count > 0 && setDrillDownModal({ title: `(3) ตู้วางบิลแล้วจากใบงานเดือนหน้า (รถ ${r.truck_no})`, items: r.col3_items, theme: 'emerald' })}
+                        onClick={() => r.col3_count > 0 && setDrillDownModal({ title: `ตู้วางบิลแล้วจากใบงานเดือนหน้า (รถ ${r.truck_no})`, items: r.col3_items, theme: 'emerald' })}
                       >
                         {r.col3_count > 0 ? (
                           <span style={{ padding: '1px 6px', borderRadius: '4px', background: '#dcfce7', color: '#15803d' }}>
@@ -861,7 +861,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
                         ) : '0'}
                       </td>
 
-                      {/* (4) ค้างวางบิลยกไปเดือนหน้า (Interactive Hover) */}
+                      {/* ค้างวางบิลยกไปเดือนหน้า (Interactive Hover) */}
                       <td
                         style={{
                           padding: '9px 6px',
@@ -873,9 +873,9 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
                           borderRight: '1px solid #f1f5f9',
                           cursor: r.col4_count > 0 ? 'pointer' : 'default'
                         }}
-                        onMouseEnter={(e) => handleMouseEnterCell(e, `(4) ตู้ค้างวางบิลจากใบงานยกไปเดือนหน้า`, r.col4_count, r.col4_items, 'purple', r.truck_no)}
+                        onMouseEnter={(e) => handleMouseEnterCell(e, `ตู้ค้างวางบิลจากใบงานยกไปเดือนหน้า`, r.col4_count, r.col4_items, 'purple', r.truck_no)}
                         onMouseLeave={handleMouseLeaveCell}
-                        onClick={() => r.col4_count > 0 && setDrillDownModal({ title: `(4) ตู้ค้างวางบิลยกไปเดือนหน้า (รถ ${r.truck_no})`, items: r.col4_items, theme: 'purple' })}
+                        onClick={() => r.col4_count > 0 && setDrillDownModal({ title: `ตู้ค้างวางบิลยกไปเดือนหน้า (รถ ${r.truck_no})`, items: r.col4_items, theme: 'purple' })}
                       >
                         {r.col4_count > 0 ? (
                           <span style={{ padding: '1px 6px', borderRadius: '4px', background: '#f3e8ff', color: '#7e22ce' }}>
