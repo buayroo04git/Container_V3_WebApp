@@ -358,55 +358,66 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
     XLSX.writeFile(wb, `ตู้_DG_ประจำเดือน_${selectedMonth || 'Report'}.xlsx`);
   };
 
-  // 🎨 Clean Bright Header Styles
+  // 🎨 High-Contrast Professional Corporate Header Styles
   const topHeaderStyle = {
-    background: '#f8fafc',
-    color: '#334155',
+    background: '#1e293b',
+    color: '#ffffff',
     fontSize: '12px',
     fontWeight: 700,
     padding: '10px 8px',
     textAlign: 'center',
-    borderRight: '1px solid #e2e8f0',
-    borderBottom: '1px solid #cbd5e1'
+    borderRight: '1px solid #334155',
+    borderBottom: '1px solid #334155'
   };
 
   const subHeaderH1Style = {
-    background: '#f0f9ff',
-    color: '#0369a1',
+    background: '#0284c7',
+    color: '#ffffff',
     fontSize: '11.5px',
     fontWeight: 700,
     padding: '6px 4px',
     textAlign: 'center',
-    borderRight: '1px solid #bae6fd',
-    borderBottom: '1px solid #cbd5e1'
+    borderRight: '1px solid #0369a1',
+    borderBottom: '1px solid #0369a1'
   };
 
   const subHeaderH2Style = {
-    background: '#f5f3ff',
-    color: '#4f46e5',
+    background: '#4f46e5',
+    color: '#ffffff',
     fontSize: '11.5px',
     fontWeight: 700,
     padding: '6px 4px',
     textAlign: 'center',
-    borderRight: '1px solid #ddd6fe',
-    borderBottom: '1px solid #cbd5e1'
+    borderRight: '1px solid #4338ca',
+    borderBottom: '1px solid #4338ca'
   };
 
-  const subColHeaderStyle = {
-    background: '#f8fafc',
-    color: '#64748b',
+  const subColH1Style = {
+    background: '#0369a1',
+    color: '#e0f2fe',
     fontSize: '11px',
     fontWeight: 600,
     padding: '6px 4px',
     textAlign: 'center',
-    borderRight: '1px solid #e2e8f0',
-    borderBottom: '2px solid #cbd5e1'
+    borderRight: '1px solid #0284c7',
+    borderBottom: '2px solid #0f172a'
+  };
+
+  const subColH2Style = {
+    background: '#4338ca',
+    color: '#ede9fe',
+    fontSize: '11px',
+    fontWeight: 600,
+    padding: '6px 4px',
+    textAlign: 'center',
+    borderRight: '1px solid #4f46e5',
+    borderBottom: '2px solid #0f172a'
   };
 
   return (
     <div style={{ padding: '16px 24px', height: '100%', display: 'flex', flexDirection: 'column', boxSizing: 'border-box', gap: '14px', background: '#f8fafc', overflow: 'hidden' }}>
       
-      {/* 1. Header Toolbar (Bright Clean Card) */}
+      {/* 1. Header Toolbar */}
       <div style={{
         display: 'flex',
         justifyContent: 'space-between',
@@ -424,14 +435,14 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
             width: '42px',
             height: '42px',
             borderRadius: '10px',
-            background: '#f1f5f9',
-            border: '1px solid #cbd5e1',
+            background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: '#1e293b',
+            color: '#ffffff',
             fontSize: '18px',
-            fontWeight: 800
+            fontWeight: 800,
+            boxShadow: '0 2px 6px rgba(2,132,199,0.25)'
           }}>
             📑
           </div>
@@ -440,8 +451,8 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
               <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 700, color: '#0f172a', letterSpacing: '-0.02em' }}>
                 รายงานกระทบยอดตู้ DG ประจำเดือน {monthDisplay}
               </h2>
-              <span style={{ fontSize: '11px', fontWeight: 600, padding: '2px 8px', borderRadius: '16px', background: '#f1f5f9', color: '#475569', border: '1px solid #e2e8f0' }}>
-                Reconciliation Report
+              <span style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '16px', background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0' }}>
+                Reconciliation Hub
               </span>
             </div>
             <p style={{ margin: '2px 0 0 0', fontSize: '12.5px', color: '#64748b' }}>
@@ -461,20 +472,20 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
             style={{
               padding: '7px 16px',
               borderRadius: '8px',
-              border: '1px solid #cbd5e1',
-              background: '#ffffff',
-              color: '#1e293b',
+              border: '1px solid #16a34a',
+              background: 'linear-gradient(135deg, #22c55e 0%, #16a34a 100%)',
+              color: '#ffffff',
               fontSize: '12.5px',
-              fontWeight: 600,
+              fontWeight: 700,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
-              boxShadow: '0 1px 2px rgba(0,0,0,0.03)',
+              boxShadow: '0 2px 5px rgba(22, 163, 74, 0.2)',
               transition: 'all 0.15s ease'
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#94a3b8'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.borderColor = '#cbd5e1'; }}
+            onMouseEnter={(e) => e.currentTarget.style.transform = 'translateY(-1px)'}
+            onMouseLeave={(e) => e.currentTarget.style.transform = 'translateY(0)'}
           >
             <span>📥</span> ส่งออก Excel
           </button>
@@ -485,61 +496,62 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
         
         {/* Card 1: Total Billed */}
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', borderLeft: '4px solid #0284c7' }}>
           <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             รวมตู้วางบิลทั้งหมด
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', marginTop: '3px', fontFamily: "'Inter', sans-serif" }}>
-            {totals.total_billed.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>ตู้</span>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#0369a1', marginTop: '3px', fontFamily: "'Inter', sans-serif" }}>
+            {totals.total_billed.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>ตู้</span>
           </div>
         </div>
 
         {/* Card 2: Total Sheets (1) */}
-        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+        <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)', borderLeft: '4px solid #64748b' }}>
           <div style={{ fontSize: '11px', color: '#64748b', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             รวมตู้ในใบงาน (1)
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: '#0f172a', marginTop: '3px', fontFamily: "'Inter', sans-serif" }}>
-            {totals.col1_total_sheets.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#94a3b8' }}>ตู้</span>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#0f172a', marginTop: '3px', fontFamily: "'Inter', sans-serif" }}>
+            {totals.col1_total_sheets.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 600, color: '#64748b' }}>ตู้</span>
           </div>
         </div>
 
         {/* Card 3: Prev Month (2) */}
-        <div style={{ background: '#ffffff', border: '1px solid #fed7aa', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <div style={{ fontSize: '11px', color: '#b45309', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <div style={{ background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '10px', padding: '12px 16px', borderLeft: '4px solid #ea580c' }}>
+          <div style={{ fontSize: '11px', color: '#c2410c', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             (2) วางบิลแล้วเดือนก่อน
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: '#c2410c', marginTop: '3px', fontFamily: "'Inter', sans-serif" }}>
-            ({totals.col2_count.toLocaleString()}) <span style={{ fontSize: '12px', fontWeight: 500, color: '#ea580c' }}>ตู้</span>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#ea580c', marginTop: '3px', fontFamily: "'Inter', sans-serif" }}>
+            ({totals.col2_count.toLocaleString()}) <span style={{ fontSize: '12px', fontWeight: 600, color: '#c2410c' }}>ตู้</span>
           </div>
         </div>
 
         {/* Card 4: Next Sheet (3) */}
-        <div style={{ background: '#ffffff', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <div style={{ fontSize: '11px', color: '#15803d', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '10px', padding: '12px 16px', borderLeft: '4px solid #16a34a' }}>
+          <div style={{ fontSize: '11px', color: '#15803d', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             (3) ใบงานมาเดือนหน้า
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: '#16a34a', marginTop: '3px', fontFamily: "'Inter', sans-serif" }}>
-            +{totals.col3_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 500, color: '#22c55e' }}>ตู้</span>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#16a34a', marginTop: '3px', fontFamily: "'Inter', sans-serif" }}>
+            +{totals.col3_count.toLocaleString()} <span style={{ fontSize: '12px', fontWeight: 600, color: '#15803d' }}>ตู้</span>
           </div>
         </div>
 
         {/* Card 5: Rolled Forward (4) */}
-        <div style={{ background: '#ffffff', border: '1px solid #e9d5ff', borderRadius: '10px', padding: '12px 16px', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
-          <div style={{ fontSize: '11px', color: '#7e22ce', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+        <div style={{ background: '#faf5ff', border: '1px solid #e9d5ff', borderRadius: '10px', padding: '12px 16px', borderLeft: '4px solid #9333ea' }}>
+          <div style={{ fontSize: '11px', color: '#7e22ce', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             (4) ค้างวางบิลยกไป
           </div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: '#9333ea', marginTop: '3px', fontFamily: "'Inter', sans-serif" }}>
-            ({totals.col4_count.toLocaleString()}) <span style={{ fontSize: '12px', fontWeight: 500, color: '#a855f7' }}>ตู้</span>
+          <div style={{ fontSize: '24px', fontWeight: 800, color: '#9333ea', marginTop: '3px', fontFamily: "'Inter', sans-serif" }}>
+            ({totals.col4_count.toLocaleString()}) <span style={{ fontSize: '12px', fontWeight: 600, color: '#7e22ce' }}>ตู้</span>
           </div>
         </div>
 
         {/* Card 6: Balance Status */}
         <div style={{
           background: totals.reconciled_total === totals.total_billed ? '#f0fdf4' : '#fef2f2',
-          border: totals.reconciled_total === totals.total_billed ? '1px solid #bbf7d0' : '1px solid #fecaca',
+          border: totals.reconciled_total === totals.total_billed ? '1px solid #86efac' : '1px solid #fca5a5',
           borderRadius: '10px',
           padding: '12px 16px',
+          borderLeft: totals.reconciled_total === totals.total_billed ? '4px solid #22c55e' : '4px solid #ef4444',
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'space-between'
@@ -547,61 +559,61 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
           <div style={{ fontSize: '11px', color: totals.reconciled_total === totals.total_billed ? '#15803d' : '#991b1b', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             สถานะการกระทบยอด
           </div>
-          <div style={{ fontSize: '15px', fontWeight: 700, color: totals.reconciled_total === totals.total_billed ? '#166534' : '#b91c1c', marginTop: '3px' }}>
+          <div style={{ fontSize: '16px', fontWeight: 800, color: totals.reconciled_total === totals.total_billed ? '#166534' : '#b91c1c', marginTop: '3px' }}>
             {totals.reconciled_total === totals.total_billed ? '✓ ยอดสมดุล 100%' : `⚠️ ผลต่าง ${totals.reconciled_total - totals.total_billed} ตู้`}
           </div>
         </div>
 
       </div>
 
-      {/* 3. Bright & Clean Modern Table */}
+      {/* 3. Distinct High-Contrast Table */}
       <div style={{
         flex: 1,
         minHeight: 0,
         background: '#ffffff',
-        border: '1px solid #e2e8f0',
+        border: '1px solid #cbd5e1',
         borderRadius: '12px',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.02)'
+        boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
       }}>
         <div style={{ flex: 1, overflow: 'auto', position: 'relative' }}>
           <table style={{ width: '100%', borderCollapse: 'separate', borderSpacing: 0, minWidth: '1440px' }}>
-            <thead style={{ position: 'sticky', top: 0, zIndex: 10 }}>
+            <thead style={{ position: 'sticky', top: 0, zIndex: 10, boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.08)' }}>
               
               {/* Row 1 Headers */}
               <tr>
                 <th rowSpan={3} style={{ ...topHeaderStyle, width: '45px' }}>#</th>
                 <th rowSpan={3} style={{ ...topHeaderStyle, width: '90px' }}>ทะเบียน</th>
                 <th rowSpan={3} style={{ ...topHeaderStyle, width: '130px', textAlign: 'left', paddingLeft: '14px' }}>เจ้าของรถ</th>
-                <th rowSpan={3} style={{ ...topHeaderStyle, width: '65px', color: '#0284c7' }}>เบอร์</th>
+                <th rowSpan={3} style={{ ...topHeaderStyle, width: '65px', background: '#0f172a', color: '#38bdf8' }}>เบอร์</th>
                 
                 {/* 1-15 and 16-31 Top Super Header */}
-                <th colSpan={8} style={{ ...topHeaderStyle, background: '#f1f5f9', color: '#1e293b' }}>
-                  ช่วงวันที่ทำงาน (Dates Breakdown)
+                <th colSpan={8} style={{ ...topHeaderStyle, background: '#0f766e', color: '#ffffff' }}>
+                  📅 รายละเอียดรอบวันทำงาน (1-15 & 16-31)
                 </th>
 
                 {/* Reconciliation Super Header */}
-                <th rowSpan={3} style={{ ...topHeaderStyle, width: '85px', background: '#fffbeb', color: '#b45309' }}>
+                <th rowSpan={3} style={{ ...topHeaderStyle, width: '85px', background: '#ea580c', color: '#ffffff' }}>
                   รวมจำนวน<br/>ตู้วางบิล
                 </th>
-                <th rowSpan={3} style={{ ...topHeaderStyle, width: '110px', background: '#f0fdf4', color: '#166534' }}>
+                <th rowSpan={3} style={{ ...topHeaderStyle, width: '110px', background: '#059669', color: '#ffffff' }}>
                   รวมตู้ใบงาน<br/>วางบิลเดือนนี้<br/>(1)+(2)+(3)+(4)
                 </th>
-                <th rowSpan={3} style={{ ...topHeaderStyle, width: '80px', color: '#334155' }}>
+                <th rowSpan={3} style={{ ...topHeaderStyle, width: '80px', background: '#334155', color: '#f8fafc' }}>
                   (1)<br/>ตู้ใบงาน
                 </th>
-                <th rowSpan={3} style={{ ...topHeaderStyle, width: '95px', color: '#c2410c' }}>
+                <th rowSpan={3} style={{ ...topHeaderStyle, width: '95px', background: '#9a3412', color: '#ffedd5' }}>
                   (2)<br/>วางบิลแล้ว<br/>เดือนก่อนหน้า
                 </th>
-                <th rowSpan={3} style={{ ...topHeaderStyle, width: '95px', color: '#15803d' }}>
+                <th rowSpan={3} style={{ ...topHeaderStyle, width: '95px', background: '#166534', color: '#dcfce7' }}>
                   (3)<br/>วางบิลแล้ว<br/>ใบงานเดือนหน้า
                 </th>
-                <th rowSpan={3} style={{ ...topHeaderStyle, width: '95px', color: '#7e22ce' }}>
+                <th rowSpan={3} style={{ ...topHeaderStyle, width: '95px', background: '#6b21a8', color: '#f3e8ff' }}>
                   (4)<br/>ค้างวางบิล<br/>ยกไปเดือนหน้า
                 </th>
-                <th rowSpan={3} style={{ ...topHeaderStyle, width: '90px', color: '#64748b' }}>
+                <th rowSpan={3} style={{ ...topHeaderStyle, width: '90px', background: '#1e293b', color: '#94a3b8' }}>
                   สถานะ
                 </th>
               </tr>
@@ -618,15 +630,15 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
 
               {/* Row 3 Headers (Sub Columns) */}
               <tr>
-                <th style={{ ...subColHeaderStyle, width: '50px' }}>20"</th>
-                <th style={{ ...subColHeaderStyle, width: '50px' }}>40"</th>
-                <th style={{ ...subColHeaderStyle, width: '65px', color: '#b45309', background: '#fffdf5' }}>วางบิล</th>
-                <th style={{ ...subColHeaderStyle, width: '65px', color: '#0369a1', background: '#f8fcff' }}>ใบงาน</th>
+                <th style={{ ...subColH1Style, width: '50px' }}>20"</th>
+                <th style={{ ...subColH1Style, width: '50px' }}>40"</th>
+                <th style={{ ...subColH1Style, width: '65px', color: '#fef08a', background: '#0c4a6e' }}>วางบิล</th>
+                <th style={{ ...subColH1Style, width: '65px', color: '#bae6fd', background: '#0c4a6e' }}>ใบงาน</th>
 
-                <th style={{ ...subColHeaderStyle, width: '50px' }}>20"</th>
-                <th style={{ ...subColHeaderStyle, width: '50px' }}>40"</th>
-                <th style={{ ...subColHeaderStyle, width: '65px', color: '#b45309', background: '#fffdf5' }}>วางบิล</th>
-                <th style={{ ...subColHeaderStyle, width: '65px', color: '#4f46e5', background: '#faf8ff' }}>ใบงาน</th>
+                <th style={{ ...subColH2Style, width: '50px' }}>20"</th>
+                <th style={{ ...subColH2Style, width: '50px' }}>40"</th>
+                <th style={{ ...subColH2Style, width: '65px', color: '#fef08a', background: '#312e81' }}>วางบิล</th>
+                <th style={{ ...subColH2Style, width: '65px', color: '#c7d2fe', background: '#312e81' }}>ใบงาน</th>
               </tr>
 
             </thead>
@@ -892,29 +904,29 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
               )}
             </tbody>
 
-            {/* Total Row (Bright Clean Platinum Footer) */}
+            {/* Total Row (High-Contrast Corporate Footer) */}
             <tfoot style={{ position: 'sticky', bottom: 0, zIndex: 10 }}>
-              <tr style={{ background: '#f8fafc', color: '#0f172a', fontWeight: 700, borderTop: '2px solid #cbd5e1', boxShadow: '0 -2px 6px rgba(0,0,0,0.02)' }}>
-                <td colSpan={4} style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 700, fontSize: '12.5px', color: '#1e293b' }}>
+              <tr style={{ background: '#0f172a', color: '#ffffff', fontWeight: 700, borderTop: '2px solid #334155', boxShadow: '0 -4px 6px -1px rgba(0, 0, 0, 0.1)' }}>
+                <td colSpan={4} style={{ padding: '12px 14px', textAlign: 'center', fontWeight: 700, fontSize: '12.5px', color: '#38bdf8' }}>
                   รวมทั้งหมด (GRAND TOTAL)
                 </td>
-                <td style={{ padding: '12px 4px', textAlign: 'center', fontSize: '12.5px', color: '#334155' }}>{totals.h1_size20_billed}</td>
-                <td style={{ padding: '12px 4px', textAlign: 'center', fontSize: '12.5px', color: '#334155' }}>{totals.h1_size40_billed}</td>
-                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#b45309', background: '#fef3c7' }}>{totals.h1_billed_total}</td>
-                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#0369a1', background: '#e0f2fe' }}>{totals.h1_sheet_total}</td>
+                <td style={{ padding: '12px 4px', textAlign: 'center', fontSize: '12.5px', color: '#cbd5e1' }}>{totals.h1_size20_billed}</td>
+                <td style={{ padding: '12px 4px', textAlign: 'center', fontSize: '12.5px', color: '#cbd5e1' }}>{totals.h1_size40_billed}</td>
+                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#fdba74' }}>{totals.h1_billed_total}</td>
+                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#bae6fd' }}>{totals.h1_sheet_total}</td>
                 
-                <td style={{ padding: '12px 4px', textAlign: 'center', fontSize: '12.5px', color: '#334155' }}>{totals.h2_size20_billed}</td>
-                <td style={{ padding: '12px 4px', textAlign: 'center', fontSize: '12.5px', color: '#334155' }}>{totals.h2_size40_billed}</td>
-                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#b45309', background: '#fef3c7' }}>{totals.h2_billed_total}</td>
-                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#4338ca', background: '#ede9fe' }}>{totals.h2_sheet_total}</td>
+                <td style={{ padding: '12px 4px', textAlign: 'center', fontSize: '12.5px', color: '#cbd5e1' }}>{totals.h2_size20_billed}</td>
+                <td style={{ padding: '12px 4px', textAlign: 'center', fontSize: '12.5px', color: '#cbd5e1' }}>{totals.h2_size40_billed}</td>
+                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#fdba74' }}>{totals.h2_billed_total}</td>
+                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#c7d2fe' }}>{totals.h2_sheet_total}</td>
 
-                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '14px', color: '#b45309', background: '#fffbeb' }}>{totals.total_billed}</td>
-                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '14px', color: '#15803d', background: '#f0fdf4' }}>{totals.reconciled_total}</td>
-                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#334155' }}>{totals.col1_total_sheets}</td>
-                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#c2410c' }}>{totals.col2_count > 0 ? `(${totals.col2_count})` : '0'}</td>
-                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#15803d' }}>{totals.col3_count > 0 ? `+${totals.col3_count}` : '0'}</td>
-                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#7e22ce' }}>{totals.col4_count > 0 ? `(${totals.col4_count})` : '0'}</td>
-                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '12px', color: totals.reconciled_total === totals.total_billed ? '#15803d' : '#b91c1c' }}>
+                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '14px', color: '#fb923c' }}>{totals.total_billed}</td>
+                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '14px', color: '#4ade80' }}>{totals.reconciled_total}</td>
+                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#f1f5f9' }}>{totals.col1_total_sheets}</td>
+                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#fb923c' }}>{totals.col2_count > 0 ? `(${totals.col2_count})` : '0'}</td>
+                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#4ade80' }}>{totals.col3_count > 0 ? `+${totals.col3_count}` : '0'}</td>
+                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '13px', color: '#c084fc' }}>{totals.col4_count > 0 ? `(${totals.col4_count})` : '0'}</td>
+                <td style={{ padding: '12px 6px', textAlign: 'center', fontSize: '12px', color: totals.reconciled_total === totals.total_billed ? '#4ade80' : '#f87171' }}>
                   {totals.reconciled_total === totals.total_billed ? '✓ สมดุล' : '⚠️ มีผลต่าง'}
                 </td>
               </tr>
