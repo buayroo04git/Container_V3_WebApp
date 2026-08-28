@@ -951,11 +951,64 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
                         }
 
                         if (col === 'batch_name') {
+                          const crossInfo = item.cross_batch_info;
+                          const isCross = crossInfo?.isCross;
+                          const isPrev = crossInfo?.type === 'PREV_PERIOD';
+                          const isNext = crossInfo?.type === 'NEXT_PERIOD';
+
                           return (
                             <td key={col} style={cellStyle}>
-                              <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '13px' }}>
-                                {item.batch_name || '-'}
-                              </span>
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '3px' }}>
+                                <span style={{ fontWeight: 600, color: '#1e293b', fontSize: '12.5px' }}>
+                                  {item.batch_name || '-'}
+                                </span>
+
+                                {isCross && isPrev && (
+                                  <div 
+                                    style={{
+                                      background: '#fff7ed',
+                                      border: '1.5px solid #fb923c',
+                                      color: '#c2410c',
+                                      padding: '2px 7px',
+                                      borderRadius: '6px',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      boxShadow: '0 1px 2px rgba(251, 146, 60, 0.15)',
+                                      whiteSpace: 'nowrap'
+                                    }}
+                                    title={`งานตกจากรอบก่อน (วางบิลรอบ ${crossInfo.targetBatch || '-'})`}
+                                  >
+                                    <span>↩️</span>
+                                    <span>ตกจาก: {crossInfo.targetBatch || 'รอบก่อน'}</span>
+                                  </div>
+                                )}
+
+                                {isCross && isNext && (
+                                  <div 
+                                    style={{
+                                      background: '#faf5ff',
+                                      border: '1.5px solid #c084fc',
+                                      color: '#7e22ce',
+                                      padding: '2px 7px',
+                                      borderRadius: '6px',
+                                      fontSize: '11px',
+                                      fontWeight: 700,
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      boxShadow: '0 1px 2px rgba(192, 132, 252, 0.15)',
+                                      whiteSpace: 'nowrap'
+                                    }}
+                                    title={`งานยกไปรอบถัดไป (วางบิลรอบ ${crossInfo.targetBatch || '-'})`}
+                                  >
+                                    <span>↪️</span>
+                                    <span>ยกไป: {crossInfo.targetBatch || 'รอบหน้า'}</span>
+                                  </div>
+                                )}
+                              </div>
                             </td>
                           );
                         }

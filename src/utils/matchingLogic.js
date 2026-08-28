@@ -355,6 +355,118 @@ export const cleanBatchName = (rawInput, fallbackDate = null) => {
 
 export const standardizeBatchName = cleanBatchName;
 
+/**
+ * 📅 แปลงและแยกข้อมูลรอบงานมาตรฐาน (เช่น '01 - 15 APR 2026') ออกมาเป็นตัวเลขเปรียบเทียบ
+ */
+export const parseBatchPeriod = (rawBatch) => {
+  if (!rawBatch || typeof rawBatch !== 'string') return null;
+  const std = cleanBatchName(rawBatch);
+  const match = std.match(/(\d{1,2})\s*[-–_]\s*(\d{1,2})\s+([A-Za-z]+)\s+(\d{4})/i);
+  if (!match) return null;
+
+  const startDay = parseInt(match[1], 10);
+  const endDay = parseInt(match[2], 10);
+  const mKey = match[3].toLowerCase();
+  const mObj = BATCH_MONTH_MAP[mKey];
+  const year = parseInt(match[4], 10);
+
+  if (!mObj || isNaN(year)) return null;
+
+  const month = mObj.num;
+  const isFirstHalf = startDay <= 15;
+  const periodIndex = year * 24 + (month - 1) * 2 + (isFirstHalf ? 0 : 1);
+
+  return {
+    year,
+    month,
+    startDay,
+    endDay,
+    monthEn: mObj.en,
+    periodIndex,
+    startDate: `${year}-${String(month).padStart(2, '0')}-${String(startDay).padStart(2, '0')}`,
+    endDate: `${year}-${String(month).padStart(2, '0')}-${String(endDay).padStart(2, '0')}`,
+    formatted: `${String(startDay).padStart(2, '0')} - ${String(endDay).padStart(2, '0')} ${mObj.en} ${year}`
+  };
+};
+
+/**
+ * ⚡ ตรวจสอบและประเมินความสัมพันธ์ของรอบงาน (Cross-Batch Evaluation)
+ * จำแนกเป็น 3 สถานะ: 'IN_CYCLE' (ตรงรอบ), 'PREV_PERIOD' (ตกจากรอบก่อน), 'NEXT_PERIOD' (ข้ามไปรอบหน้า)
+ */
+export const evaluateCrossBatchRelation = (sheetBatch, billingBatch, jobDate = null) => {
+  const sPeriod = parseBatchPeriod(sheetBatch);
+  const bPeriod = parseBatchPeriod(billingBatch);
+
+  // 1. กรณีแมตช์พบใบวางบิลชัดเจน
+  if (sPeriod && bPeriod) {
+    if (bPeriod.periodIndex < sPeriod.periodIndex) {
+      const diffPeriods = sPeriod.periodIndex - bPeriod.periodIndex;
+      return {
+        type: 'PREV_PERIOD',
+        label: 'ตกจากรอบก่อน',
+        targetBatch: bPeriod.formatted,
+        diffPeriods,
+        isCross: true,
+        color: 'amber'
+      };
+    }
+    if (bPeriod.periodIndex > sPeriod.periodIndex) {
+      const diffPeriods = bPeriod.periodIndex - sPeriod.periodIndex;
+      return {
+        type: 'NEXT_PERIOD',
+        label: 'ข้ามไปรอบหน้า',
+        targetBatch: bPeriod.formatted,
+        diffPeriods,
+        isCross: true,
+        color: 'purple'
+      };
+    }
+    return {
+      type: 'IN_CYCLE',
+      label: 'ตรงรอบ',
+      targetBatch: bPeriod.formatted,
+      isCross: false,
+      color: 'green'
+    };
+  }
+
+  // 2. กรณีที่ยังไม่มีใบวางบิล แต่มีวันที่ทำงานจริง (date_job) เทียบกับรอบใบงาน
+  if (sPeriod && jobDate) {
+    const norm = normalizeExcelDate(jobDate);
+    const dStr = norm ? norm.slice(0, 10) : null;
+    if (dStr && /^\d{4}-\d{2}-\d{2}$/.test(dStr)) {
+      if (dStr < sPeriod.startDate) {
+        const derivedBatch = cleanBatchName(null, dStr);
+        return {
+          type: 'PREV_PERIOD',
+          label: 'ตกจากรอบก่อน',
+          targetBatch: derivedBatch !== 'General_Batch' ? derivedBatch : null,
+          isCross: true,
+          color: 'amber'
+        };
+      }
+      if (dStr > sPeriod.endDate) {
+        const derivedBatch = cleanBatchName(null, dStr);
+        return {
+          type: 'NEXT_PERIOD',
+          label: 'ข้ามไปรอบหน้า',
+          targetBatch: derivedBatch !== 'General_Batch' ? derivedBatch : null,
+          isCross: true,
+          color: 'purple'
+        };
+      }
+    }
+  }
+
+  return {
+    type: 'IN_CYCLE',
+    label: 'ตรงรอบ',
+    targetBatch: sPeriod?.formatted || sheetBatch,
+    isCross: false,
+    color: 'green'
+  };
+};
+
 // 🗳️ โหวตเสียงส่วนใหญ่ (Majority Vote) เพื่อหารอบงานที่แท้จริงของใบงาน
 export const determineMajorityBatch = (matchingResults, fallbackBatch = null) => {
   if (!matchingResults || matchingResults.length === 0) {

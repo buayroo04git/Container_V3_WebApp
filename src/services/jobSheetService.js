@@ -1,6 +1,6 @@
 import { supabase } from '../supabaseClient';
 import { getAllPendingFromDB } from '../utils/pendingDb';
-import { findTopContainerMatches, evaluateMatchStatus, cleanBatchName, findBestMasterDbMatch, isDateMatching, normalizeExcelDate } from '../utils/matchingLogic';
+import { findTopContainerMatches, evaluateMatchStatus, cleanBatchName, findBestMasterDbMatch, isDateMatching, normalizeExcelDate, evaluateCrossBatchRelation } from '../utils/matchingLogic';
 
 export { findBestMasterDbMatch, isDateMatching };
 
@@ -1417,7 +1417,7 @@ export const jobSheetService = {
             // 🧾 รอบของใบวางบิล (Billing Batch): เป็นเอกเทศของฝั่งใบวางบิล (เช่น '16 - 30 APR 2026')
             const dbBatch = matchedDb?.batch_name || (matchedDb?.source_file ? cleanBatchName(matchedDb.source_file) : null);
             const billingBatch = dbBatch ? cleanBatchName(dbBatch, matchedDb?.date_job_parsed || matchedDb?.date_job) : null;
-            const isCrossBatch = Boolean(billingBatch && sheetBatch && billingBatch !== sheetBatch);
+            const crossBatchInfo = evaluateCrossBatchRelation(sheetBatch, billingBatch, parsedDate || finalDateJob);
 
             // สถานะการจับคู่: ยึดตาม item.match_status ที่เคยบันทึกไว้
             const finalMatchStatus = item.match_status || (matchedDb ? 'matched_green' : 'manual_red');
@@ -1443,7 +1443,8 @@ export const jobSheetService = {
               workflow_status: 'completed',
               batch_name: sheetBatch,
               billing_batch: billingBatch,
-              is_cross_batch: isCrossBatch,
+              is_cross_batch: crossBatchInfo.isCross,
+              cross_batch_info: crossBatchInfo,
               truck_no: sheet.truck_no || '-',
               image_url: sheet.image_url || null,
               image_name: sheet.image_name || '-',
@@ -1480,7 +1481,7 @@ export const jobSheetService = {
             const recBatch = cleanBatchName(rec.batch_name || 'General_Batch', rec.date_job_parsed || rec.date_job || rec.created_at);
             const dbBatch = matchedDb?.batch_name || (matchedDb?.source_file ? cleanBatchName(matchedDb.source_file) : null);
             const billingBatch = dbBatch ? cleanBatchName(dbBatch, matchedDb?.date_job_parsed || matchedDb?.date_job) : null;
-            const isCrossBatch = Boolean(billingBatch && recBatch && billingBatch !== recBatch);
+            const crossBatchInfo = evaluateCrossBatchRelation(recBatch, billingBatch, rec.date_job_parsed || rec.date_job);
 
             const isMatched = rec.match_status !== 'manual_red' && matchedDb !== null;
             const finalMatchStatus = isMatched ? 'matched_green' : 'manual_red';
@@ -1506,7 +1507,8 @@ export const jobSheetService = {
               workflow_status: 'completed',
               batch_name: recBatch,
               billing_batch: billingBatch,
-              is_cross_batch: isCrossBatch,
+              is_cross_batch: crossBatchInfo.isCross,
+              cross_batch_info: crossBatchInfo,
               truck_no: rec.truck_no || '-',
               image_url: rec.image_url || null,
               image_name: '-',
