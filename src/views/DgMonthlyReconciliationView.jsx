@@ -328,132 +328,256 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
     if (popoverTimeoutRef.current) clearTimeout(popoverTimeoutRef.current);
   };
 
-  // 📥 Export to Excel with Multi-Level Merged Headers & Formatted Columns
-  const handleExportExcel = () => {
-    // 1. Build Multi-Level Header Rows
-    const aoa = [
-      // Row 1 (Header Level 1)
-      [
+  // 📥 Export to Excel with ExcelJS: Full Color Styling, Multi-Level Headers, Alignments & Borders
+  const handleExportExcel = async () => {
+    try {
+      const ExcelJS = (await import('exceljs')).default;
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Container Management System';
+      workbook.created = new Date();
+
+      const worksheet = workbook.addWorksheet('ตู้_DG_ประจำเดือน', {
+        views: [{ showGridLines: true }]
+      });
+
+      // 1. Column Widths
+      worksheet.columns = [
+        { key: 'index', width: 8 },
+        { key: 'truck_license', width: 14 },
+        { key: 'owner', width: 22 },
+        { key: 'truck_no', width: 10 },
+        { key: 'h1_20', width: 10 },
+        { key: 'h1_40', width: 10 },
+        { key: 'h1_billed', width: 16 },
+        { key: 'h1_sheet', width: 16 },
+        { key: 'h2_20', width: 10 },
+        { key: 'h2_40', width: 10 },
+        { key: 'h2_billed', width: 16 },
+        { key: 'h2_sheet', width: 16 },
+        { key: 'total_billed', width: 18 },
+        { key: 'reconciled_total', width: 26 },
+        { key: 'col1_sheets', width: 18 },
+        { key: 'col2_prev', width: 22 },
+        { key: 'col3_next', width: 22 },
+        { key: 'col4_roll', width: 22 },
+        { key: 'status', width: 16 }
+      ];
+
+      // Style Presets
+      const thinBorder = {
+        top: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+        left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+        bottom: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+        right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+      };
+
+      const headerFont = { name: 'Sarabun', size: 10, bold: true, color: { argb: 'FF1E293B' } };
+      const dataFont = { name: 'Sarabun', size: 10, color: { argb: 'FF0F172A' } };
+
+      // 2. Add 3 Header Rows
+      const r1 = worksheet.addRow([
         'ลำดับ', 'ทะเบียน', 'เจ้าของรถ', 'เบอร์',
         'วันที่', null, null, null, null, null, null, null,
         'รวมจำนวนตู้วางบิล', 'รวมตู้ใบงาน วางบิลเดือนนี้', 'รวมจำนวนตู้ใบงาน',
         'วางบิลแล้ว เดือนก่อนหน้า', 'วางบิลแล้ว ใบงานเดือนหน้า', 'ค้างวางบิล ยกไปเดือนหน้า', 'สถานะกระทบยอด'
-      ],
-      // Row 2 (Header Level 2 - Half-Month Grouping)
-      [
+      ]);
+      r1.height = 24;
+
+      const r2 = worksheet.addRow([
         null, null, null, null,
         '1 - 15', null, null, null,
         '16 - 31', null, null, null,
         null, null, null, null, null, null, null
-      ],
-      // Row 3 (Header Level 3 - Container Sizes & Sub-Totals)
-      [
+      ]);
+      r2.height = 20;
+
+      const r3 = worksheet.addRow([
         null, null, null, null,
         'ตู้ 20"', 'ตู้ 40"', 'จำนวนตู้วางบิล', 'จำนวนตู้ใบงาน',
         'ตู้ 20"', 'ตู้ 40"', 'จำนวนตู้วางบิล', 'จำนวนตู้ใบงาน',
         null, null, null, null, null, null, null
-      ]
-    ];
-
-    // 2. Append Data Rows
-    rows.forEach(r => {
-      aoa.push([
-        r.index,
-        r.truck_license || '-',
-        r.owner || '-',
-        r.truck_no || '-',
-        r.h1_size20_billed || 0,
-        r.h1_size40_billed || 0,
-        r.h1_billed_total || 0,
-        r.h1_sheet_total || 0,
-        r.h2_size20_billed || 0,
-        r.h2_size40_billed || 0,
-        r.h2_billed_total || 0,
-        r.h2_sheet_total || 0,
-        r.total_billed || 0,
-        r.reconciled_total || 0,
-        r.col1_total_sheets || 0,
-        r.col2_count > 0 ? `(${r.col2_count})` : 0,
-        r.col3_count > 0 ? `+${r.col3_count}` : 0,
-        r.col4_count > 0 ? `(${r.col4_count})` : 0,
-        r.isReconciled ? '✓ ตรงกัน' : `⚠️ ต่าง ${r.diff}`
       ]);
-    });
+      r3.height = 22;
 
-    // 3. Append Grand Total Row
-    const totalRowIndex = aoa.length;
-    aoa.push([
-      'รวมทั้งหมด (GRAND TOTAL)', null, null, null,
-      totals.h1_size20_billed,
-      totals.h1_size40_billed,
-      totals.h1_billed_total,
-      totals.h1_sheet_total,
-      totals.h2_size20_billed,
-      totals.h2_size40_billed,
-      totals.h2_billed_total,
-      totals.h2_sheet_total,
-      totals.total_billed,
-      totals.reconciled_total,
-      totals.col1_total_sheets,
-      totals.col2_count > 0 ? `(${totals.col2_count})` : 0,
-      totals.col3_count > 0 ? `+${totals.col3_count}` : 0,
-      totals.col4_count > 0 ? `(${totals.col4_count})` : 0,
-      totals.reconciled_total === totals.total_billed ? '✓ สมดุล 100%' : `⚠️ ผลต่าง ${totals.reconciled_total - totals.total_billed}`
-    ]);
+      // 3. Merges
+      worksheet.mergeCells('A1:A3');
+      worksheet.mergeCells('B1:B3');
+      worksheet.mergeCells('C1:C3');
+      worksheet.mergeCells('D1:D3');
 
-    const ws = XLSX.utils.aoa_to_sheet(aoa);
+      worksheet.mergeCells('E1:L1'); // วันที่
+      worksheet.mergeCells('E2:H2'); // 1-15
+      worksheet.mergeCells('I2:L2'); // 16-31
 
-    // 4. Set Multi-Level Merges
-    ws['!merges'] = [
-      // Fixed Columns: 0 to 3 across Rows 0 to 2
-      { s: { r: 0, c: 0 }, e: { r: 2, c: 0 } }, // ลำดับ
-      { s: { r: 0, c: 1 }, e: { r: 2, c: 1 } }, // ทะเบียน
-      { s: { r: 0, c: 2 }, e: { r: 2, c: 2 } }, // เจ้าของรถ
-      { s: { r: 0, c: 3 }, e: { r: 2, c: 3 } }, // เบอร์
-      // Super Header: วันที่ (E1:L1, cols 4 to 11)
-      { s: { r: 0, c: 4 }, e: { r: 0, c: 11 } },
-      // 1-15: E2:H2 (cols 4 to 7)
-      { s: { r: 1, c: 4 }, e: { r: 1, c: 7 } },
-      // 16-31: I2:L2 (cols 8 to 11)
-      { s: { r: 1, c: 8 }, e: { r: 1, c: 11 } },
-      // Reconciliation Columns: cols 12 to 18 across Rows 0 to 2
-      { s: { r: 0, c: 12 }, e: { r: 2, c: 12 } }, // รวมจำนวนตู้วางบิล
-      { s: { r: 0, c: 13 }, e: { r: 2, c: 13 } }, // รวมตู้ใบงาน วางบิลเดือนนี้
-      { s: { r: 0, c: 14 }, e: { r: 2, c: 14 } }, // รวมจำนวนตู้ใบงาน
-      { s: { r: 0, c: 15 }, e: { r: 2, c: 15 } }, // วางบิลแล้ว เดือนก่อนหน้า
-      { s: { r: 0, c: 16 }, e: { r: 2, c: 16 } }, // วางบิลแล้ว ใบงานเดือนหน้า
-      { s: { r: 0, c: 17 }, e: { r: 2, c: 17 } }, // ค้างวางบิล ยกไปเดือนหน้า
-      { s: { r: 0, c: 18 }, e: { r: 2, c: 18 } }, // สถานะกระทบยอด
-      // Grand Total Row Merge across A:D (cols 0 to 3)
-      { s: { r: totalRowIndex, c: 0 }, e: { r: totalRowIndex, c: 3 } }
-    ];
+      worksheet.mergeCells('M1:M3'); // รวมจำนวนตู้วางบิล
+      worksheet.mergeCells('N1:N3'); // รวมตู้ใบงาน วางบิลเดือนนี้
+      worksheet.mergeCells('O1:O3'); // รวมจำนวนตู้ใบงาน
+      worksheet.mergeCells('P1:P3'); // วางบิลแล้ว เดือนก่อนหน้า
+      worksheet.mergeCells('Q1:Q3'); // วางบิลแล้ว ใบงานเดือนหน้า
+      worksheet.mergeCells('R1:R3'); // ค้างวางบิล ยกไปเดือนหน้า
+      worksheet.mergeCells('S1:S3'); // สถานะกระทบยอด
 
-    // 5. Column Widths
-    ws['!cols'] = [
-      { wch: 8 },  // ลำดับ
-      { wch: 14 }, // ทะเบียน
-      { wch: 22 }, // เจ้าของรถ
-      { wch: 10 }, // เบอร์
-      { wch: 10 }, // 1-15 20"
-      { wch: 10 }, // 1-15 40"
-      { wch: 16 }, // 1-15 วางบิล
-      { wch: 16 }, // 1-15 ใบงาน
-      { wch: 10 }, // 16-31 20"
-      { wch: 10 }, // 16-31 40"
-      { wch: 16 }, // 16-31 วางบิล
-      { wch: 16 }, // 16-31 ใบงาน
-      { wch: 18 }, // รวมจำนวนตู้วางบิล
-      { wch: 26 }, // รวมตู้ใบงาน วางบิลเดือนนี้
-      { wch: 18 }, // รวมจำนวนตู้ใบงาน
-      { wch: 22 }, // วางบิลแล้ว เดือนก่อนหน้า
-      { wch: 22 }, // วางบิลแล้ว ใบงานเดือนหน้า
-      { wch: 22 }, // ค้างวางบิล ยกไปเดือนหน้า
-      { wch: 16 }  // สถานะกระทบยอด
-    ];
+      // 4. Apply Styling to Header Cells
+      for (let r = 1; r <= 3; r++) {
+        const row = worksheet.getRow(r);
+        for (let c = 1; c <= 19; c++) {
+          const cell = row.getCell(c);
+          cell.border = thinBorder;
+          cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
+          cell.font = headerFont;
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'ตู้_DG_ประจำเดือน');
-    XLSX.writeFile(wb, `ตู้_DG_ประจำเดือน_${selectedMonth || 'Report'}.xlsx`);
+          // Soft Pastel Color Fills
+          if (c >= 1 && c <= 4) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; // Soft Slate
+          } else if (c >= 5 && c <= 8) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0F2FE' } }; // Soft Ice Blue (1-15)
+          } else if (c >= 9 && c <= 12) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE9FE' } }; // Soft Lavender (16-31)
+          } else if (c === 13) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }; // Soft Amber (รวมวางบิล)
+          } else if (c === 14) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } }; // Soft Mint (กระทบยอด)
+          } else if (c === 15) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; // Soft Slate (รวมใบงาน)
+          } else if (c === 16) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEDD5' } }; // Light Orange (เดือนก่อน)
+          } else if (c === 17) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } }; // Light Green (เดือนหน้า)
+          } else if (c === 18) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3E8FF' } }; // Light Purple (ค้างยกไป)
+          } else if (c === 19) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+          }
+        }
+      }
+
+      // 5. Add Data Rows
+      rows.forEach((r, idx) => {
+        const row = worksheet.addRow([
+          r.index,
+          r.truck_license || '-',
+          r.owner || '-',
+          r.truck_no || '-',
+          r.h1_size20_billed || 0,
+          r.h1_size40_billed || 0,
+          r.h1_billed_total || 0,
+          r.h1_sheet_total || 0,
+          r.h2_size20_billed || 0,
+          r.h2_size40_billed || 0,
+          r.h2_billed_total || 0,
+          r.h2_sheet_total || 0,
+          r.total_billed || 0,
+          r.reconciled_total || 0,
+          r.col1_total_sheets || 0,
+          r.col2_count > 0 ? `(${r.col2_count})` : 0,
+          r.col3_count > 0 ? `+${r.col3_count}` : 0,
+          r.col4_count > 0 ? `(${r.col4_count})` : 0,
+          r.isReconciled ? '✓ ตรงกัน' : `⚠️ ต่าง ${r.diff}`
+        ]);
+        row.height = 20;
+
+        const isAlt = idx % 2 === 1;
+        const bgArgb = isAlt ? 'FFF8FAFC' : 'FFFFFFFF';
+
+        for (let c = 1; c <= 19; c++) {
+          const cell = row.getCell(c);
+          cell.border = thinBorder;
+          cell.font = dataFont;
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgArgb } };
+
+          // Alignment: Name is left-aligned, numbers & codes are centered
+          if (c === 3) {
+            cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
+          } else {
+            cell.alignment = { vertical: 'middle', horizontal: 'center' };
+          }
+
+          // Cell formatting highlights
+          if (c === 4) {
+            cell.font = { ...dataFont, bold: true, color: { argb: 'FF0369A1' } };
+          } else if (c === 7 || c === 11) {
+            if (Number(cell.value) > 0) cell.font = { ...dataFont, bold: true, color: { argb: 'FFB45309' } };
+          } else if (c === 8) {
+            if (Number(cell.value) > 0) cell.font = { ...dataFont, bold: true, color: { argb: 'FF0284C7' } };
+          } else if (c === 12) {
+            if (Number(cell.value) > 0) cell.font = { ...dataFont, bold: true, color: { argb: 'FF4F46E5' } };
+          } else if (c === 13) {
+            cell.font = { ...dataFont, bold: true, color: { argb: 'FFB45309' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFBEB' } };
+          } else if (c === 14) {
+            cell.font = { ...dataFont, bold: true, color: { argb: 'FF15803D' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0FDF4' } };
+          } else if (c === 16 && r.col2_count > 0) {
+            cell.font = { ...dataFont, bold: true, color: { argb: 'FFC2410C' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEDD5' } };
+          } else if (c === 17 && r.col3_count > 0) {
+            cell.font = { ...dataFont, bold: true, color: { argb: 'FF15803D' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+          } else if (c === 18 && r.col4_count > 0) {
+            cell.font = { ...dataFont, bold: true, color: { argb: 'FF7E22CE' } };
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3E8FF' } };
+          }
+        }
+      });
+
+      // 6. Grand Total Row
+      const totalRow = worksheet.addRow([
+        'รวมทั้งหมด (GRAND TOTAL)', null, null, null,
+        totals.h1_size20_billed,
+        totals.h1_size40_billed,
+        totals.h1_billed_total,
+        totals.h1_sheet_total,
+        totals.h2_size20_billed,
+        totals.h2_size40_billed,
+        totals.h2_billed_total,
+        totals.h2_sheet_total,
+        totals.total_billed,
+        totals.reconciled_total,
+        totals.col1_total_sheets,
+        totals.col2_count > 0 ? `(${totals.col2_count})` : 0,
+        totals.col3_count > 0 ? `+${totals.col3_count}` : 0,
+        totals.col4_count > 0 ? `(${totals.col4_count})` : 0,
+        totals.reconciled_total === totals.total_billed ? '✓ สมดุล 100%' : `⚠️ ผลต่าง ${totals.reconciled_total - totals.total_billed}`
+      ]);
+      totalRow.height = 24;
+
+      const totalRowIndex = totalRow.number;
+      worksheet.mergeCells(`A${totalRowIndex}:D${totalRowIndex}`);
+
+      for (let c = 1; c <= 19; c++) {
+        const cell = totalRow.getCell(c);
+        cell.border = {
+          top: { style: 'medium', color: { argb: 'FF94A3B8' } },
+          bottom: { style: 'medium', color: { argb: 'FF94A3B8' } },
+          left: { style: 'thin', color: { argb: 'FFCBD5E1' } },
+          right: { style: 'thin', color: { argb: 'FFCBD5E1' } }
+        };
+        cell.font = { name: 'Sarabun', size: 10, bold: true, color: { argb: 'FF0F172A' } };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+        cell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        if (c === 13) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+          cell.font = { name: 'Sarabun', size: 10.5, bold: true, color: { argb: 'FF92400E' } };
+        } else if (c === 14) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+          cell.font = { name: 'Sarabun', size: 10.5, bold: true, color: { argb: 'FF166534' } };
+        }
+      }
+
+      // 7. Write to Buffer and Trigger Browser Download
+      const buffer = await workbook.xlsx.writeBuffer();
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url = window.URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `ตู้_DG_ประจำเดือน_${selectedMonth || 'Report'}.xlsx`;
+      anchor.click();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error exporting styled Excel:', err);
+      alert('เกิดข้อผิดพลาดในการส่งออก Excel กรุณาลองใหม่อีกครั้ง');
+    }
   };
 
   // 🎨 Clean, Soft Medium-Contrast Slate Header Styles
