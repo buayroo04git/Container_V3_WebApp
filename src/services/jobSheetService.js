@@ -979,6 +979,7 @@ export const jobSheetService = {
 
         return {
           ...sheet,
+          batch_name: cleanBatchName(sheet.batch_name, effectiveDate),
           driver_name: resolvedDriver,
           containers: items,
           total: sheet.total_containers || items.length,
@@ -1410,8 +1411,11 @@ export const jobSheetService = {
             const parsedDate = item.date_job_parsed || normalizeExcelDate(rawDateJob) || (matchedDb?.date_job_parsed || null) || (sheet.created_at ? sheet.created_at.slice(0, 10) : null);
             const finalDateJob = rawDateJob && rawDateJob !== '-' ? rawDateJob : (parsedDate || '-');
 
-            // ใช้ batch_name จากใบงานเป็นหลักเสมอ (ไม่ขึ้นกับว่าล้างหรือเพิ่มใบวางบิล)
-            const finalBatch = sheet.batch_name || matchedDb?.batch_name || 'General_Batch';
+            // 🏷️ ดึงรอบงานจาก container_records (ใบวางบิล) เป็นอันดับแรก หรือจากใบงาน และจัดรูปแบบมาตรฐาน 'DD - DD MMM YYYY'
+            const dbBatch = matchedDb?.batch_name || (matchedDb?.source_file ? cleanBatchName(matchedDb.source_file) : null);
+            const finalBatch = dbBatch 
+              ? cleanBatchName(dbBatch, matchedDb?.date_job_parsed || matchedDb?.date_job) 
+              : cleanBatchName(sheet.batch_name, parsedDate || sheet.created_at);
 
             // สถานะการจับคู่: ยึดตาม item.match_status ที่เคยบันทึกไว้
             const finalMatchStatus = item.match_status || (matchedDb ? 'matched_green' : 'manual_red');
@@ -1470,7 +1474,9 @@ export const jobSheetService = {
             const finalPort = (rec.port && rec.port !== '-') ? rec.port : (matchedDb?.port || '-');
             const finalDateJob = (rec.date_job && rec.date_job !== '-') ? rec.date_job : (matchedDb?.date_job || '-');
             const dbBatch = matchedDb?.batch_name || (matchedDb?.source_file ? cleanBatchName(matchedDb.source_file) : null);
-            const finalBatch = dbBatch || cleanBatchName(rec.batch_name || 'General_Batch');
+            const finalBatch = dbBatch 
+              ? cleanBatchName(dbBatch, matchedDb?.date_job_parsed || matchedDb?.date_job) 
+              : cleanBatchName(rec.batch_name || 'General_Batch', rec.date_job_parsed || rec.date_job || rec.created_at);
 
             const isMatched = rec.match_status !== 'manual_red' && matchedDb !== null;
             const finalMatchStatus = isMatched ? 'matched_green' : 'manual_red';

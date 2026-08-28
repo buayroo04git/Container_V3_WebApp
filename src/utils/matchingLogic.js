@@ -215,35 +215,145 @@ export const evaluateMatchStatus = (ocrRow, candidates) => {
   }
 };
 
-// ✂️ ฟังก์ชันตัดคำชื่อไฟล์ให้ได้ชื่อรอบงานที่สวยงาม สะอาด และเป็นมาตรฐาน (Clean Batch Name)
-export const cleanBatchName = (filename) => {
-  if (!filename) return 'General_Batch';
-  let name = String(filename).replace(/\.[a-zA-Z0-9]+$/i, ''); // ตัด extension .xlsx, .jpg ฯลฯ
+const BATCH_MONTH_MAP = {
+  'jan': { en: 'JAN', num: 1, lastDay: 31 },
+  'feb': { en: 'FEB', num: 2, lastDay: 28 },
+  'mar': { en: 'MAR', num: 3, lastDay: 31 },
+  'apr': { en: 'APR', num: 4, lastDay: 30 },
+  'may': { en: 'MAY', num: 5, lastDay: 31 },
+  'jun': { en: 'JUN', num: 6, lastDay: 30 },
+  'jul': { en: 'JUL', num: 7, lastDay: 31 },
+  'aug': { en: 'AUG', num: 8, lastDay: 31 },
+  'sep': { en: 'SEP', num: 9, lastDay: 30 },
+  'oct': { en: 'OCT', num: 10, lastDay: 31 },
+  'nov': { en: 'NOV', num: 11, lastDay: 30 },
+  'dec': { en: 'DEC', num: 12, lastDay: 31 },
+  'ม.ค.': { en: 'JAN', num: 1, lastDay: 31 },
+  'ก.พ.': { en: 'FEB', num: 2, lastDay: 28 },
+  'มี.ค.': { en: 'MAR', num: 3, lastDay: 31 },
+  'เม.ย.': { en: 'APR', num: 4, lastDay: 30 },
+  'พ.ค.': { en: 'MAY', num: 5, lastDay: 31 },
+  'มิ.ย.': { en: 'JUN', num: 6, lastDay: 30 },
+  'ก.ค.': { en: 'JUL', num: 7, lastDay: 31 },
+  'ส.ค.': { en: 'AUG', num: 8, lastDay: 31 },
+  'ก.ย.': { en: 'SEP', num: 9, lastDay: 30 },
+  'ต.ค.': { en: 'OCT', num: 10, lastDay: 31 },
+  'พ.ย.': { en: 'NOV', num: 11, lastDay: 30 },
+  'ธ.ค.': { en: 'DEC', num: 12, lastDay: 31 },
+  'มกราคม': { en: 'JAN', num: 1, lastDay: 31 },
+  'กุมภาพันธ์': { en: 'FEB', num: 2, lastDay: 28 },
+  'มีนาคม': { en: 'MAR', num: 3, lastDay: 31 },
+  'เมษายน': { en: 'APR', num: 4, lastDay: 30 },
+  'พฤษภาคม': { en: 'MAY', num: 5, lastDay: 31 },
+  'มิถุนายน': { en: 'JUN', num: 6, lastDay: 30 },
+  'กรกฎาคม': { en: 'JUL', num: 7, lastDay: 31 },
+  'สิงหาคม': { en: 'AUG', num: 8, lastDay: 31 },
+  'กันยายน': { en: 'SEP', num: 9, lastDay: 30 },
+  'ตุลาคม': { en: 'OCT', num: 10, lastDay: 31 },
+  'พฤศจิกายน': { en: 'NOV', num: 11, lastDay: 30 },
+  'ธันวาคม': { en: 'DEC', num: 12, lastDay: 31 }
+};
 
-  // 1. ตรวจจับรูปแบบสากลของงวดใบวางบิล: [วันเริ่มต้น] - [วันสิ้นสุด] [เดือน] [ปี]
-  // เช่น 'วางบิลDG 16 - 31 MAY  2026 TSAW Rev3 แก้ของน้าเป็ดแล้ว' -> '16 - 31 MAY 2026'
-  const periodRegex = /(\d{1,2})\s*[-–]\s*(\d{1,2})\s+([A-Za-zก-๙\.]+)\s+(\d{2,4})/i;
-  const match = name.match(periodRegex);
-  if (match) {
-    const d1 = String(match[1]).padStart(2, '0');
-    const d2 = String(match[2]).padStart(2, '0');
-    const month = match[3].toUpperCase();
-    const year = match[4];
-    return `${d1} - ${d2} ${month} ${year}`;
+// ✂️ ฟังก์ชันตัดคำและแปลงชื่อรอบงานให้อยู่ในรูปแบบมาตรฐานสากล: DD - DD MMM YYYY (เช่น '01 - 15 AUG 2026')
+export const cleanBatchName = (rawInput, fallbackDate = null) => {
+  if (!rawInput && !fallbackDate) return 'General_Batch';
+  let str = String(rawInput || '').replace(/\.[a-zA-Z0-9]+$/i, '').trim();
+
+  // 1. ตัด Prefix และ Suffix ขยะส่วนเกินออก
+  str = str.replace(/^(วางบิล\s*DG|วางบิล|ใบวางบิล|LINE_ALBUM_|manual_|result_|lock_)\s*/i, '');
+  str = str.replace(/\s*TSAW.*$/i, '');
+  str = str.replace(/\s*[-_]?\s*Rev[\.\d\s]*.*$/i, '');
+  str = str.replace(/\s*[-_]?\s*Re\b.*$/i, '');
+  str = str.replace(/\s*\(.*\)$/i, '');
+  str = str.replace(/\s*(_อัพเดทแล้ว|_แก้ไขแล้ว|แก้ของ.*)$/i, '');
+
+  // 2. Pattern 1: [วันเริ่มต้น] - [วันสิ้นสุด] [เดือน] [ปี] (เช่น "01 - 15 AUG 2026", "16-31 MAY 2026", "1 - 15 เม.ย. 2569")
+  const p1 = /(\d{1,2})\s*[-–_]\s*(\d{1,2})\s+([A-Za-zก-๙\.]+)(?:\s+(\d{2,4}))?/i;
+  const m1 = str.match(p1);
+  if (m1) {
+    const d1 = String(m1[1]).padStart(2, '0');
+    const d2 = String(m1[2]).padStart(2, '0');
+    const mKey = m1[3].toLowerCase();
+    const mObj = BATCH_MONTH_MAP[mKey] || Object.entries(BATCH_MONTH_MAP).find(([k]) => mKey.startsWith(k))?.[1];
+    if (mObj) {
+      let year = m1[4];
+      if (!year && fallbackDate) {
+        const fMatch = String(fallbackDate).match(/(\d{4})/);
+        if (fMatch) year = fMatch[1];
+      }
+      if (!year) year = '2026';
+      if (year.startsWith('25') && year.length === 4) year = String(Number(year) - 543);
+      else if (year === '69') year = '2026';
+      else if (year.length === 2) year = '20' + year;
+      return `${d1} - ${d2} ${mObj.en} ${year}`;
+    }
   }
 
-  // 2. ถ้าไม่เข้า Pattern วันที่คู่ ให้ตัด Prefix และ Suffix ส่วนเกินออก
-  name = name.replace(/^(วางบิล\s*DG|วางบิล|ใบวางบิล|LINE_ALBUM_)\s*/i, '');
-  name = name.replace(/\s*TSAW.*$/i, ''); // ตัด TSAW และข้อความต่อท้ายทั้งหมด (เช่น Rev3, แก้ของน้าเป็ดแล้ว)
-  name = name.replace(/\s*[-_]?\s*Rev[\.\d\s]*.*$/i, '');
-  name = name.replace(/\s*[-_]?\s*Re\b.*$/i, '');
-  name = name.replace(/\s*\(.*\)$/i, '');
-  name = name.replace(/\s*(_อัพเดทแล้ว|_แก้ไขแล้ว|แก้ของ.*)$/i, '');
-  
-  // จัดการช่องว่างให้เรียบร้อย
-  name = name.replace(/\s+/g, ' ').trim();
-  return name || 'General_Batch';
+  // 3. Pattern 2: [เดือน] [วันเริ่มต้น]-[วันสิ้นสุด] (เช่น "Apr1-15 501", "Apr-1-15 505", "69Aug1-15", "ใบงาน69Aug1-15_502_005")
+  const p2 = /(?:(?:ใบงาน)?\s*(\d{2,4})?\s*)?([A-Za-zก-๙\.]+)\s*[-–_]?\s*(\d{1,2})\s*[-–_]\s*(\d{1,2})/i;
+  const m2 = str.match(p2);
+  if (m2) {
+    let year = m2[1];
+    const mKey = m2[2].toLowerCase();
+    const d1 = String(m2[3]).padStart(2, '0');
+    const d2 = String(m2[4]).padStart(2, '0');
+    const mObj = BATCH_MONTH_MAP[mKey] || Object.entries(BATCH_MONTH_MAP).find(([k]) => mKey.startsWith(k))?.[1];
+    if (mObj) {
+      if (!year && fallbackDate) {
+        const fMatch = String(fallbackDate).match(/(\d{4})/);
+        if (fMatch) year = fMatch[1];
+      }
+      if (!year) year = '2026';
+      if (year.startsWith('25') && year.length === 4) year = String(Number(year) - 543);
+      else if (year === '69') year = '2026';
+      else if (year.length === 2) year = '20' + year;
+      return `${d1} - ${d2} ${mObj.en} ${year}`;
+    }
+  }
+
+  // 4. Pattern 3: [วันเริ่มต้น]-[วันสิ้นสุด] [เดือน] (เช่น "505 1-15Apr", "1-15Apr", "16-30Apr_260418")
+  const p3 = /(\d{1,2})\s*[-–_]\s*(\d{1,2})\s*[-–_]?\s*([A-Za-zก-๙\.]+)/i;
+  const m3 = str.match(p3);
+  if (m3) {
+    const d1 = String(m3[1]).padStart(2, '0');
+    const d2 = String(m3[2]).padStart(2, '0');
+    const mKey = m3[3].toLowerCase();
+    const mObj = BATCH_MONTH_MAP[mKey] || Object.entries(BATCH_MONTH_MAP).find(([k]) => mKey.startsWith(k))?.[1];
+    if (mObj) {
+      let year = '2026';
+      const yMatch = str.match(/(?:20|25)?(\d{2})(?:0[1-9]|1[0-2])/);
+      if (yMatch) {
+        const yVal = yMatch[1];
+        if (yVal === '26' || yVal === '69') year = '2026';
+      }
+      return `${d1} - ${d2} ${mObj.en} ${year}`;
+    }
+  }
+
+  // 5. Pattern 4: คำนวณช่วงครึ่งเดือนจากวันที่เดี่ยว (เช่น "2026-04-05" หรือ "1/Apr/2026")
+  const normDate = normalizeExcelDate(str) || normalizeExcelDate(fallbackDate);
+  if (normDate) {
+    const dMatch = normDate.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dMatch) {
+      const year = dMatch[1];
+      const monthNum = parseInt(dMatch[2], 10);
+      const dayNum = parseInt(dMatch[3], 10);
+      const mObj = Object.values(BATCH_MONTH_MAP).find(m => m.num === monthNum);
+      if (mObj) {
+        if (dayNum <= 15) {
+          return `01 - 15 ${mObj.en} ${year}`;
+        } else {
+          return `16 - ${mObj.lastDay} ${mObj.en} ${year}`;
+        }
+      }
+    }
+  }
+
+  str = str.replace(/\s+/g, ' ').trim();
+  return str || 'General_Batch';
 };
+
+export const standardizeBatchName = cleanBatchName;
 
 // 🗳️ โหวตเสียงส่วนใหญ่ (Majority Vote) เพื่อหารอบงานที่แท้จริงของใบงาน
 export const determineMajorityBatch = (matchingResults, fallbackBatch = null) => {
