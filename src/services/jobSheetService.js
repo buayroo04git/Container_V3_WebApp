@@ -1162,9 +1162,26 @@ export const jobSheetService = {
         if (batchFilter && batchFilter !== 'ALL') list = list.filter(i => i.batch_name === batchFilter);
         if (truckFilter && truckFilter !== 'ALL') list = list.filter(i => i.truck_no === truckFilter);
         if (monthFilter && monthFilter !== 'ALL') {
+          const [year, month] = monthFilter.trim().split('-');
+          const monthNamesEn = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+          const monthNamesTh = ['ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.', 'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'];
+          const monthIdx = parseInt(month, 10) - 1;
+          const monthEn = (monthNamesEn[monthIdx] || '').toLowerCase();
+          const monthTh = (monthNamesTh[monthIdx] || '').toLowerCase();
+
           list = list.filter(i => {
-            const raw = i.created_at || i.date_job || '';
-            return String(raw).includes(monthFilter);
+            const rawParsed = i.date_job_parsed || normalizeExcelDate(i.date_job);
+            if (rawParsed && String(rawParsed).startsWith(monthFilter)) return true;
+
+            const dateStr = String(i.date_job || '').toLowerCase();
+            const batchStr = String(i.batch_name || '').toLowerCase();
+            const createdStr = String(i.created_at || '');
+
+            if (monthEn && (dateStr.includes(monthEn) || batchStr.includes(monthEn))) return true;
+            if (monthTh && (dateStr.includes(monthTh) || batchStr.includes(monthTh))) return true;
+            if (createdStr.startsWith(monthFilter)) return true;
+
+            return false;
           });
         }
 
@@ -1389,10 +1406,14 @@ export const jobSheetService = {
             const finalJobType = (item.job_type && item.job_type !== '-') ? item.job_type : (matchedDb?.dis_load || '-');
             const finalSize = (item.size && item.size !== '-') ? item.size : (matchedDb?.size || '-');
             const finalPort = (item.port && item.port !== '-') ? item.port : (matchedDb?.port || '-');
-            const finalDateJob = (item.date_job && item.date_job !== '-') ? item.date_job : (matchedDb?.date_job || sheetEffDate);
-            const dbBatch = matchedDb?.batch_name || (matchedDb?.source_file ? cleanBatchName(matchedDb.source_file) : null);
-            const finalBatch = dbBatch || cleanBatchName(sheet.batch_name || 'General_Batch');
+            const rawDateJob = (item.date_job && item.date_job !== '-') ? item.date_job : (matchedDb?.date_job || sheetEffDate);
+            const parsedDate = item.date_job_parsed || normalizeExcelDate(rawDateJob) || (matchedDb?.date_job_parsed || null) || (sheet.created_at ? sheet.created_at.slice(0, 10) : null);
+            const finalDateJob = rawDateJob && rawDateJob !== '-' ? rawDateJob : (parsedDate || '-');
 
+            // ใช้ batch_name จากใบงานเป็นหลักเสมอ (ไม่ขึ้นกับว่าล้างหรือเพิ่มใบวางบิล)
+            const finalBatch = sheet.batch_name || matchedDb?.batch_name || 'General_Batch';
+
+            // สถานะการจับคู่: ยึดตาม item.match_status ที่เคยบันทึกไว้
             const finalMatchStatus = item.match_status || (matchedDb ? 'matched_green' : 'manual_red');
 
             allContainers.push({
@@ -1411,7 +1432,7 @@ export const jobSheetService = {
               size: finalSize,
               job_type: finalJobType,
               date_job: finalDateJob,
-              date_job_parsed: item.date_job_parsed || (matchedDb?.date_job_parsed || null),
+              date_job_parsed: parsedDate,
               match_status: finalMatchStatus,
               workflow_status: 'completed',
               batch_name: finalBatch,
