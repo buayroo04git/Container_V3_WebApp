@@ -1411,11 +1411,13 @@ export const jobSheetService = {
             const parsedDate = item.date_job_parsed || normalizeExcelDate(rawDateJob) || (matchedDb?.date_job_parsed || null) || (sheet.created_at ? sheet.created_at.slice(0, 10) : null);
             const finalDateJob = rawDateJob && rawDateJob !== '-' ? rawDateJob : (parsedDate || '-');
 
-            // 🏷️ ดึงรอบงานจาก container_records (ใบวางบิล) เป็นอันดับแรก หรือจากใบงาน และจัดรูปแบบมาตรฐาน 'DD - DD MMM YYYY'
+            // 🏷️ รอบของใบงาน (Job Sheet Batch): เป็นเอกเทศของฝั่งใบงานเสมอ (เช่น '01 - 15 APR 2026')
+            const sheetBatch = cleanBatchName(sheet.batch_name, parsedDate || sheet.created_at);
+
+            // 🧾 รอบของใบวางบิล (Billing Batch): เป็นเอกเทศของฝั่งใบวางบิล (เช่น '16 - 30 APR 2026')
             const dbBatch = matchedDb?.batch_name || (matchedDb?.source_file ? cleanBatchName(matchedDb.source_file) : null);
-            const finalBatch = dbBatch 
-              ? cleanBatchName(dbBatch, matchedDb?.date_job_parsed || matchedDb?.date_job) 
-              : cleanBatchName(sheet.batch_name, parsedDate || sheet.created_at);
+            const billingBatch = dbBatch ? cleanBatchName(dbBatch, matchedDb?.date_job_parsed || matchedDb?.date_job) : null;
+            const isCrossBatch = Boolean(billingBatch && sheetBatch && billingBatch !== sheetBatch);
 
             // สถานะการจับคู่: ยึดตาม item.match_status ที่เคยบันทึกไว้
             const finalMatchStatus = item.match_status || (matchedDb ? 'matched_green' : 'manual_red');
@@ -1439,7 +1441,9 @@ export const jobSheetService = {
               date_job_parsed: parsedDate,
               match_status: finalMatchStatus,
               workflow_status: 'completed',
-              batch_name: finalBatch,
+              batch_name: sheetBatch,
+              billing_batch: billingBatch,
+              is_cross_batch: isCrossBatch,
               truck_no: sheet.truck_no || '-',
               image_url: sheet.image_url || null,
               image_name: sheet.image_name || '-',
@@ -1473,10 +1477,10 @@ export const jobSheetService = {
             const finalSize = (rec.size && rec.size !== '-') ? rec.size : (matchedDb?.size || '-');
             const finalPort = (rec.port && rec.port !== '-') ? rec.port : (matchedDb?.port || '-');
             const finalDateJob = (rec.date_job && rec.date_job !== '-') ? rec.date_job : (matchedDb?.date_job || '-');
+            const recBatch = cleanBatchName(rec.batch_name || 'General_Batch', rec.date_job_parsed || rec.date_job || rec.created_at);
             const dbBatch = matchedDb?.batch_name || (matchedDb?.source_file ? cleanBatchName(matchedDb.source_file) : null);
-            const finalBatch = dbBatch 
-              ? cleanBatchName(dbBatch, matchedDb?.date_job_parsed || matchedDb?.date_job) 
-              : cleanBatchName(rec.batch_name || 'General_Batch', rec.date_job_parsed || rec.date_job || rec.created_at);
+            const billingBatch = dbBatch ? cleanBatchName(dbBatch, matchedDb?.date_job_parsed || matchedDb?.date_job) : null;
+            const isCrossBatch = Boolean(billingBatch && recBatch && billingBatch !== recBatch);
 
             const isMatched = rec.match_status !== 'manual_red' && matchedDb !== null;
             const finalMatchStatus = isMatched ? 'matched_green' : 'manual_red';
@@ -1500,7 +1504,9 @@ export const jobSheetService = {
               date_job_parsed: rec.date_job_parsed || null,
               match_status: finalMatchStatus,
               workflow_status: 'completed',
-              batch_name: finalBatch,
+              batch_name: recBatch,
+              billing_batch: billingBatch,
+              is_cross_batch: isCrossBatch,
               truck_no: rec.truck_no || '-',
               image_url: rec.image_url || null,
               image_name: '-',
