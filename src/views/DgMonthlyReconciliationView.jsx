@@ -38,6 +38,16 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
     return `${thaiMonth} ${thaiYear}`;
   }, [selectedMonth]);
 
+  // คำนวณวันสุดท้ายของเดือนที่เลือก (28, 29, 30, 31)
+  const lastDayOfMonth = useMemo(() => {
+    if (!selectedMonth || selectedMonth === 'ALL') return 31;
+    const [yStr, mStr] = selectedMonth.split('-');
+    const yNum = parseInt(yStr, 10);
+    const mNum = parseInt(mStr, 10);
+    const gregorianYear = yNum > 2400 ? yNum - 543 : yNum;
+    return new Date(gregorianYear, mNum, 0).getDate();
+  }, [selectedMonth]);
+
   // 1. โหลดข้อมูลทั้งหมดสำหรับการกระทบยอด
   useEffect(() => {
     loadReconciliationData();
@@ -328,7 +338,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
     if (popoverTimeoutRef.current) clearTimeout(popoverTimeoutRef.current);
   };
 
-  // 📥 Export to Excel with ExcelJS: Full Color Styling, Multi-Level Headers, Alignments & Borders
+  // 📥 Export to Excel with ExcelJS: Title, Full Color Styling, Multi-Level Headers, Alignments, Pure Number Formats & Borders
   const handleExportExcel = async () => {
     try {
       const ExcelJS = (await import('exceljs')).default;
@@ -340,7 +350,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
         views: [{ showGridLines: true }]
       });
 
-      // 1. Column Widths
+      // 1. Column Widths (18 Columns - Removed status column)
       worksheet.columns = [
         { key: 'index', width: 8 },
         { key: 'truck_license', width: 14 },
@@ -359,8 +369,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
         { key: 'col1_sheets', width: 18 },
         { key: 'col2_prev', width: 22 },
         { key: 'col3_next', width: 22 },
-        { key: 'col4_roll', width: 22 },
-        { key: 'status', width: 16 }
+        { key: 'col4_roll', width: 22 }
       ];
 
       // Style Presets
@@ -374,53 +383,68 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
       const headerFont = { name: 'Sarabun', size: 10, bold: true, color: { argb: 'FF1E293B' } };
       const dataFont = { name: 'Sarabun', size: 10, color: { argb: 'FF0F172A' } };
 
-      // 2. Add 3 Header Rows
+      // Row 1: Title Block
+      const titleRow = worksheet.addRow([`ตู้ DG ประจำเดือน ${monthDisplay}`]);
+      titleRow.height = 32;
+      worksheet.mergeCells('A1:R1');
+      const titleCell = titleRow.getCell(1);
+      titleCell.font = { name: 'Sarabun', size: 13, bold: true, color: { argb: 'FF0F172A' } };
+      titleCell.alignment = { vertical: 'middle', horizontal: 'center' };
+      titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF1F5F9' } };
+      titleCell.border = thinBorder;
+
+      // Row 2: Spacer
+      const spacerRow = worksheet.addRow([]);
+      spacerRow.height = 8;
+
+      // Row 3: Header Row 1
       const r1 = worksheet.addRow([
         'ลำดับ', 'ทะเบียน', 'เจ้าของรถ', 'เบอร์',
-        'วันที่', null, null, null, null, null, null, null,
+        `วันที่ (1 - ${lastDayOfMonth})`, null, null, null, null, null, null, null,
         'รวมจำนวนตู้วางบิล', 'รวมตู้ใบงาน วางบิลเดือนนี้', 'รวมจำนวนตู้ใบงาน',
-        'วางบิลแล้ว เดือนก่อนหน้า', 'วางบิลแล้ว ใบงานเดือนหน้า', 'ค้างวางบิล ยกไปเดือนหน้า', 'สถานะกระทบยอด'
+        'วางบิลแล้ว เดือนก่อนหน้า', 'วางบิลแล้ว ใบงานเดือนหน้า', 'ค้างวางบิล ยกไปเดือนหน้า'
       ]);
       r1.height = 24;
 
+      // Row 4: Header Row 2 (Half-Month Grouping with flexible lastDayOfMonth)
       const r2 = worksheet.addRow([
         null, null, null, null,
         '1 - 15', null, null, null,
-        '16 - 31', null, null, null,
-        null, null, null, null, null, null, null
+        `16 - ${lastDayOfMonth}`, null, null, null,
+        null, null, null, null, null, null
       ]);
       r2.height = 20;
 
+      // Row 5: Header Row 3
       const r3 = worksheet.addRow([
         null, null, null, null,
         'ตู้ 20"', 'ตู้ 40"', 'จำนวนตู้วางบิล', 'จำนวนตู้ใบงาน',
         'ตู้ 20"', 'ตู้ 40"', 'จำนวนตู้วางบิล', 'จำนวนตู้ใบงาน',
-        null, null, null, null, null, null, null
+        null, null, null, null, null, null
       ]);
       r3.height = 22;
 
-      // 3. Merges
-      worksheet.mergeCells('A1:A3');
-      worksheet.mergeCells('B1:B3');
-      worksheet.mergeCells('C1:C3');
-      worksheet.mergeCells('D1:D3');
+      // Merges for 3-level headers
+      worksheet.mergeCells('A3:A5');
+      worksheet.mergeCells('B3:B5');
+      worksheet.mergeCells('C3:C5');
+      worksheet.mergeCells('D3:D5');
 
-      worksheet.mergeCells('E1:L1'); // วันที่
-      worksheet.mergeCells('E2:H2'); // 1-15
-      worksheet.mergeCells('I2:L2'); // 16-31
+      worksheet.mergeCells('E3:L3'); // วันที่
+      worksheet.mergeCells('E4:H4'); // 1-15
+      worksheet.mergeCells('I4:L4'); // 16-lastDay
 
-      worksheet.mergeCells('M1:M3'); // รวมจำนวนตู้วางบิล
-      worksheet.mergeCells('N1:N3'); // รวมตู้ใบงาน วางบิลเดือนนี้
-      worksheet.mergeCells('O1:O3'); // รวมจำนวนตู้ใบงาน
-      worksheet.mergeCells('P1:P3'); // วางบิลแล้ว เดือนก่อนหน้า
-      worksheet.mergeCells('Q1:Q3'); // วางบิลแล้ว ใบงานเดือนหน้า
-      worksheet.mergeCells('R1:R3'); // ค้างวางบิล ยกไปเดือนหน้า
-      worksheet.mergeCells('S1:S3'); // สถานะกระทบยอด
+      worksheet.mergeCells('M3:M5'); // รวมจำนวนตู้วางบิล
+      worksheet.mergeCells('N3:N5'); // รวมตู้ใบงาน วางบิลเดือนนี้
+      worksheet.mergeCells('O3:O5'); // รวมจำนวนตู้ใบงาน
+      worksheet.mergeCells('P3:P5'); // วางบิลแล้ว เดือนก่อนหน้า
+      worksheet.mergeCells('Q3:Q5'); // วางบิลแล้ว ใบงานเดือนหน้า
+      worksheet.mergeCells('R3:R5'); // ค้างวางบิล ยกไปเดือนหน้า
 
-      // 4. Apply Styling to Header Cells
-      for (let r = 1; r <= 3; r++) {
+      // Apply Styling to Header Cells
+      for (let r = 3; r <= 5; r++) {
         const row = worksheet.getRow(r);
-        for (let c = 1; c <= 19; c++) {
+        for (let c = 1; c <= 18; c++) {
           const cell = row.getCell(c);
           cell.border = thinBorder;
           cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true };
@@ -428,71 +452,72 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
 
           // Soft Pastel Color Fills
           if (c >= 1 && c <= 4) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; // Soft Slate
-          } else if (c >= 5 && c <= 8) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0F2FE' } }; // Soft Ice Blue (1-15)
-          } else if (c >= 9 && c <= 12) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE9FE' } }; // Soft Lavender (16-31)
-          } else if (c === 13) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }; // Soft Amber (รวมวางบิล)
-          } else if (c === 14) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } }; // Soft Mint (กระทบยอด)
-          } else if (c === 15) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }; // Soft Slate (รวมใบงาน)
-          } else if (c === 16) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEDD5' } }; // Light Orange (เดือนก่อน)
-          } else if (c === 17) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } }; // Light Green (เดือนหน้า)
-          } else if (c === 18) {
-            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3E8FF' } }; // Light Purple (ค้างยกไป)
-          } else if (c === 19) {
             cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+          } else if (c >= 5 && c <= 8) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0F2FE' } };
+          } else if (c >= 9 && c <= 12) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFEDE9FE' } };
+          } else if (c === 13) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
+          } else if (c === 14) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+          } else if (c === 15) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
+          } else if (c === 16) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFEDD5' } };
+          } else if (c === 17) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCFCE7' } };
+          } else if (c === 18) {
+            cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3E8FF' } };
           }
         }
       }
 
-      // 5. Add Data Rows
+      // Add Data Rows (Pure Numbers)
       rows.forEach((r, idx) => {
+        const truckNum = !isNaN(Number(r.truck_no)) ? Number(r.truck_no) : (r.truck_no || '-');
         const row = worksheet.addRow([
           r.index,
           r.truck_license || '-',
           r.owner || '-',
-          r.truck_no || '-',
-          r.h1_size20_billed || 0,
-          r.h1_size40_billed || 0,
-          r.h1_billed_total || 0,
-          r.h1_sheet_total || 0,
-          r.h2_size20_billed || 0,
-          r.h2_size40_billed || 0,
-          r.h2_billed_total || 0,
-          r.h2_sheet_total || 0,
-          r.total_billed || 0,
-          r.reconciled_total || 0,
-          r.col1_total_sheets || 0,
-          r.col2_count > 0 ? `(${r.col2_count})` : 0,
-          r.col3_count > 0 ? `+${r.col3_count}` : 0,
-          r.col4_count > 0 ? `(${r.col4_count})` : 0,
-          r.isReconciled ? '✓ ตรงกัน' : `⚠️ ต่าง ${r.diff}`
+          truckNum,
+          Number(r.h1_size20_billed) || 0,
+          Number(r.h1_size40_billed) || 0,
+          Number(r.h1_billed_total) || 0,
+          Number(r.h1_sheet_total) || 0,
+          Number(r.h2_size20_billed) || 0,
+          Number(r.h2_size40_billed) || 0,
+          Number(r.h2_billed_total) || 0,
+          Number(r.h2_sheet_total) || 0,
+          Number(r.total_billed) || 0,
+          Number(r.reconciled_total) || 0,
+          Number(r.col1_total_sheets) || 0,
+          Number(r.col2_count) || 0,
+          Number(r.col3_count) || 0,
+          Number(r.col4_count) || 0
         ]);
         row.height = 20;
 
         const isAlt = idx % 2 === 1;
         const bgArgb = isAlt ? 'FFF8FAFC' : 'FFFFFFFF';
 
-        for (let c = 1; c <= 19; c++) {
+        for (let c = 1; c <= 18; c++) {
           const cell = row.getCell(c);
           cell.border = thinBorder;
           cell.font = dataFont;
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: bgArgb } };
 
-          // Alignment: Name is left-aligned, numbers & codes are centered
           if (c === 3) {
             cell.alignment = { vertical: 'middle', horizontal: 'left', indent: 1 };
           } else {
             cell.alignment = { vertical: 'middle', horizontal: 'center' };
           }
 
-          // Cell formatting highlights
+          // Number format for all numeric columns (columns 4 to 18)
+          if (c >= 4 && c <= 18) {
+            cell.numFmt = '#,##0';
+          }
+
           if (c === 4) {
             cell.font = { ...dataFont, bold: true, color: { argb: 'FF0369A1' } };
           } else if (c === 7 || c === 11) {
@@ -520,31 +545,30 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
         }
       });
 
-      // 6. Grand Total Row
+      // Grand Total Row
       const totalRow = worksheet.addRow([
         'รวมทั้งหมด (GRAND TOTAL)', null, null, null,
-        totals.h1_size20_billed,
-        totals.h1_size40_billed,
-        totals.h1_billed_total,
-        totals.h1_sheet_total,
-        totals.h2_size20_billed,
-        totals.h2_size40_billed,
-        totals.h2_billed_total,
-        totals.h2_sheet_total,
-        totals.total_billed,
-        totals.reconciled_total,
-        totals.col1_total_sheets,
-        totals.col2_count > 0 ? `(${totals.col2_count})` : 0,
-        totals.col3_count > 0 ? `+${totals.col3_count}` : 0,
-        totals.col4_count > 0 ? `(${totals.col4_count})` : 0,
-        totals.reconciled_total === totals.total_billed ? '✓ สมดุล 100%' : `⚠️ ผลต่าง ${totals.reconciled_total - totals.total_billed}`
+        Number(totals.h1_size20_billed) || 0,
+        Number(totals.h1_size40_billed) || 0,
+        Number(totals.h1_billed_total) || 0,
+        Number(totals.h1_sheet_total) || 0,
+        Number(totals.h2_size20_billed) || 0,
+        Number(totals.h2_size40_billed) || 0,
+        Number(totals.h2_billed_total) || 0,
+        Number(totals.h2_sheet_total) || 0,
+        Number(totals.total_billed) || 0,
+        Number(totals.reconciled_total) || 0,
+        Number(totals.col1_total_sheets) || 0,
+        Number(totals.col2_count) || 0,
+        Number(totals.col3_count) || 0,
+        Number(totals.col4_count) || 0
       ]);
       totalRow.height = 24;
 
       const totalRowIndex = totalRow.number;
       worksheet.mergeCells(`A${totalRowIndex}:D${totalRowIndex}`);
 
-      for (let c = 1; c <= 19; c++) {
+      for (let c = 1; c <= 18; c++) {
         const cell = totalRow.getCell(c);
         cell.border = {
           top: { style: 'medium', color: { argb: 'FF94A3B8' } },
@@ -555,6 +579,10 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
         cell.font = { name: 'Sarabun', size: 10, bold: true, color: { argb: 'FF0F172A' } };
         cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } };
         cell.alignment = { vertical: 'middle', horizontal: 'center' };
+
+        if (c >= 4 && c <= 18) {
+          cell.numFmt = '#,##0';
+        }
 
         if (c === 13) {
           cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } };
@@ -571,7 +599,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
       const url = window.URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `ตู้_DG_ประจำเดือน_${selectedMonth || 'Report'}.xlsx`;
+      anchor.download = `ตู้_DG_ประจำเดือน_${monthDisplay.replace(/\s+/g, '_')}.xlsx`;
       anchor.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
@@ -810,9 +838,9 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
                 <th rowSpan={3} style={{ ...topHeaderStyle, width: '130px', textAlign: 'left', paddingLeft: '14px' }}>เจ้าของรถ</th>
                 <th rowSpan={3} style={{ ...topHeaderStyle, width: '65px', color: '#0284c7' }}>เบอร์</th>
                 
-                {/* 1-15 and 16-31 Top Super Header */}
+                {/* 1-15 and 16-lastDay Top Super Header */}
                 <th colSpan={8} style={{ ...topHeaderStyle, background: '#cbd5e1', color: '#0f172a' }}>
-                  ช่วงวันที่ทำงาน (Dates Breakdown)
+                  ช่วงวันที่ทำงาน (1-15 & 16-{lastDayOfMonth})
                 </th>
 
                 {/* Reconciliation Super Header */}
@@ -845,7 +873,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
                   1 - 15 (ครึ่งแรก)
                 </th>
                 <th colSpan={4} style={subHeaderH2Style}>
-                  16 - 31 (ครึ่งหลัง)
+                  16 - {lastDayOfMonth} (ครึ่งหลัง)
                 </th>
               </tr>
 
@@ -965,7 +993,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
                         {r.h1_sheet_total}
                       </td>
 
-                      {/* 16-31 Breakdown */}
+                      {/* 16-lastDay Breakdown */}
                       <td style={{ padding: '9px 4px', textAlign: 'center', fontSize: '12px', color: r.h2_size20_billed > 0 ? '#0f172a' : '#94a3b8', borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f1f5f9' }}>
                         {r.h2_size20_billed || 0}
                       </td>
@@ -973,7 +1001,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
                         {r.h2_size40_billed || 0}
                       </td>
 
-                      {/* 16-31 Billed Total (Interactive Hover) */}
+                      {/* 16-lastDay Billed Total (Interactive Hover) */}
                       <td
                         style={{
                           padding: '9px 6px',
@@ -986,14 +1014,14 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
                           borderRight: '1px solid #f1f5f9',
                           cursor: r.h2_billed_total > 0 ? 'pointer' : 'default'
                         }}
-                        onMouseEnter={(e) => handleMouseEnterCell(e, `ตู้ในใบวางบิล 16-31 ${monthDisplay}`, r.h2_billed_total, r.h2_billed_items, 'amber', r.truck_no)}
+                        onMouseEnter={(e) => handleMouseEnterCell(e, `ตู้ในใบวางบิล 16-${lastDayOfMonth} ${monthDisplay}`, r.h2_billed_total, r.h2_billed_items, 'amber', r.truck_no)}
                         onMouseLeave={handleMouseLeaveCell}
-                        onClick={() => r.h2_billed_total > 0 && setDrillDownModal({ title: `รายการตู้วางบิล 16-31 (รถ ${r.truck_no})`, items: r.h2_billed_items, theme: 'amber' })}
+                        onClick={() => r.h2_billed_total > 0 && setDrillDownModal({ title: `รายการตู้วางบิล 16-${lastDayOfMonth} (รถ ${r.truck_no})`, items: r.h2_billed_items, theme: 'amber' })}
                       >
                         {r.h2_billed_total}
                       </td>
 
-                      {/* 16-31 Sheet Total (Interactive Hover) */}
+                      {/* 16-lastDay Sheet Total (Interactive Hover) */}
                       <td
                         style={{
                           padding: '9px 6px',
@@ -1006,9 +1034,9 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
                           borderRight: '1px solid #e2e8f0',
                           cursor: r.h2_sheet_total > 0 ? 'pointer' : 'default'
                         }}
-                        onMouseEnter={(e) => handleMouseEnterCell(e, `ตู้ในใบงาน 16-31 ${monthDisplay}`, r.h2_sheet_total, r.h2_sheet_items, 'indigo', r.truck_no)}
+                        onMouseEnter={(e) => handleMouseEnterCell(e, `ตู้ในใบงาน 16-${lastDayOfMonth} ${monthDisplay}`, r.h2_sheet_total, r.h2_sheet_items, 'indigo', r.truck_no)}
                         onMouseLeave={handleMouseLeaveCell}
-                        onClick={() => r.h2_sheet_total > 0 && setDrillDownModal({ title: `รายการตู้ในใบงาน 16-31 (รถ ${r.truck_no})`, items: r.h2_sheet_items, theme: 'indigo' })}
+                        onClick={() => r.h2_sheet_total > 0 && setDrillDownModal({ title: `รายการตู้ในใบงาน 16-${lastDayOfMonth} (รถ ${r.truck_no})`, items: r.h2_sheet_items, theme: 'indigo' })}
                       >
                         {r.h2_sheet_total}
                       </td>
