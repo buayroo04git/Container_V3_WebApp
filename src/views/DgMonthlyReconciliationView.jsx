@@ -79,7 +79,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
         truckMap.set(String(t.truck_no).trim(), {
           truck_no: String(t.truck_no).trim(),
           truck_license: t.truck_license || '-',
-          owner_or_driver: t.assigned_driver_name || t.owner_name || '-'
+          owner: t.owner || t.owner_name || '-'
         });
       }
     });
@@ -91,7 +91,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
         truckMap.set(tNo, {
           truck_no: tNo,
           truck_license: r.truck_license || '-',
-          owner_or_driver: r.driver_name || '-'
+          owner: '-'
         });
       }
     });
@@ -114,7 +114,9 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
         if (String(m.truck_no || '').trim() !== tNo) return false;
         const norm = m.date_job_parsed || normalizeExcelDate(m.date_job);
         const batch = cleanBatchName(m.batch_name || m.source_file);
-        return (norm && norm.startsWith(targetMonth)) || (batch && batch.includes(targetMonth));
+        const bPeriod = parseBatchPeriod(batch);
+        if (bPeriod && bPeriod.year === tYearNum && bPeriod.month === tMonthNum) return true;
+        return (norm && norm.startsWith(targetMonth));
       });
 
       // แยกตามช่วง 1-15 และ 16-31
@@ -190,35 +192,29 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
       // C. Reconciliation Columns: (2), (3), (4)
       // -------------------------------------------------------------
       // (2) จำนวนตู้ใบงานที่วางบิลแล้วในเดือนก่อนหน้า (- หักออก)
-      const col2_billed_in_prev_month_items = truckItemsThisMonth.filter(item => {
-        if (!item.ref_master_id) return false;
-        const matched = masterContainers.find(m => m.id === item.ref_master_id);
-        if (!matched) return false;
-        const bPeriod = parseBatchPeriod(cleanBatchName(matched.batch_name || matched.source_file, matched.date_job_parsed || matched.date_job));
-        return bPeriod && bPeriod.periodIndex < pIndexH1;
+      const col2_set = new Set();
+      truckItemsThisMonth.forEach(item => {
+        if (item.ref_master_id) {
+          const matched = masterContainers.find(m => m.id === item.ref_master_id);
+          if (matched) {
+            const bPeriod = parseBatchPeriod(cleanBatchName(matched.batch_name || matched.source_file, matched.date_job_parsed || matched.date_job));
+            if (bPeriod && bPeriod.periodIndex < pIndexH1) {
+              col2_set.add(item.id);
+            }
+          }
+        }
       });
-      const col2_count = col2_billed_in_prev_month_items.length;
+      const col2_count = col2_set.size;
 
       // (3) จำนวนตู้วางบิลแล้วจากใบงานเดือนหน้า (+ บวกเข้า)
-      const col3_billed_this_month_sheet_next_items = truckMasterThisMonth.filter(m => {
-        const matchedItem = jobSheetItems.find(it => it.ref_master_id === m.id);
-        if (!matchedItem) return false;
-        const s = sheetMap.get(matchedItem.job_sheet_id);
-        if (!s) return false;
-        const sPeriod = parseBatchPeriod(cleanBatchName(s.batch_name));
-        return sPeriod && sPeriod.periodIndex > pIndexH2;
-      });
-      const col3_count = col3_billed_this_month_sheet_next_items.length;
+      // (อยู่ในใบวางบิลเดือนนี้ แต่ยังไม่มีในใบงานเดือนนี้)
+      const itemContSet = new Set(truckItemsThisMonth.map(i => String(i.container_no).trim().toUpperCase()));
+      const col3_count = truckMasterThisMonth.filter(m => !itemContSet.has(String(m.container_no).trim().toUpperCase())).length;
 
       // (4) จำนวนตู้ค้างวางบิลจากใบงานยกไปเดือนหน้า (- หักออก)
-      const col4_unbilled_rolled_forward_items = truckItemsThisMonth.filter(item => {
-        if (!item.ref_master_id) return false;
-        const matched = masterContainers.find(m => m.id === item.ref_master_id);
-        if (!matched) return false;
-        const bPeriod = parseBatchPeriod(cleanBatchName(matched.batch_name || matched.source_file, matched.date_job_parsed || matched.date_job));
-        return bPeriod && bPeriod.periodIndex > pIndexH2;
-      });
-      const col4_count = col4_unbilled_rolled_forward_items.length;
+      // (อยู่ในใบงานเดือนนี้ แต่วางบิลไม่ทัน/ยกไปเดือนหน้า/ยังไม่วางบิล และไม่ซ้ำกับ col2)
+      const masterContSet = new Set(truckMasterThisMonth.map(m => String(m.container_no).trim().toUpperCase()));
+      const col4_count = truckItemsThisMonth.filter(i => !col2_set.has(i.id) && !masterContSet.has(String(i.container_no).trim().toUpperCase())).length;
 
       // รวมตู้ใบงานวางบิลเดือนนี้ = (1) - (2) + (3) - (4)
       const reconciled_total = col1_total_sheets - col2_count + col3_count - col4_count;
@@ -228,7 +224,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
         index: idx + 1,
         truck_no: tNo,
         truck_license: truck.truck_license,
-        owner_or_driver: truck.owner_or_driver,
+        owner: truck.owner,
         h1_size20_billed,
         h1_size40_billed,
         h1_billed_total,
@@ -279,7 +275,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
     const exportData = rows.map(r => ({
       'ลำดับ': r.index,
       'ทะเบียน': r.truck_license,
-      'เจ้าของรถ': r.owner_or_driver,
+      'เจ้าของรถ': r.owner,
       'เบอร์': r.truck_no,
       '1-15 ตู้ 20"': r.h1_size20_billed,
       '1-15 ตู้ 40"': r.h1_size40_billed,
@@ -411,7 +407,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
               <tr>
                 <th rowSpan={3} style={{ ...headerCellStyle, width: '45px' }}>ลำดับ</th>
                 <th rowSpan={3} style={{ ...headerCellStyle, width: '90px' }}>ทะเบียน</th>
-                <th rowSpan={3} style={{ ...headerCellStyle, width: '140px' }}>เจ้าของรถ / คนขับ</th>
+                <th rowSpan={3} style={{ ...headerCellStyle, width: '140px' }}>เจ้าของรถ</th>
                 <th rowSpan={3} style={{ ...headerCellStyle, width: '65px', background: '#d9f99d' }}>เบอร์</th>
                 <th colSpan={8} style={headerCellStyle}>วันที่</th>
                 <th rowSpan={3} style={{ ...headerCellStyle, width: '85px', background: '#fed7aa' }}>รวมจำนวน<br/>ตู้วางบิล</th>
@@ -465,7 +461,7 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
                     <tr key={r.truck_no} style={{ background: rowBg }}>
                       <td style={bodyCellStyle}>{r.index}</td>
                       <td style={{ ...bodyCellStyle, fontWeight: 600, color: '#334155', fontFamily: "'SF Mono', monospace" }}>{r.truck_license}</td>
-                      <td style={{ ...bodyCellStyle, textAlign: 'left', fontWeight: 600 }}>{r.owner_or_driver}</td>
+                      <td style={{ ...bodyCellStyle, textAlign: 'left', fontWeight: 600 }}>{r.owner}</td>
                       <td style={{ ...bodyCellStyle, fontWeight: 700, color: '#1e3a8a', background: '#eff6ff' }}>{r.truck_no}</td>
 
                       {/* 1-15 Breakdown */}
