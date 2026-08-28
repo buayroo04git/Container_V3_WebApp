@@ -328,33 +328,131 @@ export default function DgMonthlyReconciliationView({ activeTab, setActiveTab })
     if (popoverTimeoutRef.current) clearTimeout(popoverTimeoutRef.current);
   };
 
-  // Export to Excel
+  // 📥 Export to Excel with Multi-Level Merged Headers & Formatted Columns
   const handleExportExcel = () => {
-    const exportData = rows.map(r => ({
-      'ลำดับ': r.index,
-      'ทะเบียน': r.truck_license,
-      'เจ้าของรถ': r.owner,
-      'เบอร์': r.truck_no,
-      '1-15 ตู้ 20"': r.h1_size20_billed,
-      '1-15 ตู้ 40"': r.h1_size40_billed,
-      '1-15 จำนวนตู้วางบิล': r.h1_billed_total,
-      '1-15 จำนวนตู้ใบงาน': r.h1_sheet_total,
-      '16-31 ตู้ 20"': r.h2_size20_billed,
-      '16-31 ตู้ 40"': r.h2_size40_billed,
-      '16-31 จำนวนตู้วางบิล': r.h2_billed_total,
-      '16-31 จำนวนตู้ใบงาน': r.h2_sheet_total,
-      'รวมจำนวนตู้วางบิล': r.total_billed,
-      'รวมจำนวนตู้ใบงาน วางบิลเดือนนี้': r.reconciled_total,
-      'รวมจำนวนตู้ใบงาน': r.col1_total_sheets,
-      'จำนวนตู้ใบงานที่วางบิลแล้วในเดือนก่อนหน้า': r.col2_count > 0 ? `(${r.col2_count})` : 0,
-      'จำนวนตู้วางบิลแล้วจากใบงานเดือนหน้า': r.col3_count,
-      'จำนวนตู้ค้างวางบิลจากใบงานยกไปเดือนหน้า': r.col4_count > 0 ? `(${r.col4_count})` : 0,
-      'สถานะกระทบยอด': r.isReconciled ? '✓ ตรงกัน' : `⚠️ ต่าง ${r.diff}`
-    }));
+    // 1. Build Multi-Level Header Rows
+    const aoa = [
+      // Row 1 (Header Level 1)
+      [
+        'ลำดับ', 'ทะเบียน', 'เจ้าของรถ', 'เบอร์',
+        'วันที่', null, null, null, null, null, null, null,
+        'รวมจำนวนตู้วางบิล', 'รวมตู้ใบงาน วางบิลเดือนนี้', 'รวมจำนวนตู้ใบงาน',
+        'วางบิลแล้ว เดือนก่อนหน้า', 'วางบิลแล้ว ใบงานเดือนหน้า', 'ค้างวางบิล ยกไปเดือนหน้า', 'สถานะกระทบยอด'
+      ],
+      // Row 2 (Header Level 2 - Half-Month Grouping)
+      [
+        null, null, null, null,
+        '1 - 15', null, null, null,
+        '16 - 31', null, null, null,
+        null, null, null, null, null, null, null
+      ],
+      // Row 3 (Header Level 3 - Container Sizes & Sub-Totals)
+      [
+        null, null, null, null,
+        'ตู้ 20"', 'ตู้ 40"', 'จำนวนตู้วางบิล', 'จำนวนตู้ใบงาน',
+        'ตู้ 20"', 'ตู้ 40"', 'จำนวนตู้วางบิล', 'จำนวนตู้ใบงาน',
+        null, null, null, null, null, null, null
+      ]
+    ];
 
-    const ws = XLSX.utils.json_to_sheet(exportData);
+    // 2. Append Data Rows
+    rows.forEach(r => {
+      aoa.push([
+        r.index,
+        r.truck_license || '-',
+        r.owner || '-',
+        r.truck_no || '-',
+        r.h1_size20_billed || 0,
+        r.h1_size40_billed || 0,
+        r.h1_billed_total || 0,
+        r.h1_sheet_total || 0,
+        r.h2_size20_billed || 0,
+        r.h2_size40_billed || 0,
+        r.h2_billed_total || 0,
+        r.h2_sheet_total || 0,
+        r.total_billed || 0,
+        r.reconciled_total || 0,
+        r.col1_total_sheets || 0,
+        r.col2_count > 0 ? `(${r.col2_count})` : 0,
+        r.col3_count > 0 ? `+${r.col3_count}` : 0,
+        r.col4_count > 0 ? `(${r.col4_count})` : 0,
+        r.isReconciled ? '✓ ตรงกัน' : `⚠️ ต่าง ${r.diff}`
+      ]);
+    });
+
+    // 3. Append Grand Total Row
+    const totalRowIndex = aoa.length;
+    aoa.push([
+      'รวมทั้งหมด (GRAND TOTAL)', null, null, null,
+      totals.h1_size20_billed,
+      totals.h1_size40_billed,
+      totals.h1_billed_total,
+      totals.h1_sheet_total,
+      totals.h2_size20_billed,
+      totals.h2_size40_billed,
+      totals.h2_billed_total,
+      totals.h2_sheet_total,
+      totals.total_billed,
+      totals.reconciled_total,
+      totals.col1_total_sheets,
+      totals.col2_count > 0 ? `(${totals.col2_count})` : 0,
+      totals.col3_count > 0 ? `+${totals.col3_count}` : 0,
+      totals.col4_count > 0 ? `(${totals.col4_count})` : 0,
+      totals.reconciled_total === totals.total_billed ? '✓ สมดุล 100%' : `⚠️ ผลต่าง ${totals.reconciled_total - totals.total_billed}`
+    ]);
+
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+
+    // 4. Set Multi-Level Merges
+    ws['!merges'] = [
+      // Fixed Columns: 0 to 3 across Rows 0 to 2
+      { s: { r: 0, c: 0 }, e: { r: 2, c: 0 } }, // ลำดับ
+      { s: { r: 0, c: 1 }, e: { r: 2, c: 1 } }, // ทะเบียน
+      { s: { r: 0, c: 2 }, e: { r: 2, c: 2 } }, // เจ้าของรถ
+      { s: { r: 0, c: 3 }, e: { r: 2, c: 3 } }, // เบอร์
+      // Super Header: วันที่ (E1:L1, cols 4 to 11)
+      { s: { r: 0, c: 4 }, e: { r: 0, c: 11 } },
+      // 1-15: E2:H2 (cols 4 to 7)
+      { s: { r: 1, c: 4 }, e: { r: 1, c: 7 } },
+      // 16-31: I2:L2 (cols 8 to 11)
+      { s: { r: 1, c: 8 }, e: { r: 1, c: 11 } },
+      // Reconciliation Columns: cols 12 to 18 across Rows 0 to 2
+      { s: { r: 0, c: 12 }, e: { r: 2, c: 12 } }, // รวมจำนวนตู้วางบิล
+      { s: { r: 0, c: 13 }, e: { r: 2, c: 13 } }, // รวมตู้ใบงาน วางบิลเดือนนี้
+      { s: { r: 0, c: 14 }, e: { r: 2, c: 14 } }, // รวมจำนวนตู้ใบงาน
+      { s: { r: 0, c: 15 }, e: { r: 2, c: 15 } }, // วางบิลแล้ว เดือนก่อนหน้า
+      { s: { r: 0, c: 16 }, e: { r: 2, c: 16 } }, // วางบิลแล้ว ใบงานเดือนหน้า
+      { s: { r: 0, c: 17 }, e: { r: 2, c: 17 } }, // ค้างวางบิล ยกไปเดือนหน้า
+      { s: { r: 0, c: 18 }, e: { r: 2, c: 18 } }, // สถานะกระทบยอด
+      // Grand Total Row Merge across A:D (cols 0 to 3)
+      { s: { r: totalRowIndex, c: 0 }, e: { r: totalRowIndex, c: 3 } }
+    ];
+
+    // 5. Column Widths
+    ws['!cols'] = [
+      { wch: 8 },  // ลำดับ
+      { wch: 14 }, // ทะเบียน
+      { wch: 22 }, // เจ้าของรถ
+      { wch: 10 }, // เบอร์
+      { wch: 10 }, // 1-15 20"
+      { wch: 10 }, // 1-15 40"
+      { wch: 16 }, // 1-15 วางบิล
+      { wch: 16 }, // 1-15 ใบงาน
+      { wch: 10 }, // 16-31 20"
+      { wch: 10 }, // 16-31 40"
+      { wch: 16 }, // 16-31 วางบิล
+      { wch: 16 }, // 16-31 ใบงาน
+      { wch: 18 }, // รวมจำนวนตู้วางบิล
+      { wch: 26 }, // รวมตู้ใบงาน วางบิลเดือนนี้
+      { wch: 18 }, // รวมจำนวนตู้ใบงาน
+      { wch: 22 }, // วางบิลแล้ว เดือนก่อนหน้า
+      { wch: 22 }, // วางบิลแล้ว ใบงานเดือนหน้า
+      { wch: 22 }, // ค้างวางบิล ยกไปเดือนหน้า
+      { wch: 16 }  // สถานะกระทบยอด
+    ];
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'DG_Reconciliation');
+    XLSX.utils.book_append_sheet(wb, ws, 'ตู้_DG_ประจำเดือน');
     XLSX.writeFile(wb, `ตู้_DG_ประจำเดือน_${selectedMonth || 'Report'}.xlsx`);
   };
 
