@@ -20,9 +20,15 @@ export async function parseLegacyJsonFiles(files, masterDbList = [], driversList
     const filename = file.name;
     const lowerName = filename.toLowerCase();
 
-    if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg')) {
-      const baseNameWithoutExt = filename.replace(/\.(png|jpe?g)$/i, '');
+    if (lowerName.endsWith('.png') || lowerName.endsWith('.jpg') || lowerName.endsWith('.jpeg') || lowerName.endsWith('.webp')) {
+      const baseNameWithoutExt = filename.replace(/\.(png|jpe?g|webp)$/i, '');
+      const cleanBase = baseNameWithoutExt.replace(/^(manual_|result_|lock_)/i, '');
       imageFilesMap.set(baseNameWithoutExt, file);
+      imageFilesMap.set(cleanBase, file);
+      imageFilesMap.set(baseNameWithoutExt.toLowerCase(), file);
+      imageFilesMap.set(cleanBase.toLowerCase(), file);
+      imageFilesMap.set(cleanBase.replace(/\s+/g, ''), file);
+      imageFilesMap.set(cleanBase.toLowerCase().replace(/\s+/g, ''), file);
       continue;
     }
 
@@ -221,7 +227,16 @@ export async function parseLegacyJsonFiles(files, masterDbList = [], driversList
       const fallbackBatch = cleanBatchName(val.rawPath || sheetKey);
       const finalBatchName = detectedBatch || fallbackBatch || 'General_Batch';
 
-      const matchingImageFile = imageFilesMap.get(sheetKey) || null;
+      const cleanKey = sheetKey.replace(/^(manual_|result_|lock_)/i, '');
+      const matchingImageFile = imageFilesMap.get(sheetKey)
+        || imageFilesMap.get(cleanKey)
+        || imageFilesMap.get(sheetKey.toLowerCase())
+        || imageFilesMap.get(cleanKey.toLowerCase())
+        || imageFilesMap.get(cleanKey.replace(/\s+/g, ''))
+        || imageFilesMap.get(cleanKey.toLowerCase().replace(/\s+/g, ''))
+        || imageFilesMap.get(`manual_${sheetKey}`)
+        || imageFilesMap.get(`result_${sheetKey}`)
+        || null;
       const imageName = matchingImageFile ? matchingImageFile.name : `${sheetKey}.png`;
 
       const autoDriver = resolveDriver(truckNo, firstValidDate);
@@ -356,6 +371,7 @@ export async function executeLegacyJsonBatchImport(sheetsToImport = [], options 
     success: errors.length === 0,
     importedSheets: totalSheetsImported,
     importedItems: totalItemsImported,
+    importedImages: totalImagesUploaded,
     errors
   };
 }

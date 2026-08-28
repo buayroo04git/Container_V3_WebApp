@@ -49,18 +49,26 @@ export default function LegacyJsonImportModal({
     }
   }, [isOpen]);
 
+  const [pendingAutoImport, setPendingAutoImport] = useState(false);
+
   const handleGoogleLogin = useGoogleLogin({
-    onSuccess: (tokenResponse) => {
+    onSuccess: async (tokenResponse) => {
       const token = tokenResponse.access_token;
       setGoogleToken(token);
       localStorage.setItem('gdrive_access_token', token);
       localStorage.setItem('gdrive_token_expires_at', String(Date.now() + (tokenResponse.expires_in || 3500) * 1000));
       setIsDriveConnecting(false);
+
+      if (pendingAutoImport) {
+        setPendingAutoImport(false);
+        await executeImportWithToken(token);
+      }
     },
     onError: (err) => {
       console.error('Google Login Error in LegacyJsonImportModal:', err);
       alert('ไม่สามารถเข้าสู่ระบบ Google Drive ได้: ' + (err.error_description || err.error));
       setIsDriveConnecting(false);
+      setPendingAutoImport(false);
     },
     scope: 'https://www.googleapis.com/auth/drive'
   });
@@ -136,7 +144,7 @@ export default function LegacyJsonImportModal({
     }));
   };
 
-  const handleConfirmImport = async () => {
+  const executeImportWithToken = async (activeToken) => {
     if (parsedSheets.length === 0) return;
 
     let targetSheets = parsedSheets;
@@ -159,19 +167,24 @@ export default function LegacyJsonImportModal({
 
     setIsImporting(true);
     try {
+      const willUpload = uploadToDrive && Boolean(activeToken);
       const res = await executeLegacyJsonBatchImport(sheetsToSave, {
-        uploadToDrive: uploadToDrive && Boolean(googleToken),
-        accessToken: googleToken,
+        uploadToDrive: willUpload,
+        accessToken: activeToken,
         onProgress: (prog) => setImportProgress(prog)
       });
 
+      const imageMsg = willUpload 
+        ? `\n- อัปโหลดรูปภาพขึ้น Google Drive: ${res.importedImages || 0} รูป` 
+        : (totalImageFiles > 0 ? '\n- ⚠️ (ไม่ได้เลือกหรือไม่มีสิทธิ์อัปโหลดรูปภาพขึ้น Google Drive)' : '');
+
       if (res.success) {
-        alert(`🎉 นำเข้าสำเร็จเรียบร้อยแล้ว!\n- นำเข้าใบงาน: ${res.importedSheets} ใบ\n- นำเข้ารายการตู้: ${res.importedItems} ตู้`);
+        alert(`🎉 นำเข้าสำเร็จเรียบร้อยแล้ว!\n- นำเข้าใบงาน: ${res.importedSheets} ใบ${imageMsg}\n- นำเข้ารายการตู้: ${res.importedItems} ตู้`);
         onImportSuccess();
         onClose();
       } else {
         const errDetails = (res.errors || []).slice(0, 3).map(e => `${e.sheetId}: ${e.error}`).join('\n');
-        alert(`⚠️ นำเข้าเสร็จสิ้นบางส่วน (สำเร็จ ${res.importedSheets} ใบ, พบปัญหา ${res.errors.length} รายการ)\n\nรายละเอียดข้อผิดพลาด:\n${errDetails}`);
+        alert(`⚠️ นำเข้าเสร็จสิ้นบางส่วน (สำเร็จ ${res.importedSheets} ใบ, พบปัญหา ${res.errors.length} รายการ)${imageMsg}\n\nรายละเอียดข้อผิดพลาด:\n${errDetails}`);
         onImportSuccess();
       }
     } catch (err) {
@@ -181,6 +194,25 @@ export default function LegacyJsonImportModal({
       setIsImporting(false);
       setImportProgress(null);
     }
+  };
+
+  const handleConfirmImport = async () => {
+    if (parsedSheets.length === 0) return;
+
+    // ถ้ามีรูปภาพในโฟลเดอร์ และติ๊กเลือกอัปโหลดขึ้น Drive แต่ยังไม่มี Token หรือหมดอายุ
+    if (totalImageFiles > 0 && uploadToDrive && !googleToken) {
+      const wantAuth = window.confirm(
+        `☁️ ตรวจพบไฟล์รูปภาพในโฟลเดอร์ ${totalImageFiles} รูป\nแต่คุณยังไม่ได้เข้าสู่ระบบ Google Drive (หรือ Session หมดอายุ)\n\nกด "ตกลง (OK)" เพื่อเข้าสู่ระบบ Google Drive และเริ่มนำเข้าพร้อมอัปโหลดรูปภาพอัตโนมัติทันที`
+      );
+      if (wantAuth) {
+        setIsDriveConnecting(true);
+        setPendingAutoImport(true);
+        handleGoogleLogin();
+        return;
+      }
+    }
+
+    await executeImportWithToken(googleToken);
   };
 
   // Calculations

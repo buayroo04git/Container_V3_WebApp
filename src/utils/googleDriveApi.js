@@ -9,6 +9,12 @@ export const getOrCreateFolder = async (accessToken, folderName, parentId = null
   const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(q)}&fields=files(id, name)`, {
     headers: { Authorization: `Bearer ${accessToken}` }
   });
+  
+  if (!searchRes.ok) {
+    const errData = await searchRes.json().catch(() => ({}));
+    throw new Error(errData?.error?.message || `Google Drive Search failed with HTTP ${searchRes.status}`);
+  }
+  
   const searchData = await searchRes.json();
   
   if (searchData.files && searchData.files.length > 0) {
@@ -30,6 +36,11 @@ export const getOrCreateFolder = async (accessToken, folderName, parentId = null
     },
     body: JSON.stringify(metadata)
   });
+  
+  if (!createRes.ok) {
+    const errData = await createRes.json().catch(() => ({}));
+    throw new Error(errData?.error?.message || `Google Drive Create Folder failed with HTTP ${createRes.status}`);
+  }
   
   const createData = await createRes.json();
   return createData.id;
