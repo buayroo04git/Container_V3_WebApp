@@ -974,12 +974,13 @@ export default function OcrContainerHistoryView({ setActiveTab }) {
                         }
 
                         if (col === 'image_url') {
+                          const hasImage = Boolean(item.image_url || item.drive_file_id);
                           return (
                             <td key={col} style={cellStyle}>
                               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                                {item.image_url ? (
+                                {hasImage ? (
                                   <button
-                                    onClick={() => setPreviewImage({ url: item.image_url, name: item.image_name || item.container_no })}
+                                    onClick={() => setPreviewImage({ url: item.image_url, name: item.image_name || item.container_no, drive_file_id: item.drive_file_id })}
                                     title="ดูรูปภาพใบงาน"
                                     style={{
                                       padding: '3px 8px',

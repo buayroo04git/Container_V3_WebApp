@@ -10,6 +10,7 @@ import MonthPicker from '../components/ui/MonthPicker';
 import useActiveMonth from '../hooks/useActiveMonth';
 import { useColumnPreferences } from '../hooks/useColumnPreferences';
 import LegacyJsonImportModal from '../components/modals/LegacyJsonImportModal';
+import ContainerImageModal from '../components/containers/ContainerImageModal';
 
 function getPageNumbers(current, total) {
   if (total <= 7) {
@@ -94,6 +95,7 @@ export default function BatchManagerView() {
   const [selectedTruckFilter, setSelectedTruckFilter] = useState('ALL');
   const [selectedMonth, setSelectedMonth] = useActiveMonth();
   const [activeDetailSheet, setActiveDetailSheet] = useState(null);
+  const [previewImage, setPreviewImage] = useState(null);
   
   // State สำหรับหน้าต่างแก้ไขเฉพาะตู้ที่ยังไม่พบ (Red Containers Editor)
   const [editingRedSheet, setEditingRedSheet] = useState(null);
@@ -227,37 +229,29 @@ export default function BatchManagerView() {
     }
   };
 
-  const handleDownloadImage = (imageUrl, truckNo, batchName) => {
-    if (!imageUrl) return;
+  const handleOpenImagePreview = (sheet) => {
+    if (!sheet) return;
+    const imageUrl = sheet.image_url;
+    const driveFileId = sheet.drive_file_id || null;
+    const imageName = sheet.image_name || `ใบงาน รถ ${sheet.truck_no || '-'}`;
 
-    if (imageUrl.startsWith('blob:') || imageUrl.startsWith('data:')) {
-      const a = document.createElement('a');
-      a.href = imageUrl;
-      a.download = `JobSheet_${truckNo || 'truck'}_${batchName || 'batch'}.jpg`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+    if (!imageUrl && !driveFileId) {
+      alert('⚠️ ใบงานนี้ยังไม่มีรูปภาพบนระบบหรือ Google Drive');
       return;
     }
 
-    const match = imageUrl.match(/\/d\/([a-zA-Z0-9_-]+)/) || imageUrl.match(/id=([a-zA-Z0-9_-]+)/);
-    if (match && match[1]) {
-      const fileId = match[1];
-      const downloadUrl = `https://drive.google.com/uc?export=download&id=${fileId}`;
-      const a = document.createElement('a');
-      a.href = downloadUrl;
-      a.target = '_blank';
-      a.download = `JobSheet_${truckNo || 'truck'}_${fileId}.jpg`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      return;
-    }
-
-    window.open(imageUrl, '_blank');
+    setPreviewImage({
+      url: imageUrl,
+      name: imageName,
+      drive_file_id: driveFileId,
+      sheetId: sheet.id
+    });
   };
 
-  const getDriveThumbnailUrl = (url) => {
+  const getDriveThumbnailUrl = (url, driveFileId = null) => {
+    if (driveFileId && typeof driveFileId === 'string' && driveFileId.length > 5) {
+      return `https://drive.google.com/thumbnail?id=${driveFileId}&sz=w200`;
+    }
     if (!url) return null;
     if (url.startsWith('data:') || url.startsWith('blob:') || url.startsWith('http://localhost') || url.includes('/assets/')) {
       return url;
@@ -726,11 +720,12 @@ export default function BatchManagerView() {
                         }
 
                         if (col === 'thumbnail') {
+                          const hasImage = Boolean(sheet.image_url || sheet.drive_file_id);
                           return (
                             <td key={col} style={{ ...cellStyle, padding: '4px 8px' }}>
-                              {sheet.image_url ? (
+                              {hasImage ? (
                                 <div 
-                                  onClick={() => handleDownloadImage(sheet.image_url, sheet.truck_no, sheet.batch_name)}
+                                  onClick={() => handleOpenImagePreview(sheet)}
                                   style={{
                                     width: '36px',
                                     height: '36px',
@@ -742,12 +737,15 @@ export default function BatchManagerView() {
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     margin: '0 auto',
-                                    border: '1px solid #e2e8f0'
+                                    border: '1px solid #cbd5e1',
+                                    transition: 'transform 0.15s ease'
                                   }}
-                                  title="คลิกเพื่อเปิดดูภาพต้นฉบับ"
+                                  onMouseOver={e => e.currentTarget.style.transform = 'scale(1.08)'}
+                                  onMouseOut={e => e.currentTarget.style.transform = 'scale(1)'}
+                                  title="คลิกเพื่อเปิดดูภาพต้นฉบับ (ซูม/ลากดูได้)"
                                 >
                                   <img 
-                                    src={getDriveThumbnailUrl(sheet.image_url)} 
+                                    src={getDriveThumbnailUrl(sheet.image_url, sheet.drive_file_id)} 
                                     alt="Job Sheet" 
                                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                     onError={(e) => {
@@ -764,24 +762,29 @@ export default function BatchManagerView() {
                         }
 
                         if (col === 'image_name') {
+                          const hasImage = Boolean(sheet.image_url || sheet.drive_file_id);
                           return (
                             <td key={col} style={cellStyle}>
-                              <div style={{
-                                fontWeight: 600,
-                                color: '#0369a1',
-                                fontFamily: "'SF Mono', Consolas, monospace",
-                                fontSize: '12px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap'
-                              }}
-                              title={sheet.image_name}
+                              <div 
+                                onClick={hasImage ? () => handleOpenImagePreview(sheet) : undefined}
+                                style={{
+                                  fontWeight: 600,
+                                  color: hasImage ? '#0284c7' : '#64748b',
+                                  fontFamily: "'SF Mono', Consolas, monospace",
+                                  fontSize: '12px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '6px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  cursor: hasImage ? 'pointer' : 'default',
+                                  textDecoration: hasImage ? 'underline' : 'none'
+                                }}
+                                title={hasImage ? `คลิกเพื่อเปิดดูภาพ: ${sheet.image_name}` : sheet.image_name}
                               >
                                 <span style={{ fontSize: '13px' }}>🖼️</span>
-                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{sheet.image_name}</span>
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{sheet.image_name || '-'}</span>
                               </div>
                             </td>
                           );
@@ -1472,6 +1475,12 @@ export default function BatchManagerView() {
         onImportSuccess={() => {
           loadPaginatedData();
         }}
+      />
+
+      {/* 🖼️ High-Res Image Preview Modal */}
+      <ContainerImageModal
+        previewImage={previewImage}
+        onClose={() => setPreviewImage(null)}
       />
 
     </div>

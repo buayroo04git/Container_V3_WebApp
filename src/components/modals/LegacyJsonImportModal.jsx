@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { supabase } from '../../supabaseClient';
 import { parseLegacyJsonFiles, executeLegacyJsonBatchImport } from '../../services/legacyJsonImportService';
+import { useGoogleLogin } from '@react-oauth/google';
 
 export default function LegacyJsonImportModal({
   isOpen,
@@ -19,6 +20,7 @@ export default function LegacyJsonImportModal({
   const [selectedDriverOverrides, setSelectedDriverOverrides] = useState({});
   const [uploadToDrive, setUploadToDrive] = useState(true);
   const [skipExisting, setSkipExisting] = useState(false);
+  const [isDriveConnecting, setIsDriveConnecting] = useState(false);
 
   // 🖼️ State สำหรับ Image Preview Lightbox
   const [previewImageSheet, setPreviewImageSheet] = useState(null);
@@ -28,9 +30,40 @@ export default function LegacyJsonImportModal({
   const folderInputRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  const googleToken = typeof window !== 'undefined' 
-    ? (localStorage.getItem('google_access_token') || localStorage.getItem('gdrive_token') || null) 
-    : null;
+  const getSavedGoogleToken = () => {
+    if (typeof window === 'undefined') return null;
+    const token = localStorage.getItem('gdrive_access_token') || localStorage.getItem('google_access_token') || localStorage.getItem('gdrive_token');
+    const expiresAt = localStorage.getItem('gdrive_token_expires_at');
+    if (token && expiresAt && Number(expiresAt) <= Date.now()) {
+      return null;
+    }
+    return token;
+  };
+
+  const [googleToken, setGoogleToken] = useState(getSavedGoogleToken);
+
+  // Sync token whenever modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setGoogleToken(getSavedGoogleToken());
+    }
+  }, [isOpen]);
+
+  const handleGoogleLogin = useGoogleLogin({
+    onSuccess: (tokenResponse) => {
+      const token = tokenResponse.access_token;
+      setGoogleToken(token);
+      localStorage.setItem('gdrive_access_token', token);
+      localStorage.setItem('gdrive_token_expires_at', String(Date.now() + (tokenResponse.expires_in || 3500) * 1000));
+      setIsDriveConnecting(false);
+    },
+    onError: (err) => {
+      console.error('Google Login Error in LegacyJsonImportModal:', err);
+      alert('ไม่สามารถเข้าสู่ระบบ Google Drive ได้: ' + (err.error_description || err.error));
+      setIsDriveConnecting(false);
+    },
+    scope: 'https://www.googleapis.com/auth/drive'
+  });
 
   // Cleanup Object URL when closing preview
   useEffect(() => {
@@ -342,19 +375,51 @@ export default function LegacyJsonImportModal({
               </div>
 
               {googleToken ? (
-                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 700, color: '#2563eb' }}>
-                  <input
-                    type="checkbox"
-                    checked={uploadToDrive}
-                    onChange={(e) => setUploadToDrive(e.target.checked)}
-                    disabled={isImporting || totalImageFiles === 0}
-                  />
-                  <span>อัปโหลดรูปภาพขึ้น Google Drive อัตโนมัติ</span>
-                </label>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontWeight: 700, color: '#2563eb' }}>
+                    <input
+                      type="checkbox"
+                      checked={uploadToDrive}
+                      onChange={(e) => setUploadToDrive(e.target.checked)}
+                      disabled={isImporting || totalImageFiles === 0}
+                    />
+                    <span>อัปโหลดรูปภาพขึ้น Google Drive อัตโนมัติ ({totalImageFiles} รูป)</span>
+                  </label>
+                  <span style={{ fontSize: '11px', color: '#16a34a', background: '#dcfce7', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                    ✓ เชื่อมต่อแล้ว
+                  </span>
+                </div>
               ) : (
-                <span style={{ fontSize: '11.5px', color: '#64748b', background: '#f1f5f9', padding: '3px 8px', borderRadius: '6px' }}>
-                  ℹ️ ยังไม่ได้เชื่อมต่อ Google Drive (จะบันทึกชื่อรูปภาพไว้ และสามารถซิงค์ขึ้น Drive ภายหลังได้)
-                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDriveConnecting(true);
+                      handleGoogleLogin();
+                    }}
+                    disabled={isImporting || isDriveConnecting}
+                    style={{
+                      padding: '5px 14px',
+                      borderRadius: '6px',
+                      background: '#2563eb',
+                      color: '#ffffff',
+                      border: 'none',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: isDriveConnecting ? 'wait' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+                    }}
+                  >
+                    <span>🔑</span>
+                    <span>{isDriveConnecting ? 'กำลังเชื่อมต่อ...' : 'เข้าสู่ระบบ Google Drive'}</span>
+                  </button>
+                  <span style={{ fontSize: '11.5px', color: '#64748b' }}>
+                    (เข้าสู่ระบบเพื่อให้อัปโหลดไฟล์ภาพขึ้น Google Drive อัตโนมัติ)
+                  </span>
+                </div>
               )}
             </div>
           )}

@@ -1,7 +1,7 @@
 import { supabase } from '../supabaseClient';
 import { jobSheetService } from './jobSheetService';
 import { cleanBatchName, findBestMasterDbMatch, normalizeExcelDate } from '../utils/matchingLogic';
-import { getOrCreateFolder, uploadImageToDrive } from '../utils/googleDriveApi';
+import { getOrCreateFolder, uploadImageToDrive, setFilePublicReadable } from '../utils/googleDriveApi';
 
 /**
  * 📦 Legacy JSON Import Service
@@ -284,7 +284,10 @@ export async function executeLegacyJsonBatchImport(sheetsToImport = [], options 
       // ☁️ Upload image to Google Drive if selected
       if (uploadToDrive && accessToken && sheet.imageFile) {
         try {
-          const batchFolderId = await getOrCreateFolder(accessToken, sheet.batch_name || 'Completed_Job_Sheets');
+          const mainCompletedFolderId = await getOrCreateFolder(accessToken, 'Completed_Job_Sheets');
+          const batchFolderId = await getOrCreateFolder(accessToken, sheet.batch_name || 'General_Batch', mainCompletedFolderId);
+          const truckFolderId = await getOrCreateFolder(accessToken, `Truck_${sheet.truck_no || 'Unknown'}`, batchFolderId);
+
           const base64Data = await new Promise((resolve, reject) => {
             const reader = new FileReader();
             reader.onload = () => {
@@ -297,10 +300,12 @@ export async function executeLegacyJsonBatchImport(sheetsToImport = [], options 
           });
 
           if (base64Data) {
-            const driveRes = await uploadImageToDrive(accessToken, batchFolderId, base64Data, sheet.image_name);
+            const driveRes = await uploadImageToDrive(accessToken, truckFolderId, base64Data, sheet.image_name || `${sheet.id}.jpg`);
             if (driveRes?.id) {
               driveId = driveRes.id;
-              driveUrl = driveRes.webViewLink || `https://drive.google.com/uc?id=${driveRes.id}`;
+              // ตั้งสิทธิ์ไฟล์ให้เปิดดูรูปและดึง Thumbnail ได้
+              await setFilePublicReadable(accessToken, driveRes.id);
+              driveUrl = `https://drive.google.com/file/d/${driveRes.id}/view`;
               totalImagesUploaded++;
             }
           }

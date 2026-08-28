@@ -253,6 +253,22 @@ export const jobSheetService = {
         });
 
         if (!rpcError && rpcData?.success) {
+          // ☁️ ซิงค์รูปภาพ (Image URL & Drive File ID) ไปยัง job_sheets และ ocr_records
+          if (imageUrl || driveFileId) {
+            try {
+              const imgUpdate = {};
+              if (imageUrl) imgUpdate.image_url = imageUrl;
+              if (imageName) imgUpdate.image_name = imageName;
+              if (driveFileId) imgUpdate.drive_file_id = driveFileId;
+              await supabase.from('job_sheets').update(imgUpdate).eq('id', targetSheetId);
+            } catch (e) {}
+            if (imageUrl) {
+              try {
+                await supabase.from('ocr_records').update({ image_url: imageUrl }).eq('job_sheet_id', targetSheetId);
+              } catch (e) {}
+            }
+          }
+
           // 🚚 ซิงค์ชื่อคนขับไปยัง ocr_records และ truck_records เพื่อให้บันทึกถาวร 100%
           if (driverName && driverName !== '-') {
             try {
@@ -415,6 +431,22 @@ export const jobSheetService = {
             ocr_data: cacheUpdatePayload
           })
           .eq('id', cacheId);
+      }
+
+      // ☁️ ซิงค์รูปภาพ (Image URL & Drive File ID) ไปยัง job_sheets และ ocr_records
+      if (imageUrl || driveFileId) {
+        try {
+          const imgUpdate = {};
+          if (imageUrl) imgUpdate.image_url = imageUrl;
+          if (imageName) imgUpdate.image_name = imageName;
+          if (driveFileId) imgUpdate.drive_file_id = driveFileId;
+          await supabase.from('job_sheets').update(imgUpdate).eq('id', targetSheetId);
+        } catch (e) {}
+        if (imageUrl) {
+          try {
+            await supabase.from('ocr_records').update({ image_url: imageUrl }).eq('job_sheet_id', targetSheetId);
+          } catch (e) {}
+        }
       }
 
       if (driverName && driverName !== '-') {
